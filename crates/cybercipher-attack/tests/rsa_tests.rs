@@ -971,3 +971,66 @@ fn analyzer_never_panics_on_degenerate_input() {
         let _ = analyze(&params, false, 150);
     }
 }
+
+#[test]
+fn coppersmith_hint_recovers_stereotyped_message() {
+    // e=3 RSA with a known prefix: flag{ + 3 unknown bytes.
+    use cybercipher_attack::{analyze, RsaParams};
+    use serde_json::json;
+    let p = cybercipher_attack::math::weak_prime(128, &mut 0xABCDEFu64);
+    let mut q = cybercipher_attack::math::weak_prime(128, &mut 0x123456u64);
+    while q == p {
+        q = cybercipher_attack::math::weak_prime(128, &mut 0x999111u64);
+    }
+    let n = &p * &q;
+    let e = 3u64;
+    let mut msg = b"flag{".to_vec();
+    msg.extend_from_slice(b"s3c");
+    let m = num_bigint::BigUint::from_bytes_be(&msg);
+    let c = m.modpow(&num_bigint::BigUint::from(e), &n);
+    let params = RsaParams::from_json(&json!({
+        "n": format!("0x{n:x}"),
+        "e": e,
+        "c": format!("0x{c:x}"),
+        "hint": "flag{",
+    }))
+    .unwrap();
+    let report = analyze(&params, true, 60_000);
+    assert!(
+        report.plaintext.is_some(),
+        "coppersmith escalation must recover the message: {:?}",
+        report
+            .findings
+            .iter()
+            .filter(|f| f.id == "coppersmith-hint")
+            .map(|f| (&f.status, &f.message))
+            .collect::<Vec<_>>()
+    );
+    let pt = report.plaintext.unwrap();
+    assert!(pt.utf8.as_deref().unwrap_or("").starts_with("flag{"));
+    assert!(
+        pt.m_hex.ends_with("733363"),
+        "recovered message must end with the secret suffix, got {}",
+        pt.m_hex
+    );
+}
+
+#[test]
+fn coppersmith_hint_not_applicable_without_hint() {
+    use cybercipher_attack::{analyze, RsaParams};
+    use serde_json::json;
+    let params = RsaParams::from_json(&json!({
+        "n": "0x9d", "e": 3, "c": "0x5"
+    }))
+    .unwrap();
+    let report = analyze(&params, false, 10_000);
+    let finding = report
+        .findings
+        .iter()
+        .find(|f| f.id == "coppersmith-hint")
+        .unwrap();
+    assert_eq!(
+        serde_json::to_string(&finding.status).unwrap(),
+        "\"not_applicable\""
+    );
+}

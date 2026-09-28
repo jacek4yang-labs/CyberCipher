@@ -47,6 +47,51 @@ impl RsaParams {
         let mut params = RsaParams::default();
         for (key, val) in obj {
             let key = key.to_lowercase();
+            // Text/structured keys are handled first; everything else is an
+            // integer parameter parsed below.
+            match key.as_str() {
+                "hint" | "plaintext_hint" => {
+                    params.hint = val.as_str().map(|s| s.to_string());
+                    continue;
+                }
+                "sets" => {
+                    let arr = val
+                        .as_array()
+                        .ok_or("`sets` must be an array of {n, e, c} objects")?;
+                    let mut sets = Vec::new();
+                    for item in arr {
+                        let obj = item
+                            .as_object()
+                            .ok_or("each `sets` entry must be an object")?;
+                        let mut set = RsaSet::default();
+                        for (k, v) in obj {
+                            let parsed = parse_big_value(v)
+                                .map_err(|e| format!("sets entry field `{k}`: {e}"))?;
+                            match k.to_lowercase().as_str() {
+                                "n" => set.n = parsed,
+                                "e" => set.e = parsed,
+                                "c" | "ct" | "ciphertext" => set.c = parsed,
+                                other => return Err(format!("unknown set field `{other}`")),
+                            }
+                        }
+                        sets.push(set);
+                    }
+                    params.sets = sets;
+                    continue;
+                }
+                "ns" | "moduli" => {
+                    let arr = val.as_array().ok_or("`ns` must be an array of integers")?;
+                    let mut ns = Vec::new();
+                    for item in arr {
+                        if let Some(v) = parse_big_value(item)? {
+                            ns.push(v);
+                        }
+                    }
+                    params.ns = ns;
+                    continue;
+                }
+                _ => {}
+            }
             let parsed = parse_big_value(val).map_err(|e| format!("parameter `{key}`: {e}"))?;
             match key.as_str() {
                 "n" => params.n = parsed,
@@ -59,7 +104,6 @@ impl RsaParams {
                 "dp" | "dmp" => params.dp = parsed,
                 "dq" | "dmq" => params.dq = parsed,
                 "qinv" | "iqmp" => params.qinv = parsed,
-                "hint" | "plaintext_hint" => params.hint = val.as_str().map(|s| s.to_string()),
                 "sets" => {
                     let arr = val
                         .as_array()

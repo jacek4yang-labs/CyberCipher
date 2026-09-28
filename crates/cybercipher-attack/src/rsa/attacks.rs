@@ -1186,6 +1186,131 @@ pub fn attack_pollard_pm1(params: &mut RsaParams, deadline: Instant) -> AttackOu
     })
 }
 
+/// Coppersmith escalation for stereotyped messages: with a known plaintext
+/// prefix (`hint`) and a small exponent, the unknown suffix is a small root
+/// of f(x) = (prefix·256^L + x)^e − c (mod N) for each candidate suffix
+/// length L. Verified candidates decrypt to the full message.
+fn attack_coppersmith_hint(params: &mut RsaParams, deadline: Instant) -> AttackOutcome {
+    const ID: &str = "coppersmith-hint";
+    const NAME: &str = "Coppersmith (known plaintext prefix)";
+    let (Some(n), Some(e), Some(c)) = (params.n.clone(), params.e.clone(), params.c.clone()) else {
+        return AttackOutcome::not_applicable(ID, NAME, "n, e and c");
+    };
+    let Some(hint) = params.hint.clone().filter(|h| !h.is_empty()) else {
+        return AttackOutcome::not_applicable(
+            ID,
+            NAME,
+            "a known plaintext prefix in the `hint` field",
+        );
+    };
+    if hint.len() > 32 {
+        return AttackOutcome::not_applicable(ID, NAME, "a hint of at most 32 bytes");
+    }
+    let e_u64 = match e.iter_u64_digits().collect::<Vec<_>>()[..] {
+        [v] if (2..=257).contains(&v) => v,
+        _ => return AttackOutcome::not_applicable(ID, NAME, "a small public exponent (2..=257)"),
+    };
+
+    use crate::lattice::coppersmith::{small_roots, CoppersmithBeta, CoppersmithParams};
+    use crate::lattice::poly::Poly;
+    use num_bigint::BigInt;
+    use num_traits::One;
+
+    let beta = CoppersmithBeta::MOD_N;
+
+    // Suffix length L: unknown bytes after the prefix. e grows the degree,
+    // so keep L small enough for the dimension cap.
+    for suffix_len in 1usize..=8 {
+        if Instant::now() >= deadline {
+            break;
+        }
+        let shift = BigUint::from(256u32).pow(suffix_len as u32);
+        // f(x) = (prefix·256^L + x)^e - c
+        let base_coeffs = {
+            let mut v = vec![BigInt::zero(); e_u64 as usize + 1];
+            let mut coef = BigInt::one();
+            // binomial expansion of (A + x)^e: coefficient of x^k = C(e,k)·A^(e-k)
+            for k in 0..=e_u64 {
+                let comb = binomial(e_u64, k);
+                v[k as usize] = coef.clone() * BigInt::from(comb);
+                coef *= BigInt::from(shift.clone());
+            }
+            v[e_u64 as usize] -= BigInt::from(c.clone());
+            v
+        };
+        let f = Poly::from_coeffs(base_coeffs);
+        let x_bound = BigUint::one() << (8 * suffix_len as u32);
+
+        for m in 1usize..=6 {
+            if Instant::now() >= deadline {
+                break;
+            }
+            let Ok(cparams) = CoppersmithParams::new(m, 0) else {
+                continue;
+            };
+            let Ok(result) = small_roots(&f, &n, &x_bound, &cparams, &beta) else {
+                continue;
+            };
+            for root in &result.roots {
+                // Reconstruct the full message: prefix || suffix (root bytes).
+                let root_uint = if root.is_negative() {
+                    continue; // suffix bytes are non-negative
+                } else {
+                    match root.to_biguint() {
+                        Some(v) if v < x_bound => v,
+                        _ => continue,
+                    }
+                };
+                let suffix = root_uint.to_bytes_be();
+                let mut msg_bytes = hint.as_bytes().to_vec();
+                if suffix.len() < suffix_len {
+                    msg_bytes.extend(std::iter::repeat_n(0u8, suffix_len - suffix.len()));
+                }
+                msg_bytes.extend_from_slice(&suffix);
+                let m_full = BigUint::from_bytes_be(&msg_bytes);
+                if m_full.modpow(&e, &n) == c {
+                    params.d = None;
+                    let mut o = AttackOutcome {
+                        id: ID,
+                        name: NAME,
+                        status: AttackStatus::Success,
+                        cost: AttackCost::Fast,
+                        message: String::new(),
+                        details: None,
+                        plaintext: Some(PlaintextResult::from_m(&m_full)),
+                    };
+                    o.id = ID;
+                    o.name = NAME;
+                    o.message = format!(
+                        "stereotyped message recovered: suffix length {suffix_len}, lattice dim {}",
+                        result.lattice_dim
+                    );
+                    return o;
+                }
+            }
+        }
+    }
+    AttackOutcome {
+        id: ID,
+        name: NAME,
+        status: AttackStatus::Failed,
+        cost: AttackCost::Fast,
+        message: "no suffix length produced a verified message within the lattice caps".to_string(),
+        details: Some(
+            "the unknown tail must be short relative to N^(1/e); padded randomness beyond that needs larger parameters".to_string(),
+        ),
+        plaintext: None,
+    }
+}
+
+fn binomial(n: u64, k: u64) -> BigUint {
+    let mut result = BigUint::one();
+    for i in 0..k {
+        result = result * BigUint::from(n - i) / BigUint::from(i + 1);
+    }
+    result
+}
+
 // ---------------------------------------------------------- analyzer ----
 
 #[derive(Debug, Clone, Serialize)]
@@ -1210,6 +1335,7 @@ const PIPELINE: &[(&str, AttackFn)] = &[
     ("hastad", |p, _| attack_hastad(p)),
     ("shared-prime", |p, _| attack_shared_prime(p)),
     ("low-e", attack_low_e),
+    ("coppersmith-hint", attack_coppersmith_hint),
     ("wiener", |p, _| attack_wiener(p)),
     ("fermat", attack_fermat),
     ("pollard-rho", attack_pollard_rho),
