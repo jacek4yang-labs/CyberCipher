@@ -92,6 +92,37 @@ enum PrngCmd {
         #[arg(long, default_value = "10")]
         predict: u64,
     },
+    /// Java java.util.Random stream: new Random(SEED).nextInt().
+    Java {
+        #[arg(long)]
+        seed: i64,
+        #[arg(long, default_value = "5")]
+        count: u32,
+    },
+    /// Recover Java Random state from two consecutive nextInt() outputs.
+    JavaRecover {
+        /// Two consecutive nextInt() outputs.
+        outputs: String,
+    },
+    /// glibc rand() stream (TYPE_3 additive feedback).
+    Glibc {
+        #[arg(long)]
+        seed: u32,
+        #[arg(long, default_value = "5")]
+        count: u32,
+    },
+    /// MSVC rand() stream.
+    Msvc {
+        #[arg(long)]
+        seed: u32,
+        #[arg(long, default_value = "5")]
+        count: u32,
+    },
+    /// Recover MSVC rand state from three consecutive outputs.
+    MsvcRecover {
+        /// Three consecutive outputs.
+        outputs: String,
+    },
     /// CPython-compatible getrandbits stream: random.seed(SEED).getrandbits(BITS).
     MtBits {
         #[arg(long)]
@@ -312,6 +343,48 @@ fn run_prng(cmd: PrngCmd) {
             {
                 println!("  {v}");
             }
+        }
+        PrngCmd::Java { seed, count } => {
+            let mut rng = prng::JavaRandom::new(seed);
+            for i in 0..count.max(1) {
+                println!("nextInt[{i}] = {}", rng.next_i32());
+            }
+        }
+        PrngCmd::JavaRecover { outputs } => {
+            let outs = read_u32_list(&outputs);
+            if outs.len() != 2 {
+                fail(&cybercipher_core::OperationError::invalid_input(
+                    "java-recover needs exactly two outputs",
+                ));
+            }
+            let mut rng = prng::java_recover_state(outs[0] as i32, outs[1] as i32)
+                .unwrap_or_else(|e| fail(&e));
+            println!("internal seed = {}", rng.internal_seed());
+            println!("next = {}", rng.next_i32());
+        }
+        PrngCmd::Glibc { seed, count } => {
+            let mut rng = prng::GlibcRand::new(seed);
+            for i in 0..count.max(1) {
+                println!("rand[{i}] = {}", rng.rand());
+            }
+        }
+        PrngCmd::Msvc { seed, count } => {
+            let mut rng = prng::MsvcRand::new(seed);
+            for i in 0..count.max(1) {
+                println!("rand[{i}] = {}", rng.rand());
+            }
+        }
+        PrngCmd::MsvcRecover { outputs } => {
+            let outs = read_u32_list(&outputs);
+            if outs.len() != 3 {
+                fail(&cybercipher_core::OperationError::invalid_input(
+                    "msvc-recover needs exactly three outputs",
+                ));
+            }
+            let mut rng = prng::MsvcRand::recover_from_outputs(outs[0], outs[1], outs[2])
+                .unwrap_or_else(|e| fail(&e));
+            println!("state = {}", rng.state());
+            println!("next = {}", rng.rand());
         }
         PrngCmd::MtClone { outputs, predict } => {
             let outs = read_u32_list(&outputs);
