@@ -1,2 +1,85 @@
 # CyberCipher
-High-performance local-first cryptography and CTF workbench
+
+> Crypto, decode, analyze, solve.
+
+CyberCipher is a high-performance, local-first cryptography and CTF workbench.
+It combines a CyberChef-style recipe workbench (operations → recipe → input →
+output) with a Rust engine built for real cryptanalysis work. Everything runs
+on your machine: no telemetry, no remote processing, no accounts.
+
+**Status: early development.** The Workbench UI and the codec/byte-operation
+foundation are functional. Symmetric crypto, hashes, Auto Decode, and the
+attack labs are the next milestones — see [docs/CAPABILITIES.md](docs/CAPABILITIES.md)
+and [docs/ROADMAP.md](docs/ROADMAP.md) for the honest current state.
+
+## Key properties
+
+- **Rust engine, typed data model.** The engine is not `String -> String`;
+  values are typed (bytes, text, integers, JSON, lists) and operations declare
+  what they accept. The frontend is a replaceable presentation layer.
+- **Incremental recipe execution.** Changing operation 5 of 10 re-runs only
+  stages 5–10; earlier stages are served from a keyed stage cache.
+- **Explainability.** Structured errors (expected vs actual), provenance
+  metadata per operation (standard, implementation, test vectors), and honest
+  cost classes: Auto Bake never silently runs expensive or solver operations.
+- **Offline by construction.** No network code in the core engine.
+
+## Architecture summary
+
+```text
+Tauri 2 GUI (React + TypeScript)  ← presentation only
+        │  IPC: commands, metadata, previews
+Rust engine (cybercipher-engine)
+  ├─ recipe model (versioned public JSON format)
+  ├─ incremental executor with stage cache
+  └─ operation registry (drives the GUI)
+        │
+crates: cybercipher-core · cybercipher-codec · cybercipher-crypto (next)
+        · cybercipher-analysis (next) · cybercipher-attack (next)
+```
+
+See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
+
+## Current capabilities (Milestone 1)
+
+- 29 working operations: hex, Base64/URL-safe, Base32/Base32hex, URL percent
+  encoding, binary/octal/decimal, hexdump, UTF-8 encode/decode, reverse,
+  split/join, XOR (standard/rolling/incrementing, null-preserving), AND/OR/NOT,
+  rotate left/right, swap endianness, entropy report, strings extraction.
+- Workbench: operation search (aliases + tags), drag-and-drop recipe editing,
+  parameter forms generated from the registry, enable/disable/duplicate,
+  intermediate stage previews, Auto Bake (debounced, cost-gated), manual Bake,
+  per-stage caching, structured error rendering, save/load/import/export
+  recipes, dark/light themes, copy-as (hex / Base64 / Python bytes / C array /
+  decimal / integer), input↔output swap, flag-pattern highlighting.
+- CLI and GUI share the same engine (`cybercipher-engine`).
+
+## Development
+
+Prerequisites: Rust 1.85+, Node 20+, and Tauri 2 system dependencies
+(on Linux: `libwebkit2gtk-4.1-dev`, `libgtk-3-dev`, `libayatana-appindicator3-dev`,
+`librsvg2-dev`).
+
+```bash
+# backend
+cargo test --workspace
+
+# frontend
+cd ui && npm install && npm run typecheck && npm run build
+
+# run the desktop app (dev)
+npm --prefix ui run tauri dev
+```
+
+Linux packaging target is an AppImage; see [docs/ROADMAP.md](docs/ROADMAP.md).
+
+## Security model
+
+CyberCipher handles sensitive material. It works fully offline, has no
+telemetry, and never persists inputs unless you explicitly save a recipe.
+Legacy/broken algorithms are labeled, never hidden — CTF work needs them.
+
+## License
+
+Dual-licensed under [MIT](LICENSE-MIT) or [Apache-2.0](LICENSE-APACHE), at
+your option.

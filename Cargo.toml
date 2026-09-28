@@ -1,0 +1,37 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/cybercipher-core",
+    "crates/cybercipher-codec",
+    "crates/cybercipher-engine",
+    "apps/cybercipher-gui",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/jacek4yang-labs/CyberCipher"
+description = "High-performance local-first cryptography and CTF workbench"
+
+[workspace.dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+num-bigint = "0.4"
+num-traits = "0.2"
+base64 = "0.22"
+percent-encoding = "2"
+xxhash-rust = { version = "0.8", features = ["xxh3"] }
+dirs = "6"
+parking_lot = "0.12"
+
+cybercipher-core = { path = "crates/cybercipher-core" }
+cybercipher-codec = { path = "crates/cybercipher-codec" }
+cybercipher-engine = { path = "crates/cybercipher-engine" }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = "debuginfo"

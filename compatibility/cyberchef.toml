@@ -1,0 +1,136 @@
+# CyberChef compatibility matrix — Milestone 1 scope.
+# Statuses: covered | superset | partial | missing | intentional-out-of-scope | same-capability
+
+[meta]
+upstream = "https://github.com/gchq/CyberChef"
+baseline_date = 2026-09-28
+notes = "CyberChef is an interoperability/UX reference, not an authority. Entries reflect implemented reality only."
+
+[entries.From_Hex]
+ours = "from-hex"
+status = "covered"
+notes = "Strict + relaxed modes with offset diagnostics."
+
+[entries.To_Hex]
+ours = "to-hex"
+status = "covered"
+notes = "No per-group word separator yet; single separator parameter."
+
+[entries.From_Base64]
+ours = "from-base64"
+status = "covered"
+notes = "Standard + URL-safe alphabets, strict + relaxed with padding repair."
+
+[entries.To_Base64]
+ours = "to-base64"
+status = "covered"
+
+[entries.From_Base32]
+ours = "from-base32"
+status = "covered"
+notes = "RFC 4648 standard + extended-hex alphabets."
+
+[entries.To_Base32]
+ours = "to-base32"
+status = "covered"
+
+[entries.URL_Decode]
+ours = "from-url"
+status = "covered"
+notes = "Plus-as-space option."
+
+[entries.URL_Encode]
+ours = "to-url"
+status = "covered"
+notes = "Encodes all non-unreserved characters (RFC 3986)."
+
+[entries.From_Binary]
+ours = "from-binary"
+status = "covered"
+
+[entries.To_Binary]
+ours = "to-binary"
+status = "covered"
+
+[entries.From_Octal]
+ours = "from-octal"
+status = "covered"
+
+[entries.To_Octal]
+ours = "to-octal"
+status = "covered"
+
+[entries.From_Decimal]
+ours = "from-decimal"
+status = "covered"
+
+[entries.To_Decimal]
+ours = "to-decimal"
+status = "covered"
+
+[entries.To_Hexdump]
+ours = "to-hexdump"
+status = "partial"
+notes = "Fixed 16-byte rows; CyberChef offers width/upper/hex-cell options."
+
+[entries.Reverse]
+ours = "reverse"
+status = "covered"
+notes = "Bytes and character modes (lines mode pending)."
+
+[entries.Split]
+ours = "split"
+status = "partial"
+notes = "Literal delimiters only; CyberChef also supports regex + joined output."
+
+[entries.Join]
+ours = "join"
+status = "covered"
+
+[entries.XOR]
+ours = "xor"
+status = "partial"
+notes = "Standard/rolling/incrementing schemes; CyberChef differential schemes pending."
+
+[entries.Bitwise_AND]
+ours = "bitwise-and"
+status = "covered"
+
+[entries.Bitwise_OR]
+ours = "bitwise-or"
+status = "covered"
+
+[entries.Bitwise_NOT]
+ours = "bitwise-not"
+status = "covered"
+
+[entries.Rotate_left]
+ours = "rotate-left"
+status = "covered"
+notes = "Per-byte rotation."
+
+[entries.Rotate_right]
+ours = "rotate-right"
+status = "covered"
+
+[entries.Swap_endianness]
+ours = "swap-endianness"
+status = "covered"
+
+[entries.Entropy]
+ours = "entropy"
+status = "partial"
+notes = "Shannon entropy + printable ratio + top bytes; no conditional/chunked entropy charts."
+
+[entries.Strings]
+ours = "strings"
+status = "covered"
+
+[entries.Encode_text]
+ours = "encode-text"
+status = "covered"
+
+[entries.Decode_text]
+ours = "decode-text"
+status = "covered"
+notes = "UTF-8 strict/lossy with byte-offset diagnostics."
