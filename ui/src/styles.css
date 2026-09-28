@@ -1018,3 +1018,451 @@ body {
   word-break: break-all;
   margin: 6px 0 0;
 }
+
+/* ------------------------------------------------------- RSA attack lab ---- */
+
+.rsa-lab-page .rsa-expl {
+  max-width: 860px;
+  line-height: 1.6;
+}
+
+.rsa-layout {
+  display: grid;
+  grid-template-columns: minmax(340px, 460px) minmax(0, 1fr);
+  gap: 20px;
+  margin-top: 16px;
+  align-items: start;
+}
+
+@media (max-width: 1000px) {
+  .rsa-layout {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* parameter form */
+
+.rsa-form-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 8px 12px;
+}
+
+.rsa-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.rsa-field label {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+}
+
+.rsa-field .rsa-field-hint {
+  font-family: var(--sans);
+  opacity: 0.75;
+  font-size: 10.5px;
+}
+
+.rsa-field input {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 3px;
+  padding: 4px 6px;
+  font-size: 12px;
+  font-family: var(--mono);
+  width: 100%;
+}
+
+.rsa-field input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.rsa-field.invalid input {
+  border-color: var(--red);
+}
+
+.rsa-meta {
+  font-family: var(--mono);
+  font-size: 10px;
+  min-height: 13px;
+  line-height: 1.3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rsa-meta-ok {
+  color: var(--green);
+}
+
+.rsa-meta-bad {
+  color: var(--red);
+}
+
+.rsa-meta-empty {
+  color: var(--text-dim);
+  opacity: 0.6;
+}
+
+/* advanced JSON box */
+
+.rsa-advanced-toggle {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11.5px;
+  padding: 10px 0 4px;
+  text-align: left;
+}
+
+.rsa-advanced-toggle:hover {
+  color: var(--text);
+}
+
+.rsa-advanced-toggle .rsa-twist {
+  display: inline-block;
+  width: 10px;
+  color: var(--accent);
+}
+
+.rsa-advanced {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 8px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  resize: vertical;
+}
+
+.rsa-advanced:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+/* run controls */
+
+.rsa-run-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+
+.rsa-budget {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.rsa-budget select {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+
+.rsa-run-hint {
+  margin-top: 6px;
+  font-size: 11px;
+  font-family: var(--mono);
+  min-height: 15px;
+}
+
+.rsa-build-error {
+  color: var(--red);
+}
+
+.rsa-error-banner {
+  margin-top: 10px;
+  padding: 6px 8px;
+  font-size: 11.5px;
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--red) 35%, transparent);
+  border-radius: 4px;
+  word-break: break-word;
+}
+
+.rsa-empty {
+  border: 1px dashed var(--border-strong);
+  border-radius: 6px;
+  padding: 24px 16px;
+  line-height: 1.7;
+}
+
+.rsa-empty b {
+  color: var(--text);
+}
+
+/* report */
+
+.rsa-report {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.rsa-report-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.rsa-report-head h3 {
+  margin: 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+}
+
+.rsa-report-head .spacer {
+  flex: 1;
+}
+
+.rsa-counts {
+  font-family: var(--mono);
+  font-size: 10.5px;
+}
+
+.rsa-findings {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.rsa-finding-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  color: var(--text);
+  font-size: 12px;
+  text-align: left;
+  cursor: default;
+}
+
+button.rsa-finding-row {
+  cursor: pointer;
+}
+
+button.rsa-finding-row:hover {
+  border-color: var(--border-strong);
+  background: var(--panel-alt);
+}
+
+button.rsa-finding-row:focus-visible,
+.rsa-advanced-toggle:focus-visible,
+.rsa-field input:focus-visible {
+  outline: 1px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.rsa-finding-name {
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+.rsa-finding-msg {
+  color: var(--text-dim);
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rsa-finding .rsa-twist {
+  color: var(--accent);
+  flex-shrink: 0;
+}
+
+.rsa-finding-details {
+  margin: 2px 0 4px 16px;
+  padding: 6px 8px;
+  background: var(--bg-alt);
+  border: 1px solid var(--border);
+  border-left: 2px solid var(--border-strong);
+  border-radius: 4px;
+}
+
+.rsa-finding-details pre {
+  margin: 4px 0;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text-dim);
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.5;
+}
+
+/* status + cost chips */
+
+.rsa-status {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid currentColor;
+  flex-shrink: 0;
+  min-width: 86px;
+  text-align: center;
+}
+
+.rsa-status.st-success {
+  color: var(--green);
+  background: color-mix(in srgb, var(--green) 10%, transparent);
+}
+
+.rsa-status.st-applicable {
+  color: var(--amber);
+}
+
+.rsa-status.st-failed {
+  color: var(--red);
+}
+
+.rsa-status.st-not_applicable {
+  color: var(--text-dim);
+  opacity: 0.8;
+}
+
+.rsa-cost {
+  font-family: var(--mono);
+  font-size: 9.5px;
+  padding: 1px 5px;
+  border-radius: 3px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text-dim);
+  flex-shrink: 0;
+  min-width: 46px;
+  text-align: center;
+}
+
+.rsa-cost.c-fast {
+  color: var(--accent);
+  border-color: var(--accent-dim);
+}
+
+.rsa-cost.c-slow {
+  color: var(--purple);
+  border-color: var(--purple);
+}
+
+/* plaintext card */
+
+.rsa-plaintext {
+  background: var(--panel);
+  border: 1px solid var(--green);
+  border-radius: 6px;
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.rsa-plaintext.compact {
+  border-color: var(--border);
+}
+
+.rsa-plaintext-head {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.rsa-plaintext-title {
+  font-weight: 700;
+  color: var(--green);
+  font-size: 12.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.rsa-plaintext-head .dim {
+  font-size: 10.5px;
+  font-family: var(--mono);
+}
+
+.rsa-value-row {
+  display: grid;
+  grid-template-columns: 68px 1fr auto;
+  gap: 8px;
+  align-items: start;
+}
+
+.rsa-value-label {
+  font-family: var(--mono);
+  font-size: 10.5px;
+  color: var(--text-dim);
+  padding-top: 5px;
+}
+
+.rsa-value {
+  margin: 0;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.5;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 6px;
+  max-height: 96px;
+  overflow: auto;
+  white-space: pre-wrap;
+  word-break: break-all;
+  min-width: 0;
+}
+
+.rsa-copy {
+  font-size: 10.5px;
+  padding: 3px 8px;
+}
+
+.rsa-copy.copied {
+  border-color: var(--green);
+  color: var(--green);
+}
+
+.rsa-flag-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  justify-content: space-between;
+}
+
+.rsa-flag {
+  max-width: none;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  font-family: var(--mono);
+  font-size: 13px;
+  flex: 1;
+}

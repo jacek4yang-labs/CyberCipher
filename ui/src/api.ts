@@ -167,6 +167,50 @@ export interface CmdError {
   message: string;
 }
 
+// ---------------------------------------------------------- RSA attack lab ----
+
+/** Mirrors cybercipher_attack::AttackStatus (serde snake_case). */
+export type RsaAttackStatus = "applicable" | "not_applicable" | "success" | "failed";
+
+/** Mirrors cybercipher_attack::AttackCost. */
+export type RsaAttackCost = "instant" | "fast" | "slow";
+
+/** Recovered plaintext with human-readable interpretations. */
+export interface RsaPlaintext {
+  m_hex: string;
+  m_decimal: string;
+  /** Big-endian byte encoding of m, as lowercase hex pairs. */
+  bytes_be: string;
+  utf8?: string;
+  flag_like?: string;
+}
+
+/** One attack's diagnostic result. */
+export interface RsaAttackOutcome {
+  id: string;
+  name: string;
+  status: RsaAttackStatus;
+  cost: RsaAttackCost;
+  message: string;
+  details?: string;
+  plaintext?: RsaPlaintext;
+}
+
+/** Mirrors cybercipher_attack::AnalyzerReport. */
+export interface RsaAnalyzerReport {
+  findings: RsaAttackOutcome[];
+  /** Working parameter set after enrichments (0x-hex string values). */
+  params: Record<string, unknown>;
+  plaintext?: RsaPlaintext;
+}
+
+export interface RsaAnalyzeRequest {
+  /** Parameter object: decimal or 0x-hex strings, optional sets/ns/hint. */
+  params: Record<string, unknown>;
+  solve: boolean;
+  budget_ms: number;
+}
+
 export const api = {
   listOperations: () => invoke<OperationInfo[]>("list_operations"),
 
@@ -194,4 +238,7 @@ export const api = {
   listSavedRecipes: () => invoke<RecipeMeta[]>("list_saved_recipes"),
 
   deleteRecipe: (name: string) => invoke<void>("delete_recipe", { name }),
+
+  rsaAnalyze: (request: RsaAnalyzeRequest) =>
+    invoke<RsaAnalyzerReport>("rsa_analyze", { request }),
 };
