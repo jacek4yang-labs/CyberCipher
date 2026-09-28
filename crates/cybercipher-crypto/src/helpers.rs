@@ -160,6 +160,24 @@ pub fn p_text(
     }
 }
 
+/// Like [`p_text`], but the parameter is optional (e.g. AEAD associated data).
+pub fn p_text_opt(
+    key: &'static str,
+    label: &'static str,
+    default: &'static str,
+    hint: &'static str,
+) -> ParamSpec {
+    ParamSpec {
+        key,
+        label,
+        kind: ParamKind::Text,
+        default: ParamDefault::Str(default),
+        optional: true,
+        hint,
+        options: &[],
+    }
+}
+
 pub fn p_enc(
     key: &'static str,
     label: &'static str,
