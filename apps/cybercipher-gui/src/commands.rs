@@ -118,6 +118,30 @@ pub async fn bake(
     })
 }
 
+#[derive(Debug, Deserialize)]
+pub struct AutoRequest {
+    #[serde(default)]
+    pub input_text: String,
+    #[serde(default = "default_input_encoding")]
+    pub input_encoding: String,
+}
+
+#[tauri::command]
+pub async fn auto_analyze(
+    state: State<'_, AppState>,
+    request: AutoRequest,
+) -> Result<Vec<cybercipher_engine::AutoCandidate>, CmdError> {
+    let bytes =
+        decode_input(&request.input_encoding, &request.input_text).map_err(CmdError::from)?;
+    let registry = state.registry.clone();
+    let handle = tauri::async_runtime::spawn_blocking(move || {
+        cybercipher_engine::auto_decode(&registry, &bytes, &ExecutionContext::new())
+    });
+    handle
+        .await
+        .map_err(|e| CmdError::internal(format!("auto decode task failed: {e}")))
+}
+
 #[tauri::command]
 pub fn cancel_run(state: State<'_, AppState>, run_id: String) {
     if let Some(flag) = state.runs.lock().get(&run_id) {

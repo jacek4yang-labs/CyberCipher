@@ -37,6 +37,13 @@ CI runs all of the above plus a Linux Tauri build smoke test.
   block/word validation, hash KATs (MD5/SHA-1/SHA-256/SHA-512/SHA3-256/SM3),
   HMAC RFC 4231 case 1, engine-level integration of crypto ops.
 
+- **auto** (10 tests): single-layer hex/Base64/URL recovery, multi-layer
+  hex→Base64 (honest non-confidence on an unknown XOR tail), Base64→gzip with
+  flag detection, JSON payload scoring, binary PNG-magic input (never
+  force-decoded as compression), 64 KiB random data (bounded time, zero
+  confident claims), decimal-list false-positive trap, triple-nested Base64
+  recovery to depth 3, recipe replay of recovered paths.
+
 ## Requirements for later milestones
 
 Every standardized crypto implementation ships with:

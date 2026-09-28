@@ -8,11 +8,12 @@ output) with a Rust engine built for real cryptanalysis work. Everything runs
 on your machine: no telemetry, no remote processing, no accounts.
 
 **Status: pre-1.0 development.** The Workbench UI, the codec/byte-operation
-foundation, and the practical crypto baseline (AES, DES/3DES, SM4, RC4,
-TEA/XTEA/XXTEA, MD5/SHA-1/SHA-2/SHA-3/SM3, HMAC) are functional, with a CLI
-sharing the same engine. Auto Decode and the attack labs are the next
-milestones — see [docs/CAPABILITIES.md](docs/CAPABILITIES.md) and
-[docs/ROADMAP.md](docs/ROADMAP.md) for the honest current state.
+foundation, the practical crypto baseline (AES, DES/3DES, SM4, RC4,
+TEA/XTEA/XXTEA, MD5/SHA-1/SHA-2/SHA-3/SM3, HMAC), and the Auto Decode engine
+(bounded, explainable multi-layer decoding) are functional, with a CLI sharing
+the same engine. The attack labs are the next milestones — see
+[docs/CAPABILITIES.md](docs/CAPABILITIES.md) and [docs/ROADMAP.md](docs/ROADMAP.md)
+for the honest current state.
 
 ## Key properties
 
@@ -44,7 +45,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
 
 ## Current capabilities (Milestones 1–2)
 
-- 47 working operations. Crypto baseline: AES (ECB/CBC/CTR/CFB/OFB,
+- 51 working operations. Crypto baseline: AES (ECB/CBC/CTR/CFB/OFB,
   128/192/256-bit keys, validated PKCS7/Zero/ISO7816 padding), DES/3DES, SM4,
   RC4(+drop), TEA/XTEA/XXTEA, hashes (MD5, SHA-1/2/3, SHAKE, Keccak, SM3), and
   HMAC — all with official test vectors and provenance metadata. Legacy/broken
@@ -59,9 +60,13 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
   per-stage caching, structured error rendering, save/load/import/export
   recipes, dark/light themes, copy-as (hex / Base64 / Python bytes / C array /
   decimal / integer), input↔output swap, flag-pattern highlighting.
+- **Auto Decode**: bounded explainable analysis (beam depth 6, width 16, 3s
+  budget) that recovers multi-layer encodings — hex → Base64 → gzip — and
+  shows its evidence instead of claiming certainty. Available as the Auto
+  Analyze page and `cybercipher auto <input>`.
 - CLI (`cybercipher`) shares the same engine: `cybercipher ops`,
-  `cybercipher run --op from-base64 <input>`,
-  `cybercipher recipe run recipe.json input.bin`.
+  `cybercipher run --op from-base64 <input>`, `cybercipher auto <input>`,
+  `cybercipher recipe <file> <input>`.
 
 ## Development
 
@@ -75,6 +80,7 @@ cargo test --workspace
 
 # CLI (after cargo build)
 cargo run -p cybercipher-cli -- run --op sha256 -- README.md
+cargo run -p cybercipher-cli -- auto "ZmxhZ3tleGFtcGxlfQ=="
 
 # frontend
 cd ui && npm install && npm run typecheck && npm run build

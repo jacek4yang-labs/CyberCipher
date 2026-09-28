@@ -13,6 +13,7 @@ import { OpPanel } from "./components/OpPanel";
 import { RecipePanel } from "./components/RecipePanel";
 import { DataPanel } from "./components/DataPanel";
 import { RecipesPage } from "./components/RecipesPage";
+import { AutoPage } from "./components/AutoPage";
 import { SettingsPage } from "./components/SettingsPage";
 import { useStore, debounce } from "./store";
 import { useState } from "react";
@@ -33,7 +34,15 @@ export default function App() {
   return (
     <div className="app">
       <TopBar />
-      {page === "workbench" ? <Workbench /> : page === "recipes" ? <RecipesPage /> : <SettingsPage />}
+      {page === "workbench" ? (
+        <Workbench />
+      ) : page === "auto" ? (
+        <AutoPage />
+      ) : page === "recipes" ? (
+        <RecipesPage />
+      ) : (
+        <SettingsPage />
+      )}
       <StatusBar />
       <SaveDialog />
     </div>

@@ -40,7 +40,7 @@ are marked `intentional-out-of-scope` with a reason.
 | SM3 | sm3 | covered | |
 | HMAC | hmac | partial | MD5/SHA-1/SHA-256/SHA-512/SHA3-256/SM3 variants |
 | Compression ops | — | missing | Milestone 9 |
-| Magic / Auto Decode | — | missing | Milestone 3 |
+| Magic / Auto Decode | auto_decode engine + Auto Analyze page | partial | Syntax/magic-gated candidates, evidence, beam bounds; fewer wrapper ops than CyberChef Magic |
 | RSA / ECC ops | — | missing | Milestone 4/8 |
 
 ## toolsfx.toml / auto-ctf-crypto.toml
