@@ -42,6 +42,9 @@ pub fn extended_gcd(a: &BigInt, b: &BigInt) -> (BigInt, BigInt, BigInt) {
 
 /// Modular inverse of a modulo m. Returns `None` when a is not invertible.
 pub fn modinv(a: &BigUint, m: &BigUint) -> Option<BigUint> {
+    if m.is_zero() {
+        return None;
+    }
     if m.is_one() {
         return Some(BigUint::zero());
     }
@@ -310,6 +313,16 @@ const WITNESS_BASES: &[u64] = &[2, 3, 5, 7, 11, 13, 17, 19, 23, 29, 31, 37, 41, 
 /// Pollard's rho with Brent's cycle detection. Bounded by `max_steps`.
 /// Returns a non-trivial factor or None. Best for factors up to ~2^60.
 pub fn pollard_rho(n: &BigUint, max_steps: u64) -> Option<BigUint> {
+    pollard_rho_bounded(n, max_steps, None)
+}
+
+/// Deadline-aware Pollard rho. `deadline` cuts the search short; the step
+/// bound still applies. Returns a non-trivial factor or None.
+pub fn pollard_rho_bounded(
+    n: &BigUint,
+    max_steps: u64,
+    deadline: Option<std::time::Instant>,
+) -> Option<BigUint> {
     let two = big(2);
     if n % &two == BigUint::zero() {
         return Some(two);
@@ -319,17 +332,33 @@ pub fn pollard_rho(n: &BigUint, max_steps: u64) -> Option<BigUint> {
     }
     for c in 1u64..=8 {
         let c = big(c);
-        if let Some(f) = brent_round(n, &c, max_steps) {
+        if let Some(f) = brent_round(n, &c, max_steps, deadline) {
             if f != *n {
                 return Some(f);
+            }
+        }
+        if let Some(d) = deadline {
+            if std::time::Instant::now() >= d {
+                return None;
             }
         }
     }
     None
 }
 
-fn brent_round(n: &BigUint, c: &BigUint, max_steps: u64) -> Option<BigUint> {
-    let one = BigUint::one();
+fn deadline_hit(deadline: Option<std::time::Instant>, steps: u64) -> bool {
+    match deadline {
+        Some(d) => steps % 1024 == 0 && std::time::Instant::now() >= d,
+        None => false,
+    }
+}
+
+fn brent_round(
+    n: &BigUint,
+    c: &BigUint,
+    max_steps: u64,
+    deadline: Option<std::time::Instant>,
+) -> Option<BigUint> {
     let f = |x: &BigUint| (&(x * x) + c) % n;
     let mut y = big(2);
     let mut x = big(2);
@@ -343,7 +372,7 @@ fn brent_round(n: &BigUint, c: &BigUint, max_steps: u64) -> Option<BigUint> {
         for _ in 0..r {
             y = f(&y);
             steps += 1;
-            if steps > max_steps {
+            if steps > max_steps || deadline_hit(deadline, steps) {
                 return None;
             }
         }
@@ -356,7 +385,7 @@ fn brent_round(n: &BigUint, c: &BigUint, max_steps: u64) -> Option<BigUint> {
                 let diff = if x > y { &x - &y } else { &y - &x };
                 q = (&q * diff) % n;
                 steps += 1;
-                if steps > max_steps {
+                if steps > max_steps || deadline_hit(deadline, steps) {
                     return None;
                 }
             }
@@ -377,7 +406,7 @@ fn brent_round(n: &BigUint, c: &BigUint, max_steps: u64) -> Option<BigUint> {
             let diff = if x > y { &x - &y } else { &y - &x };
             g = gcd(&diff, n);
             steps += 1;
-            if steps > max_steps {
+            if steps > max_steps || deadline_hit(deadline, steps) {
                 return None;
             }
         }
@@ -392,10 +421,24 @@ fn brent_round(n: &BigUint, c: &BigUint, max_steps: u64) -> Option<BigUint> {
 /// Pollard's p-1 (stage 1) with smoothness bound B. Returns a non-trivial
 /// factor when p-1 (or q-1) is B-smooth.
 pub fn pollard_pm1(n: &BigUint, bound: u64) -> Option<BigUint> {
+    pollard_pm1_bounded(n, bound, None)
+}
+
+/// Deadline-aware Pollard p-1 stage 1.
+pub fn pollard_pm1_bounded(
+    n: &BigUint,
+    bound: u64,
+    deadline: Option<std::time::Instant>,
+) -> Option<BigUint> {
     let mut a: BigUint = big(2);
     for &p in SMALL_PRIMES {
         if p > bound {
             break;
+        }
+        if let Some(d) = deadline {
+            if std::time::Instant::now() >= d {
+                return None;
+            }
         }
         // a = a^(p^e) mod n where p^e <= bound
         let mut pe = p as u128;

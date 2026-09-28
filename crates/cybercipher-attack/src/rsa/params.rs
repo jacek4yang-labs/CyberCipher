@@ -1,7 +1,6 @@
 //! RSA parameter model and parsing.
 
 use num_bigint::BigUint;
-use num_traits::Zero;
 use serde::{Deserialize, Serialize};
 
 /// Known RSA parameters. Any subset may be provided; attacks declare what
@@ -164,15 +163,18 @@ impl RsaParams {
         let (Some(p), Some(q)) = (&self.p, &self.q) else {
             return false;
         };
-        if p.is_zero() || q.is_zero() {
+        // Degenerate "factors" (0 or 1) must never enter the key model: they
+        // would underflow p-1 / q-1 below.
+        if p <= &BigUint::from(2u32) || q <= &BigUint::from(2u32) {
             return false;
         }
         self.n = Some(p * q);
         let pm1 = p - 1u32;
         let qm1 = q - 1u32;
-        self.phi = Some(&pm1 * &qm1);
+        let phi = &pm1 * &qm1;
+        self.phi = Some(phi.clone());
         if let Some(e) = &self.e {
-            if let Some(d) = crate::math::modinv(e, self.phi.as_ref().unwrap()) {
+            if let Some(d) = crate::math::modinv(e, &phi) {
                 self.d = Some(d.clone());
                 self.dp = Some(&d % &pm1);
                 self.dq = Some(&d % &qm1);
@@ -182,10 +184,25 @@ impl RsaParams {
         true
     }
 
+    /// Decrypt ciphertext via an explicit d, returning m.
+    pub fn decrypt_with(&self, d: &BigUint) -> Option<BigUint> {
+        let (n, c) = (self.n.as_ref()?, self.c.as_ref()?);
+        Some(c.modpow(d, n))
+    }
+
+    /// Round-trip check that `m` re-encrypts to the stored c under e.
+    /// True when e, n or c are absent (nothing to check against).
+    pub fn verify_decryption(&self, m: &BigUint) -> bool {
+        let (Some(e), Some(n), Some(c)) = (&self.e, &self.n, &self.c) else {
+            return true;
+        };
+        &m.modpow(e, n) == c
+    }
+
     /// Decrypt ciphertext via d if available, returning m.
     pub fn decrypt(&self) -> Option<BigUint> {
-        let (n, c, d) = (self.n.as_ref()?, self.c.as_ref()?, self.d.as_ref()?);
-        Some(c.modpow(d, n))
+        let d = self.d.as_ref()?;
+        self.decrypt_with(d)
     }
 }
 
