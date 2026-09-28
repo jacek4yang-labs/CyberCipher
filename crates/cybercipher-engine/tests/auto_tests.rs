@@ -233,3 +233,69 @@ fn deep_base64_nesting_recovers_at_depth() {
     assert!(best.path.iter().all(|p| p == "from-base64"));
     assert_eq!(best.preview, "flag{deep}");
 }
+
+#[test]
+fn single_byte_xor_recovered_from_raw_input() {
+    let reg = registry();
+    let inner = b"flag{xor_is_fun}";
+    let xored: Vec<u8> = inner.iter().map(|b| b ^ 0x5a).collect();
+    let candidates = auto_decode(&reg, &xored, &ExecutionContext::new());
+    let best = candidates
+        .iter()
+        .find(|c| {
+            c.path
+                .first()
+                .map(|p| p == "xor-single-byte")
+                .unwrap_or(false)
+        })
+        .expect("xor layer must be discovered");
+    assert_eq!(best.preview, "flag{xor_is_fun}");
+    assert!(best.confident, "score {}", best.score);
+    assert!(best.evidence.iter().any(|e| e.contains("0x5a")));
+}
+
+#[test]
+fn base64_then_xor_chain_recovered() {
+    let reg = registry();
+    // This is the charter vertical slice the bootstrap had to punt on:
+    // From Base64 -> XOR(0x20) -> UTF-8, all recovered automatically.
+    // Inner uses letters/digits so XOR 0x20 stays printable (case flip).
+    let inner = b"flag{AUTOXOR42}";
+    let xored: Vec<u8> = inner.iter().map(|b| b ^ 0x20).collect();
+    use base64::Engine as _;
+    let input = base64::engine::general_purpose::STANDARD.encode(&xored);
+    let candidates = auto_decode(&reg, input.as_bytes(), &ExecutionContext::new());
+    let chained = candidates
+        .iter()
+        .find(|c| c.path == vec!["from-base64", "xor-single-byte"])
+        .expect("base64->xor chain must be discovered");
+    // XOR is an involution: the decode recovers the original inner text.
+    assert_eq!(chained.preview, "flag{AUTOXOR42}");
+    assert!(chained.confident, "score {}", chained.score);
+}
+
+#[test]
+fn random_data_xor_exploration_stays_bounded() {
+    let reg = registry();
+    let mut seed = 0xDEADBEEFu64;
+    let data: Vec<u8> = (0..32 * 1024)
+        .map(|_| {
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            (seed >> 33) as u8
+        })
+        .collect();
+    let started = std::time::Instant::now();
+    let candidates = auto_decode(&reg, &data, &ExecutionContext::new());
+    let elapsed = started.elapsed();
+    assert!(elapsed.as_secs() < 10, "xor exploration must stay bounded");
+    // XOR of random data is still random: no confident candidate may emerge.
+    for c in &candidates {
+        assert!(
+            !c.confident,
+            "random data produced a confident candidate: {:?}",
+            c.path
+        );
+    }
+}
