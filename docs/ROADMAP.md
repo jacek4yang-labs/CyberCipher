@@ -23,14 +23,17 @@ with tests, docs, and honest capability status.
 - **Milestone 4 — RSA / PRNG attack labs.** ✅ RSA analyzer + 12 attacks
   (CLI + dedicated GUI Lab with BigInt field UX), LCG recovery (known/unknown
   m, prediction, reverse stepping), MT19937 state cloning with CPython
-  compatibility. Remaining: LLL/Coppersmith lattice lane (in flight),
-  Java Random / glibc / MSVC rand.
-- **Milestone 5 — broad symmetric coverage.** RustCrypto-backed Serpent,
-  Twofish, Blowfish, Camellia, ARIA, CAST5/6, IDEA, RC2/5/6, Threefish, SEED,
-  GOST family; MAC/KDF/AEAD set.
-- **Milestone 6 — classical / XOR cracking.** Caesar→ADFGVX set, frequency,
-  IOC, Kasiski, chi-square, n-gram language scoring, crib dragging, MTP
-  helpers.
+  compatibility. LLL + Coppersmith ✅ (exact integer LLL,
+  Howgrave-Graham with certified bounds, analyzer escalation for stereotyped
+  messages), Java Random / glibc / MSVC rand ✅.
+- **Milestone 5 — broad symmetric coverage.** ✅ AEAD set (AES-GCM/CCM,
+  ChaCha20-Poly1305, XChaCha20-Poly1305, AES-GCM-SIV) and KDF set (PBKDF2,
+  HKDF, scrypt, EVP_BytesToKey) landed. Remaining: Serpent, Twofish,
+  Blowfish, Camellia, ARIA, CAST5/6, IDEA, RC2/5/6, Threefish, SEED, GOST
+  family; CMAC/GMAC/KMAC/Poly1305; Argon2id/bcrypt.
+- **Milestone 6 — classical / XOR cracking.** XOR lab lane in flight
+  (single-byte crack, key-length IOC estimation, repeating-key crack, crib
+  dragging, MTP helper). Caesar→ADFGVX classical set pending.
 - **Milestone 7 — Crypto Assist.** AES Assist parameter-space search with
   explainable ranking and "apply as recipe"; generalize to SM4/DES/3DES/RC4.
 - **Milestone 8 — public-key ecosystem.** RSA standard schemes, ECDSA/Ed25519,
