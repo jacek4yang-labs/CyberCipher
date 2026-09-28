@@ -6,10 +6,12 @@
 //! returns a typed outcome with diagnostics — positive and negative tests
 //! exist for each.
 
+pub mod lattice;
 pub mod math;
 pub mod prng;
 pub mod rsa;
 
+pub use lattice::{Lattice, LllConfig, LllResult};
 pub use rsa::{
     analyze, AnalyzerReport, AttackCost, AttackOutcome, AttackStatus, PlaintextResult, RsaParams,
     RsaSet,
