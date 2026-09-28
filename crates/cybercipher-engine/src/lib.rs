@@ -317,5 +317,6 @@ fn coerce_input(
 pub fn default_registry() -> OperationRegistry {
     let mut reg = OperationRegistry::new();
     cybercipher_codec::register_all(&mut reg);
+    cybercipher_crypto::register_all(&mut reg);
     reg
 }

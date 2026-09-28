@@ -1,17 +1,19 @@
 [package]
-name = "cybercipher-engine"
+name = "cybercipher-cli"
 version.workspace = true
 edition.workspace = true
 license.workspace = true
 repository.workspace = true
-description = "Recipe model and incremental execution engine for CyberCipher"
+description = "CyberCipher command line interface (shares the engine with the GUI)"
+
+[[bin]]
+name = "cybercipher"
+path = "src/main.rs"
 
 [dependencies]
 cybercipher-core.workspace = true
+cybercipher-engine.workspace = true
 cybercipher-codec.workspace = true
 cybercipher-crypto.workspace = true
-serde.workspace = true
 serde_json.workspace = true
-xxhash-rust.workspace = true
-base64.workspace = true
-parking_lot.workspace = true
+clap = { version = "4", features = ["derive"] }
