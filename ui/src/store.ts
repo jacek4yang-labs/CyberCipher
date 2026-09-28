@@ -10,10 +10,106 @@ import {
   type ParamValue,
   type RecipeNode,
   type RecipeV1,
+  type RsaAnalyzerReport,
   type ValuePayload,
 } from "./api";
 
-export type Page = "workbench" | "auto" | "recipes" | "settings";
+export type Page = "workbench" | "rsa-lab" | "auto" | "recipes" | "settings";
+
+/** Scalar RSA key-material fields editable in the lab form. */
+export const RSA_FIELD_KEYS = [
+  "n",
+  "e",
+  "c",
+  "d",
+  "p",
+  "q",
+  "phi",
+  "dp",
+  "dq",
+  "qinv",
+] as const;
+
+export type RsaFieldKey = (typeof RSA_FIELD_KEYS)[number];
+
+export type RsaFields = Record<RsaFieldKey, string>;
+
+export const DEFAULT_RSA_FIELDS: RsaFields = {
+  n: "",
+  e: "65537",
+  c: "",
+  d: "",
+  p: "",
+  q: "",
+  phi: "",
+  dp: "",
+  dq: "",
+  qinv: "",
+};
+
+/**
+ * Local display-only parse of a decimal / 0x-hex big-integer input, mirroring
+ * the backend's `parse_big_value`. Returns:
+ * - `{ ok: true, value }` for a valid integer,
+ * - `null` for empty input (nothing entered),
+ * - `{ ok: false, error }` for malformed input.
+ */
+export function parseRsaIntInput(
+  text: string,
+): { ok: true; value: bigint } | { ok: false; error: string } | null {
+  const trimmed = text.trim();
+  if (trimmed === "") return null;
+  const cleaned = trimmed.replace(/\s+/g, "");
+  const isHex = /^0[xX][0-9a-fA-F]+$/.test(cleaned);
+  const isDec = /^[0-9]+$/.test(cleaned);
+  if (!isHex && !isDec) {
+    return {
+      ok: false,
+      error: /^0[xX]/.test(cleaned) ? "not a valid hex integer" : "not a valid decimal integer",
+    };
+  }
+  try {
+    return { ok: true, value: BigInt(cleaned) };
+  } catch {
+    return { ok: false, error: "not a valid integer" };
+  }
+}
+
+/** Keys allowed in the advanced JSON box (backend rejects anything else). */
+const RSA_ADVANCED_KEYS = new Set(["hint", "plaintext_hint", "sets", "ns", "moduli"]);
+
+/** Validate + build the `params` payload for rsa_analyze, or an error message. */
+export function buildRsaParams(
+  fields: RsaFields,
+  advancedJson: string,
+): { params: Record<string, unknown> } | { error: string } {
+  const params: Record<string, unknown> = {};
+  for (const key of RSA_FIELD_KEYS) {
+    const parsed = parseRsaIntInput(fields[key]);
+    if (parsed === null) continue;
+    if (!parsed.ok) return { error: `${key}: ${parsed.error}` };
+    params[key] = fields[key].trim();
+  }
+  const adv = advancedJson.trim();
+  if (adv !== "") {
+    let parsedJson: unknown;
+    try {
+      parsedJson = JSON.parse(adv);
+    } catch (e) {
+      return { error: `advanced JSON: ${e instanceof Error ? e.message : String(e)}` };
+    }
+    if (typeof parsedJson !== "object" || parsedJson === null || Array.isArray(parsedJson)) {
+      return { error: "advanced JSON must be an object" };
+    }
+    for (const [k, v] of Object.entries(parsedJson as Record<string, unknown>)) {
+      if (!RSA_ADVANCED_KEYS.has(k.toLowerCase())) {
+        return { error: `advanced JSON: unknown key \`${k}\` (allowed: hint, sets, ns)` };
+      }
+      params[k] = v;
+    }
+  }
+  return { params };
+}
 
 let runCounter = 0;
 let nodeCounter = 0;
@@ -53,12 +149,27 @@ export interface Store {
   saveDialogOpen: boolean;
   loadError: string | null;
 
+  // RSA attack lab
+  rsaFields: RsaFields;
+  rsaAdvancedJson: string;
+  rsaBudgetMs: number;
+  rsaReport: RsaAnalyzerReport | null;
+  rsaRunning: boolean;
+  rsaLastError: string | null;
+
   init: () => Promise<void>;
   setPage: (p: Page) => void;
   setTheme: (t: "dark" | "light") => void;
   setAutoBake: (v: boolean) => void;
   setInputText: (t: string) => void;
   setInputEncoding: (e: Store["inputEncoding"]) => void;
+
+  setRsaField: (key: RsaFieldKey, value: string) => void;
+  setRsaAdvancedJson: (json: string) => void;
+  setRsaBudgetMs: (ms: number) => void;
+  runRsa: (solve: boolean) => Promise<void>;
+  applyRsaReportParams: () => void;
+  resetRsaLab: () => void;
 
   addOp: (opId: string, atIndex?: number) => void;
   removeOp: (nodeId: string) => void;
@@ -98,6 +209,13 @@ export const useStore = create<Store>((set, get) => ({
   saveDialogOpen: false,
   loadError: null,
 
+  rsaFields: { ...DEFAULT_RSA_FIELDS },
+  rsaAdvancedJson: "",
+  rsaBudgetMs: 10000,
+  rsaReport: null,
+  rsaRunning: false,
+  rsaLastError: null,
+
   init: async () => {
     const ops = await api.listOperations();
     const opsById: Record<string, OperationInfo> = {};
@@ -122,6 +240,63 @@ export const useStore = create<Store>((set, get) => ({
 
   setInputText: (inputText) => set({ inputText }),
   setInputEncoding: (inputEncoding) => set({ inputEncoding }),
+
+  setRsaField: (key, value) =>
+    set({ rsaFields: { ...get().rsaFields, [key]: value } }),
+
+  setRsaAdvancedJson: (rsaAdvancedJson) => set({ rsaAdvancedJson }),
+
+  setRsaBudgetMs: (rsaBudgetMs) => set({ rsaBudgetMs }),
+
+  runRsa: async (solve) => {
+    const { rsaFields, rsaAdvancedJson, rsaBudgetMs, rsaRunning } = get();
+    if (rsaRunning) return;
+    const built = buildRsaParams(rsaFields, rsaAdvancedJson);
+    if ("error" in built) {
+      set({ rsaLastError: built.error });
+      return;
+    }
+    set({ rsaRunning: true, rsaLastError: null });
+    try {
+      const report = await api.rsaAnalyze({
+        params: built.params,
+        solve,
+        budget_ms: rsaBudgetMs,
+      });
+      set({ rsaReport: report });
+    } catch (e) {
+      set({ rsaLastError: String(e) });
+    } finally {
+      set({ rsaRunning: false });
+    }
+  },
+
+  applyRsaReportParams: () => {
+    const { rsaReport } = get();
+    if (!rsaReport) return;
+    const fields: RsaFields = { ...DEFAULT_RSA_FIELDS };
+    const advanced: Record<string, unknown> = {};
+    for (const [key, value] of Object.entries(rsaReport.params)) {
+      const lower = key.toLowerCase();
+      if (lower === "hint" || lower === "plaintext_hint") {
+        advanced.hint = value;
+      } else if (lower === "sets" || lower === "ns" || lower === "moduli") {
+        advanced[lower === "moduli" ? "ns" : lower] = value;
+      } else if ((RSA_FIELD_KEYS as readonly string[]).includes(lower)) {
+        fields[lower as RsaFieldKey] = typeof value === "string" ? value : String(value);
+      }
+    }
+    const advancedJson = Object.keys(advanced).length > 0 ? JSON.stringify(advanced, null, 2) : "";
+    set({ rsaFields: fields, rsaAdvancedJson: advancedJson });
+  },
+
+  resetRsaLab: () =>
+    set({
+      rsaFields: { ...DEFAULT_RSA_FIELDS },
+      rsaAdvancedJson: "",
+      rsaReport: null,
+      rsaLastError: null,
+    }),
 
   addOp: (opId, atIndex) => {
     const op = get().opsById[opId];
