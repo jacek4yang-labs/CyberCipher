@@ -119,6 +119,39 @@ pub async fn bake(
 }
 
 #[derive(Debug, Deserialize)]
+pub struct RsaAnalyzeRequest {
+    pub params: serde_json::Value,
+    #[serde(default)]
+    pub solve: bool,
+    #[serde(default = "default_rsa_budget")]
+    pub budget_ms: u64,
+}
+
+fn default_rsa_budget() -> u64 {
+    10000
+}
+
+#[tauri::command]
+pub async fn rsa_analyze(
+    state: State<'_, AppState>,
+    request: RsaAnalyzeRequest,
+) -> Result<cybercipher_attack::AnalyzerReport, CmdError> {
+    // Reject unknown/invalid parameter keys before running anything.
+    let params = cybercipher_attack::RsaParams::from_json(&request.params)
+        .map_err(|e| CmdError {
+            kind: "\"invalid_param\"".to_string(),
+            message: e,
+        })?;
+    let _ = state;
+    let handle = tauri::async_runtime::spawn_blocking(move || {
+        cybercipher_attack::analyze(&params, request.solve, request.budget_ms)
+    });
+    handle
+        .await
+        .map_err(|e| CmdError::internal(format!("rsa analysis task failed: {e}")))
+}
+
+#[derive(Debug, Deserialize)]
 pub struct AutoRequest {
     #[serde(default)]
     pub input_text: String,

@@ -10,4 +10,7 @@ pub mod math;
 pub mod prng;
 pub mod rsa;
 
-pub use rsa::{analyze, AttackOutcome, AttackStatus, PlaintextResult, RsaParams};
+pub use rsa::{
+    analyze, AttackCost, AttackOutcome, AttackStatus, AnalyzerReport, PlaintextResult, RsaParams,
+    RsaSet,
+};

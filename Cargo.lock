@@ -709,6 +709,7 @@ dependencies = [
 name = "cybercipher-gui"
 version = "0.1.0"
 dependencies = [
+ "cybercipher-attack",
  "cybercipher-codec",
  "cybercipher-core",
  "cybercipher-engine",
