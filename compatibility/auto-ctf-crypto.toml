@@ -1,0 +1,190 @@
+# auto-ctf (ctf-forge) compatibility matrix — crypto baseline.
+# Statuses: covered | superset | partial | missing | intentional-out-of-scope | same-capability
+#
+# auto-ctf (https://github.com/jacek4yang-labs/auto-ctf) is a pure-Rust CTF
+# toolchain whose crypto module (ctf-crypto) is the most relevant capability
+# baseline for CyberCipher's attack engine: same language, same zero-Python
+# policy, same CTF orientation. Its crypto surface (per docs/CAPABILITIES.md,
+# fetched 2026-09-28):
+#
+#   RSA attacks (ctf-crypto::rsa): from_pq, decrypt, dp_leak, dpdq, wiener,
+#     fermat, low_e, common_modulus, hastad, rabin, rho, p-1, shared-prime,
+#     + yafu sidecar for large factorization
+#   Lattice (ctf-crypto::lattice): Coppersmith small roots — pure-Rust LLL +
+#     Howgrave-Graham + Sturm root isolation (CLI `lattice --op small_roots`)
+#   PRNG (ctf-crypto::{lcg,mt19937}): LCG a/b/m/seed + recover_seed_six
+#     (six-output blind recovery + small-multiple stripping); MT19937
+#     CPython-compatible + predictor
+#   Encoding/transform (ctf-codec): hex/b64/b32, rot, vigenere, autokey,
+#     affine, morse, rail-fence, route, qwe-keyboard, phone multi-tap, xor,
+#     reverse, swap-adjacent, auto-chain
+#   Hash/NTLM: SHA-256 + MD5; MD4 + NT hash + NetNTLMv2 hashcat lines
+#   ECC: Keccak-256 + secp256k1 + ETH address derivation
+
+[meta]
+upstream = "https://github.com/jacek4yang-labs/auto-ctf"
+baseline_date = 2026-09-28
+source = "upstream docs/CAPABILITIES.md + README capability table"
+notes = "This is the reference baseline for CyberCipher's attack engine (M4). Entries reflect implemented reality on main (5d5ab8e); branch work is marked 'PR in flight'."
+
+# ------------------------------------------------------------- RSA ----
+
+[entries.rsa_known_pq]
+ours = "attack_known_pq (known-pq)"
+status = "covered"
+
+[entries.rsa_known_d]
+ours = "attack_known_d (known-d)"
+status = "covered"
+
+[entries.rsa_known_phi]
+ours = "attack_known_phi (known-phi)"
+status = "covered"
+
+[entries.rsa_dp_leak]
+ours = "attack_dp_leak (dp-leak)"
+status = "covered"
+notes = "Deadline-bounded; escalates to factorization when dp is small."
+
+[entries.rsa_dpdq_leak]
+ours = "—"
+status = "missing"
+notes = "Upstream handles dp AND dq jointly; ours covers dp-leak only. Small gap."
+
+[entries.rsa_wiener]
+ours = "attack_wiener (wiener)"
+status = "covered"
+
+[entries.rsa_fermat]
+ours = "attack_fermat (fermat)"
+status = "covered"
+notes = "Deadline-bounded close-prime factorization."
+
+[entries.rsa_low_e]
+ours = "attack_low_e (low-e)"
+status = "covered"
+
+[entries.rsa_common_modulus]
+ours = "attack_common_modulus (common-modulus)"
+status = "covered"
+
+[entries.rsa_hastad]
+ours = "attack_hastad (hastad)"
+status = "covered"
+
+[entries.rsa_shared_prime]
+ours = "attack_shared_prime (shared-prime)"
+status = "covered"
+notes = "Batch gcd across multiple moduli."
+
+[entries.rsa_pollard_rho]
+ours = "attack_pollard_rho (pollard-rho)"
+status = "covered"
+notes = "Deadline-bounded; small factors only (upstream relies on yafu sidecar for large ones — we have no sidecar system)."
+
+[entries.rsa_pollard_pm1]
+ours = "attack_pollard_pm1 (pollard-pm1)"
+status = "covered"
+
+[entries.rsa_rabin]
+ours = "—"
+status = "missing"
+notes = "Rabin-specific decryption (e=2 with ambiguity resolution) is upstream-only; our analyzer surfaces the low-e path but not a dedicated Rabin result."
+
+[entries.rsa_analyzer_auto]
+ours = "analyze() + typed AttackOutcome / preconditions / resource bounds"
+status = "covered"
+notes = "Ours adds an analyzer layer that orders applicable attacks from the parameter set and verifies recovered plaintext by re-encryption (pow(m,e,n)==c)."
+
+[entries.rsa_key_ops]
+ours = "—"
+status = "missing"
+notes = "Neither project has RSA encrypt/sign/PEM key parsing; upstream reaches decrypt via from_pq/known-d paths, ours via the engine's decrypt path. Parity gap, not a regression."
+
+# --------------------------------------------------------- lattice ----
+
+[entries.lll]
+ours = "—"
+status = "partial (in flight)"
+notes = "Pure-Rust LLL (exact rationals) is the agreed M4/M5 follow-up; no lattice code on main yet."
+
+[entries.coppersmith_small_roots]
+ours = "—"
+status = "partial (in flight)"
+notes = "Upstream ships Howgrave-Graham + Sturm root isolation on top of LLL, validated against a real competition instance (stereotyped-message / insecure-padding class). Our port must match that scope; see gap report."
+
+[entries.lattice_multivariate_bkz]
+ours = "—"
+status = "missing"
+notes = "Upstream also lacks multivariate/apbq and BKZ in Rust (Python+flint transition only) — shared gap."
+
+# ----------------------------------------------------------- PRNG ----
+
+[entries.lcg_recovery_known_m]
+ours = "lcg known-m recovery (≥3 outputs) + forward/backward prediction"
+status = "covered"
+
+[entries.lcg_recovery_unknown_m]
+ours = "lcg blind a/b/m recovery (≥6 outputs), incl. degenerate-stream detection"
+status = "covered"
+notes = "Upstream's recover_seed_six adds small-multiple stripping; our unknown-m path rejects out-of-range/underdetermined inputs instead — comparable behavior, different edge policy. Verify stripping parity before claiming drop-in equivalence."
+
+[entries.lcg_seed_recovery]
+ours = "recover_seed walk-back to origin"
+status = "covered"
+
+[entries.mt19937_recovery]
+ours = "untemper-based state cloning + predictor"
+status = "covered"
+
+[entries.mt19937_cpython_compat]
+ours = "CPython random.seed / getrandbits-compatible reconstruction (init_by_array + bit-extraction layer)"
+status = "covered"
+notes = "34 PRNG integration tests incl. CPython-compat and numpy RandomState references."
+
+[entries.runtime_prngs]
+ours = "Java Random / glibc rand / MSVC rand recovery"
+status = "partial (PR in flight)"
+notes = "Branch feat/runtime-prngs: Java 48-bit truncated LCG state from two outputs, glibc TYPE_3 additive-feedback, MSVC rand inversion. Upstream baseline does not ship these — superset once merged."
+
+# ------------------------------------------------- classical / XOR ----
+
+[entries.classical_solvers]
+ours = "—"
+status = "missing"
+notes = """rot/vigenere/autokey/affine/morse/rail-fence/route/qwe/phone-tap and
+the auto-chain solver are upstream-only (ctf-codec). Our auto_decode engine
+scores codecs but has no classical-cipher solvers. High-value gap —
+see docs/COMPATIBILITY.md gap report."""
+
+[entries.xor_solver]
+ours = "—"
+status = "missing"
+notes = "Upstream has xor primitives + chain; our xor op applies keys but there is no single-byte/repeating-key XOR solver."
+
+# ------------------------------------------------------- adjacent ----
+
+[entries.hash_ntlm]
+ours = "md5 / sha256 (ops); NTLM absent"
+status = "partial"
+notes = "Base hashes covered by the registry; MD4/NT/NetNTLMv2 hashcat-line building is upstream-only."
+
+[entries.ecc_eth]
+ours = "—"
+status = "missing"
+notes = "Keccak-256 digest exists internally (not yet exposed); no secp256k1, no ETH address derivation."
+
+[entries.encoding_chain]
+ours = "auto_decode engine + core codec ops"
+status = "partial"
+notes = "Ours: bounded explainable auto-decode with evidence; upstream: wider op vocabulary (vigenere/classical + auto-chain) with less explainability."
+
+# --------------------------------------------------------- superset ----
+
+[superset.explainability_and_bounds]
+ours = "typed outcomes, precondition validation, deadline/resource bounds, positive+negative tests per attack"
+notes = "Upstream returns raw results; ours adds the analyzer/diagnostics contract (154 workspace tests green at 5d5ab8e, incl. 40 RSA + 34 PRNG integration tests)."
+
+[superset.recipe_registry_and_gui]
+ours = "recipe engine, Auto Analyze page, RSA Attack Lab GUI"
+notes = "Interactive labs for the same attack surface."
