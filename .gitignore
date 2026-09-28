@@ -1,0 +1,26 @@
+# Rust
+/target
+**/*.rs.bk
+Cargo.lock.bak
+
+# Node / frontend
+node_modules/
+dist/
+*.local
+*.tsbuildinfo
+
+# Tauri
+apps/cybercipher-gui/gen/schemas/
+
+# Editors / OS
+.vscode/*
+!.vscode/extensions.json
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local data that must never leak
+*.ctf
+secrets/
+.env
+.env.*
