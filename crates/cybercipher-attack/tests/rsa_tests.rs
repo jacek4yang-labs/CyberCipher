@@ -785,6 +785,58 @@ fn analyze_hard_instance_reports_expected_statuses() {
 }
 
 #[test]
+fn analyze_from_json_params_file_with_only_n_e_c() {
+    // Simulate a CTF "params file": only the public triple (n, e, c).
+    let mut state = 0xA142;
+    let key = keypair(96, &mut state, 65537);
+    let doc = serde_json::json!({
+        "n": format!("{}", key.n),
+        "e": "65537",
+        "c": format!("{}", key.encrypt(&bytes_to_m(FLAG))),
+    });
+    let params = RsaParams::from_json(&doc).expect("params file must parse");
+    let report = analyze(&params, true, 700);
+    // The structural attacks are inapplicable; the bounded searches run and
+    // must fail without a false success.
+    for (id, status) in [
+        ("low-e", AttackStatus::NotApplicable),
+        ("wiener", AttackStatus::Failed),
+        ("fermat", AttackStatus::Failed),
+    ] {
+        assert_eq!(
+            finding(&report, id).status,
+            status,
+            "finding {id}: {}",
+            finding(&report, id).message
+        );
+    }
+    assert!(report.plaintext.is_none());
+    assert!(report.params["n"].as_str().is_some());
+}
+
+#[test]
+fn analyze_from_json_with_factors_solves() {
+    let mut state = 0xA143;
+    let key = keypair(64, &mut state, 65537);
+    let m = bytes_to_m(SMALL_FLAG);
+    let doc = serde_json::json!({
+        "n": format!("{}", key.n),
+        "e": format!("{}", key.e),
+        "c": format!("{}", key.encrypt(&m)),
+        "p": format!("{}", key.p),
+        "q": format!("{}", key.q),
+    });
+    let params = RsaParams::from_json(&doc).expect("params file must parse");
+    let report = analyze(&params, true, 5_000);
+    let pt = report.plaintext.expect("p,q in the file must solve it");
+    assert_eq!(pt.m_hex, format!("{m:x}"));
+    assert_eq!(
+        pt.flag_like.as_deref(),
+        Some(std::str::from_utf8(SMALL_FLAG).unwrap())
+    );
+}
+
+#[test]
 fn analyze_with_pq_solves_and_verifies_hex() {
     let mut state = 0xA151;
     let key = keypair(64, &mut state, 65537);
