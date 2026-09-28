@@ -149,7 +149,9 @@ fn seal_failure(algo: Algo) -> OperationError {
 
 // ------------------------------------------------------- AEAD cores ----
 
-fn seal<A>(algo: Algo, key: &[u8], nonce: &[u8], aad: &[u8], buf: &mut Vec<u8>) -> OpResult<()>
+/// Encrypts in place and returns the authentication tag (to be appended
+/// by the caller, giving the `ciphertext || tag` wire format).
+fn seal<A>(algo: Algo, key: &[u8], nonce: &[u8], aad: &[u8], buf: &mut [u8]) -> OpResult<Vec<u8>>
 where
     A: AeadInPlace + KeyInit,
 {
@@ -157,8 +159,7 @@ where
     let tag = cipher
         .encrypt_in_place_detached(GenericArray::from_slice(nonce), aad, buf)
         .map_err(|_| seal_failure(algo))?;
-    buf.extend_from_slice(tag.as_slice());
-    Ok(())
+    Ok(tag.to_vec())
 }
 
 fn open<A>(
@@ -166,7 +167,7 @@ fn open<A>(
     key: &[u8],
     nonce: &[u8],
     aad: &[u8],
-    buf: &mut Vec<u8>,
+    buf: &mut [u8],
     tag: &[u8],
 ) -> OpResult<()>
 where
@@ -186,7 +187,7 @@ where
 /// AES-GCM-SIV needs its own seal/open pair: `aes-gcm-siv` 0.10 implements
 /// the `aead` 0.4 traits (the rest of the RustCrypto AEAD stack moved to
 /// `aead` 0.5), so the generic helpers above do not apply.
-fn siv_seal<A>(key: &[u8], nonce: &[u8], aad: &[u8], buf: &mut Vec<u8>) -> OpResult<()>
+fn siv_seal<A>(key: &[u8], nonce: &[u8], aad: &[u8], buf: &mut [u8]) -> OpResult<Vec<u8>>
 where
     A: aes_gcm_siv::aead::AeadInPlace + aes_gcm_siv::aead::NewAead,
 {
@@ -199,17 +200,10 @@ where
             buf,
         )
         .map_err(|_| seal_failure(Algo::AesGcmSiv))?;
-    buf.extend_from_slice(tag.as_slice());
-    Ok(())
+    Ok(tag.to_vec())
 }
 
-fn siv_open<A>(
-    key: &[u8],
-    nonce: &[u8],
-    aad: &[u8],
-    buf: &mut Vec<u8>,
-    tag: &[u8],
-) -> OpResult<()>
+fn siv_open<A>(key: &[u8], nonce: &[u8], aad: &[u8], buf: &mut [u8], tag: &[u8]) -> OpResult<()>
 where
     A: aes_gcm_siv::aead::AeadInPlace + aes_gcm_siv::aead::NewAead,
 {
@@ -229,45 +223,82 @@ where
 /// (4/6/.../16) and cipher as type parameters, but CyberCipher accepts them
 /// at runtime, so we fan out over the supported combinations
 /// (tag lengths 4/8/16 x AES-128/192/256 x nonce 7-13).
-macro_rules! ccm_step {
-    ($t:ty, $key:expr, $nonce:expr, $aad:expr, $buf:expr, $tag:expr, $sealing:expr) => {
-        if $sealing {
-            seal::<$t>(Algo::AesCcm, $key, $nonce, $aad, $buf)
-        } else {
-            open::<$t>(Algo::AesCcm, $key, $nonce, $aad, $buf, $tag)
-        }
+macro_rules! ccm_seal {
+    ($t:ty, $key:expr, $nonce:expr, $aad:expr, $buf:expr) => {
+        seal::<$t>(Algo::AesCcm, $key, $nonce, $aad, $buf)
     };
 }
 
-macro_rules! ccm_by_nonce {
-    ($cipher:ident, $tag_ty:ident, $key:expr, $nonce:expr, $aad:expr, $buf:expr, $tag:expr, $sealing:expr) => {
-        match $nonce.len() {
-            7 => ccm_step!(ccm::Ccm<aes::$cipher, $tag_ty, U7>, $key, $nonce, $aad, $buf, $tag, $sealing),
-            8 => ccm_step!(ccm::Ccm<aes::$cipher, $tag_ty, U8>, $key, $nonce, $aad, $buf, $tag, $sealing),
-            9 => ccm_step!(ccm::Ccm<aes::$cipher, $tag_ty, U9>, $key, $nonce, $aad, $buf, $tag, $sealing),
-            10 => ccm_step!(ccm::Ccm<aes::$cipher, $tag_ty, U10>, $key, $nonce, $aad, $buf, $tag, $sealing),
-            11 => ccm_step!(ccm::Ccm<aes::$cipher, $tag_ty, U11>, $key, $nonce, $aad, $buf, $tag, $sealing),
-            12 => ccm_step!(ccm::Ccm<aes::$cipher, $tag_ty, U12>, $key, $nonce, $aad, $buf, $tag, $sealing),
-            13 => ccm_step!(ccm::Ccm<aes::$cipher, $tag_ty, U13>, $key, $nonce, $aad, $buf, $tag, $sealing),
-            n => return Err(nonce_length_error(Algo::AesCcm, n)),
-        }
+macro_rules! ccm_open {
+    ($t:ty, $key:expr, $nonce:expr, $aad:expr, $buf:expr, $tag:expr) => {
+        open::<$t>(Algo::AesCcm, $key, $nonce, $aad, $buf, $tag)
     };
 }
 
-fn ccm_run(
+fn ccm_seal(
     key: &[u8],
     nonce: &[u8],
     aad: &[u8],
-    buf: &mut Vec<u8>,
+    buf: &mut [u8],
+    tag_len: usize,
+) -> OpResult<Vec<u8>> {
+    macro_rules! by_nonce {
+        ($cipher:ident, $tag_ty:ident) => {
+            match nonce.len() {
+                7 => ccm_seal!(ccm::Ccm<aes::$cipher, $tag_ty, U7>, key, nonce, aad, buf),
+                8 => ccm_seal!(ccm::Ccm<aes::$cipher, $tag_ty, U8>, key, nonce, aad, buf),
+                9 => ccm_seal!(ccm::Ccm<aes::$cipher, $tag_ty, U9>, key, nonce, aad, buf),
+                10 => ccm_seal!(ccm::Ccm<aes::$cipher, $tag_ty, U10>, key, nonce, aad, buf),
+                11 => ccm_seal!(ccm::Ccm<aes::$cipher, $tag_ty, U11>, key, nonce, aad, buf),
+                12 => ccm_seal!(ccm::Ccm<aes::$cipher, $tag_ty, U12>, key, nonce, aad, buf),
+                13 => ccm_seal!(ccm::Ccm<aes::$cipher, $tag_ty, U13>, key, nonce, aad, buf),
+                n => return Err(nonce_length_error(Algo::AesCcm, n)),
+            }
+        };
+    }
+    macro_rules! by_tag_len {
+        ($cipher:ident) => {
+            match tag_len {
+                4 => by_nonce!($cipher, U4),
+                8 => by_nonce!($cipher, U8),
+                16 => by_nonce!($cipher, U16),
+                other => {
+                    return Err(OperationError::invalid_param(
+                        "tag_length",
+                        format!("CCM tag length must be 4, 8, or 16 bytes, got {other}"),
+                    ))
+                }
+            }
+        };
+    }
+    match key.len() {
+        16 => by_tag_len!(Aes128),
+        24 => by_tag_len!(Aes192),
+        32 => by_tag_len!(Aes256),
+        other => Err(key_length_error(Algo::AesCcm, other)),
+    }
+}
+
+fn ccm_open(
+    key: &[u8],
+    nonce: &[u8],
+    aad: &[u8],
+    buf: &mut [u8],
     tag: &[u8],
-    sealing: bool,
     tag_len: usize,
 ) -> OpResult<()> {
     macro_rules! by_nonce {
         ($cipher:ident, $tag_ty:ident) => {
-            ccm_by_nonce!(
-                $cipher, $tag_ty, key, nonce, aad, buf, tag, sealing
-            )
+            match nonce.len() {
+                7 => ccm_open!(ccm::Ccm<aes::$cipher, $tag_ty, U7>, key, nonce, aad, buf, tag),
+                8 => ccm_open!(ccm::Ccm<aes::$cipher, $tag_ty, U8>, key, nonce, aad, buf, tag),
+                9 => ccm_open!(ccm::Ccm<aes::$cipher, $tag_ty, U9>, key, nonce, aad, buf, tag),
+                10 => ccm_open!(ccm::Ccm<aes::$cipher, $tag_ty, U10>, key, nonce, aad, buf, tag),
+                11 => ccm_open!(ccm::Ccm<aes::$cipher, $tag_ty, U11>, key, nonce, aad, buf, tag),
+                12 => ccm_open!(ccm::Ccm<aes::$cipher, $tag_ty, U12>, key, nonce, aad, buf, tag),
+                13 => ccm_open!(ccm::Ccm<aes::$cipher, $tag_ty, U13>, key, nonce, aad, buf, tag),
+                n => return Err(nonce_length_error(Algo::AesCcm, n)),
+            }
         };
     }
     macro_rules! by_tag_len {
@@ -301,22 +332,24 @@ fn dispatch_seal(
     buf: &mut Vec<u8>,
     tag_len: usize,
 ) -> OpResult<()> {
-    match algo {
+    let tag = match algo {
         Algo::AesGcm => match key.len() {
-            16 => seal::<Aes128Gcm>(algo, key, nonce, aad, buf),
-            24 => seal::<Aes192Gcm>(algo, key, nonce, aad, buf),
-            32 => seal::<Aes256Gcm>(algo, key, nonce, aad, buf),
-            _ => Err(key_length_error(algo, key.len())),
+            16 => seal::<Aes128Gcm>(algo, key, nonce, aad, buf)?,
+            24 => seal::<Aes192Gcm>(algo, key, nonce, aad, buf)?,
+            32 => seal::<Aes256Gcm>(algo, key, nonce, aad, buf)?,
+            _ => return Err(key_length_error(algo, key.len())),
         },
-        Algo::AesCcm => ccm_run(key, nonce, aad, buf, &[], true, tag_len),
-        Algo::ChaCha20Poly1305 => seal::<ChaCha20Poly1305>(algo, key, nonce, aad, buf),
-        Algo::XChaCha20Poly1305 => seal::<XChaCha20Poly1305>(algo, key, nonce, aad, buf),
+        Algo::AesCcm => ccm_seal(key, nonce, aad, buf, tag_len)?,
+        Algo::ChaCha20Poly1305 => seal::<ChaCha20Poly1305>(algo, key, nonce, aad, buf)?,
+        Algo::XChaCha20Poly1305 => seal::<XChaCha20Poly1305>(algo, key, nonce, aad, buf)?,
         Algo::AesGcmSiv => match key.len() {
-            16 => siv_seal::<aes_gcm_siv::Aes128GcmSiv>(key, nonce, aad, buf),
-            32 => siv_seal::<aes_gcm_siv::Aes256GcmSiv>(key, nonce, aad, buf),
-            _ => Err(key_length_error(algo, key.len())),
+            16 => siv_seal::<aes_gcm_siv::Aes128GcmSiv>(key, nonce, aad, buf)?,
+            32 => siv_seal::<aes_gcm_siv::Aes256GcmSiv>(key, nonce, aad, buf)?,
+            _ => return Err(key_length_error(algo, key.len())),
         },
-    }
+    };
+    buf.extend_from_slice(&tag);
+    Ok(())
 }
 
 fn dispatch_open(
@@ -324,7 +357,7 @@ fn dispatch_open(
     key: &[u8],
     nonce: &[u8],
     aad: &[u8],
-    buf: &mut Vec<u8>,
+    buf: &mut [u8],
     tag: &[u8],
     tag_len: usize,
 ) -> OpResult<()> {
@@ -335,7 +368,7 @@ fn dispatch_open(
             32 => open::<Aes256Gcm>(algo, key, nonce, aad, buf, tag),
             _ => Err(key_length_error(algo, key.len())),
         },
-        Algo::AesCcm => ccm_run(key, nonce, aad, buf, tag, false, tag_len),
+        Algo::AesCcm => ccm_open(key, nonce, aad, buf, tag, tag_len),
         Algo::ChaCha20Poly1305 => open::<ChaCha20Poly1305>(algo, key, nonce, aad, buf, tag),
         Algo::XChaCha20Poly1305 => open::<XChaCha20Poly1305>(algo, key, nonce, aad, buf, tag),
         Algo::AesGcmSiv => match key.len() {
@@ -433,60 +466,60 @@ fn aead_op(
         tags: AEAD_TAGS,
         provenance: Provenance {
             standard,
-            implementation: "RustCrypto AEAD crates (aes-gcm / ccm / chacha20poly1305 / aes-gcm-siv)",
+            implementation:
+                "RustCrypto AEAD crates (aes-gcm / ccm / chacha20poly1305 / aes-gcm-siv)",
             test_vectors: vectors,
         },
     }));
-    let run =
-        move |v: &Value, map: &ParamMap, _: &ExecutionContext| -> OpResult<Value> {
-            let bytes = input_bytes(v, name)?;
-            let key = decode_material(map, "key", "key_encoding", name)?;
-            if !algo.key_lengths().contains(&key.len()) {
-                return Err(key_length_error(algo, key.len()));
-            }
-            let nonce_raw = map.str_or("nonce", "");
-            if nonce_raw.is_empty() {
-                return Err(nonce_length_error(algo, 0));
-            }
-            let nonce = decode_input(map.str_or("nonce_encoding", "hex"), nonce_raw)
-                .map_err(|e| e.with_parameter("nonce"))?;
-            if !algo.nonce_valid(nonce.len()) {
-                return Err(nonce_length_error(algo, nonce.len()));
-            }
-            let aad_raw = map.str_or("aad", "");
-            let aad = if aad_raw.is_empty() {
-                Vec::new()
-            } else {
-                decode_input(map.str_or("aad_encoding", "hex"), aad_raw)
-                    .map_err(|e| e.with_parameter("aad"))?
-            };
-            let tag_len = if with_tag_len {
-                let t = map.int_or("tag_length", 16);
-                if ![4, 8, 16].contains(&t) {
-                    return Err(OperationError::invalid_param(
-                        "tag_length",
-                        format!("CCM tag length must be 4, 8, or 16 bytes, got {t}"),
-                    ));
-                }
-                t as usize
-            } else {
-                algo.tag_len()
-            };
-
-            if sealing {
-                let mut buf = bytes.to_vec();
-                dispatch_seal(algo, &key, &nonce, &aad, &mut buf, tag_len)?;
-                Ok(Value::Bytes(buf))
-            } else {
-                let mut data = bytes.to_vec();
-                if data.len() < tag_len {
-                    return Err(sealed_input_error(algo, tag_len, data.len()));
-                }
-                let tag = data.split_off(data.len() - tag_len);
-                dispatch_open(algo, &key, &nonce, &aad, &mut data, &tag, tag_len)?;
-                Ok(Value::Bytes(data))
-            }
+    let run = move |v: &Value, map: &ParamMap, _: &ExecutionContext| -> OpResult<Value> {
+        let bytes = input_bytes(v, name)?;
+        let key = decode_material(map, "key", "key_encoding", name)?;
+        if !algo.key_lengths().contains(&key.len()) {
+            return Err(key_length_error(algo, key.len()));
+        }
+        let nonce_raw = map.str_or("nonce", "");
+        if nonce_raw.is_empty() {
+            return Err(nonce_length_error(algo, 0));
+        }
+        let nonce = decode_input(map.str_or("nonce_encoding", "hex"), nonce_raw)
+            .map_err(|e| e.with_parameter("nonce"))?;
+        if !algo.nonce_valid(nonce.len()) {
+            return Err(nonce_length_error(algo, nonce.len()));
+        }
+        let aad_raw = map.str_or("aad", "");
+        let aad = if aad_raw.is_empty() {
+            Vec::new()
+        } else {
+            decode_input(map.str_or("aad_encoding", "hex"), aad_raw)
+                .map_err(|e| e.with_parameter("aad"))?
         };
+        let tag_len = if with_tag_len {
+            let t = map.int_or("tag_length", 16);
+            if ![4, 8, 16].contains(&t) {
+                return Err(OperationError::invalid_param(
+                    "tag_length",
+                    format!("CCM tag length must be 4, 8, or 16 bytes, got {t}"),
+                ));
+            }
+            t as usize
+        } else {
+            algo.tag_len()
+        };
+
+        if sealing {
+            let mut buf = bytes.to_vec();
+            dispatch_seal(algo, &key, &nonce, &aad, &mut buf, tag_len)?;
+            Ok(Value::Bytes(buf))
+        } else {
+            let mut data = bytes.to_vec();
+            if data.len() < tag_len {
+                return Err(sealed_input_error(algo, tag_len, data.len()));
+            }
+            let tag = data.split_off(data.len() - tag_len);
+            dispatch_open(algo, &key, &nonce, &aad, &mut data, &tag, tag_len)?;
+            Ok(Value::Bytes(data))
+        }
+    };
     (spec, run)
 }
 

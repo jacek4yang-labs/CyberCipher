@@ -1,13 +1,12 @@
 //! Official test vectors and negative tests for the AEAD operations.
 //!
-//! Sources:
-//! - RFC 8439 section 2.8.2 (ChaCha20-Poly1305)
-//! - NIST GCM test case 4 (McGrew/Viega spec, also in the aes-gcm crate docs)
-//! - RFC 3610 packet vectors #1/#2 (AES-CCM, 13-byte nonce, 8-byte tag)
-//! - draft-irtf-cfrg-xchacha section A.1 (XChaCha20-Poly1305)
-//! - RFC 8452 section 8 + appendix C (AES-GCM-SIV)
-//! Negative tests: corrupted tag/AAD/ciphertext must fail; nonce and key
-//! lengths must be validated.
+//! Vector sources: RFC 8439 section 2.8.2 (ChaCha20-Poly1305); NIST GCM test
+//! cases 3 and 4 from the McGrew/Viega spec; RFC 3610 packet vectors #1/#2
+//! (AES-CCM, 13-byte nonce, 8-byte tag); draft-irtf-cfrg-xchacha section A.1
+//! (XChaCha20-Poly1305); RFC 8452 sections 8 and C (AES-GCM-SIV).
+//!
+//! Negative tests cover corrupted tags, AAD and ciphertext, plus nonce and
+//! key length validation.
 
 // See cybercipher-core/src/lib.rs for the rationale.
 #![allow(clippy::result_large_err)]
@@ -60,7 +59,7 @@ fn pi(key: &'static str, value: i64) -> (&'static str, ParamValue) {
 }
 
 fn hex_bytes(hex: &str) -> Vec<u8> {
-    assert!(hex.len() % 2 == 0, "odd-length hex in test data");
+    assert!(hex.len().is_multiple_of(2), "odd-length hex in test data");
     (0..hex.len())
         .step_by(2)
         .map(|i| u8::from_str_radix(&hex[i..i + 2], 16).unwrap())
@@ -116,7 +115,13 @@ fn chacha20poly1305_rfc8439_2_8_2() {
         ]),
     )
     .unwrap();
-    assert_eq!(s(&back), SUNSCREEN.iter().map(|b| format!("{b:02x}")).collect::<String>());
+    assert_eq!(
+        s(&back),
+        SUNSCREEN
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
+    );
 }
 
 #[test]
@@ -213,7 +218,10 @@ fn aes_gcm_key_sizes_round_trip() {
         let back = run(&r, "aead-aes-gcm-decrypt", &hex_bytes(&s(&out)), &params).unwrap();
         assert_eq!(
             s(&back),
-            SUNSCREEN.iter().map(|b| format!("{b:02x}")).collect::<String>()
+            SUNSCREEN
+                .iter()
+                .map(|b| format!("{b:02x}"))
+                .collect::<String>()
         );
     }
 }
@@ -288,10 +296,7 @@ fn gcm_siv_rfc8452_appendix_c() {
         ]),
     )
     .unwrap();
-    assert_eq!(
-        s(&out),
-        "b5d839330ac7b786578782fff6013b815b287c22493a364c"
-    );
+    assert_eq!(s(&out), "b5d839330ac7b786578782fff6013b815b287c22493a364c");
 
     // C.1, AEAD_AES_128_GCM_SIV, 8-byte plaintext plus one AAD byte.
     let out = run(
@@ -308,10 +313,7 @@ fn gcm_siv_rfc8452_appendix_c() {
         ]),
     )
     .unwrap();
-    assert_eq!(
-        s(&out),
-        "1e6daba35669f4273b0a1a2560969cdf790d99759abd1508"
-    );
+    assert_eq!(s(&out), "1e6daba35669f4273b0a1a2560969cdf790d99759abd1508");
 
     // C.2, AEAD_AES_256_GCM_SIV, empty plaintext.
     let out = run(
@@ -319,7 +321,10 @@ fn gcm_siv_rfc8452_appendix_c() {
         "aead-aes-gcm-siv-encrypt",
         &[],
         &pv(&[
-            ("key", "0100000000000000000000000000000000000000000000000000000000000000"),
+            (
+                "key",
+                "0100000000000000000000000000000000000000000000000000000000000000",
+            ),
             ("key_encoding", "hex"),
             ("nonce", "030000000000000000000000"),
             ("nonce_encoding", "hex"),
@@ -334,17 +339,17 @@ fn gcm_siv_rfc8452_appendix_c() {
         "aead-aes-gcm-siv-encrypt",
         &hex_bytes("0100000000000000"),
         &pv(&[
-            ("key", "0100000000000000000000000000000000000000000000000000000000000000"),
+            (
+                "key",
+                "0100000000000000000000000000000000000000000000000000000000000000",
+            ),
             ("key_encoding", "hex"),
             ("nonce", "030000000000000000000000"),
             ("nonce_encoding", "hex"),
         ]),
     )
     .unwrap();
-    assert_eq!(
-        s(&out),
-        "c2ef328e5c71c83b843122130f7364b761e0b97427e3df28"
-    );
+    assert_eq!(s(&out), "c2ef328e5c71c83b843122130f7364b761e0b97427e3df28");
 }
 
 #[test]
@@ -388,7 +393,13 @@ fn xchacha20poly1305_draft_a1() {
         ]),
     )
     .unwrap();
-    assert_eq!(s(&back), SUNSCREEN.iter().map(|b| format!("{b:02x}")).collect::<String>());
+    assert_eq!(
+        s(&back),
+        SUNSCREEN
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
+    );
 }
 
 #[test]
@@ -458,7 +469,13 @@ fn aes_ccm_nist_vector_tag4_nonce7() {
     let out = run(&r, "aead-aes-ccm-encrypt", &hex_bytes("20212223"), &params).unwrap();
     assert_eq!(s(&out), "7162015b4dac255d");
 
-    let back = run(&r, "aead-aes-ccm-decrypt", &hex_bytes("7162015b4dac255d"), &params).unwrap();
+    let back = run(
+        &r,
+        "aead-aes-ccm-decrypt",
+        &hex_bytes("7162015b4dac255d"),
+        &params,
+    )
+    .unwrap();
     assert_eq!(s(&back), "20212223");
 }
 
@@ -480,7 +497,10 @@ fn aes_ccm_tag16_round_trip() {
     let back = run(&r, "aead-aes-ccm-decrypt", &hex_bytes(&s(&out)), &params).unwrap();
     assert_eq!(
         s(&back),
-        SUNSCREEN.iter().map(|b| format!("{b:02x}")).collect::<String>()
+        SUNSCREEN
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
     );
 }
 
@@ -669,7 +689,10 @@ fn wrong_key_is_rejected() {
     ]);
     let out = run(&r, "aead-chacha20poly1305-encrypt", SUNSCREEN, &params).unwrap();
     let wrong = pv(&[
-        ("key", "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f"),
+        (
+            "key",
+            "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        ),
         ("key_encoding", "hex"),
         ("nonce", RFC8439_NONCE),
         ("nonce_encoding", "hex"),
@@ -807,8 +830,7 @@ fn key_length_validation() {
         ("nonce_encoding", "hex"),
     ]);
     params.push(pi("tag_length", 6));
-    let err = run(&r, "aead-aes-ccm-encrypt", SUNSCREEN, &params)
-        .unwrap_err();
+    let err = run(&r, "aead-aes-ccm-encrypt", SUNSCREEN, &params).unwrap_err();
     assert!(err.message.contains("tag length"));
 }
 
@@ -843,6 +865,9 @@ fn key_as_utf8_encoding_round_trip() {
     let back = run(&r, "aead-aes-gcm-decrypt", &hex_bytes(&s(&out)), &params).unwrap();
     assert_eq!(
         s(&back),
-        SUNSCREEN.iter().map(|b| format!("{b:02x}")).collect::<String>()
+        SUNSCREEN
+            .iter()
+            .map(|b| format!("{b:02x}"))
+            .collect::<String>()
     );
 }

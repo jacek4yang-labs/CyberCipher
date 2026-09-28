@@ -39,9 +39,7 @@ fn dk_len_param(map: &ParamMap, what: &str) -> OpResult<usize> {
     if !(1..=MAX_DK_LEN).contains(&dk_len) {
         return Err(OperationError::invalid_param(
             "dk_len",
-            format!(
-                "{what} derived key length must be 1-{MAX_DK_LEN} bytes, got {dk_len}"
-            ),
+            format!("{what} derived key length must be 1-{MAX_DK_LEN} bytes, got {dk_len}"),
         )
         .with_parameter("dk_len")
         .with_expected(format!("1-{MAX_DK_LEN} bytes"))
@@ -83,9 +81,7 @@ fn pbkdf2_run(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<Value
     if !(1..=MAX_PBKDF2_ROUNDS).contains(&rounds) {
         return Err(OperationError::invalid_param(
             "iterations",
-            format!(
-                "PBKDF2 iteration count must be 1-{MAX_PBKDF2_ROUNDS}, got {rounds}"
-            ),
+            format!("PBKDF2 iteration count must be 1-{MAX_PBKDF2_ROUNDS}, got {rounds}"),
         )
         .with_parameter("iterations")
         .with_expected(format!("1-{MAX_PBKDF2_ROUNDS}"))
@@ -217,13 +213,7 @@ fn scrypt_run(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<Value
         .with_actual(format!("~{} MiB", mem_bytes >> 20)));
     }
 
-    let params = scrypt::Params::new(
-        log2_n as u8,
-        r as u32,
-        p as u32,
-        dk_len,
-    )
-    .map_err(|e| {
+    let params = scrypt::Params::new(log2_n as u8, r as u32, p as u32, dk_len).map_err(|e| {
         OperationError::invalid_param("n", format!("scrypt rejected the cost parameters: {e}"))
     })?;
     let mut dk = vec![0u8; dk_len];
@@ -307,6 +297,7 @@ fn text_params(password_hint: &'static str) -> Vec<ParamSpec> {
     ]
 }
 
+#[allow(clippy::too_many_arguments)]
 fn kdf_spec(
     id: &'static str,
     name: &'static str,
@@ -385,10 +376,7 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
         100_000,
         "HMAC iterations c (1-10000000). Use what the protocol specifies.",
     ));
-    pbkdf2_params.push(hash_opts(
-        pbkdf2_hashes,
-        "PBKDF2-HMAC hash function.",
-    ));
+    pbkdf2_params.push(hash_opts(pbkdf2_hashes, "PBKDF2-HMAC hash function."));
     pbkdf2_params.push(dk_len_param_spec());
     let spec = kdf_spec(
         "kdf-pbkdf2",
@@ -416,9 +404,19 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
         },
     ];
     let mut hkdf_params = vec![
-        p_text("ikm", "Input keying material", "", "IKM bytes after decoding."),
+        p_text(
+            "ikm",
+            "Input keying material",
+            "",
+            "IKM bytes after decoding.",
+        ),
         p_enc("ikm_encoding", "IKM encoding", "hex", ""),
-        p_text_opt("salt", "Salt", "", "Optional; empty means the RFC 5869 default of hash-length zero bytes."),
+        p_text_opt(
+            "salt",
+            "Salt",
+            "",
+            "Optional; empty means the RFC 5869 default of hash-length zero bytes.",
+        ),
         p_enc("salt_encoding", "Salt encoding", "hex", ""),
         p_text_opt("info", "Info", "", "Optional context/application string."),
         p_enc("info_encoding", "Info encoding", "hex", ""),
