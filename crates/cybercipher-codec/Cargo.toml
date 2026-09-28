@@ -18,3 +18,9 @@ num-bigint.workspace = true
 
 [dev-dependencies]
 cybercipher-engine.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "codec"
+path = "benches/codec.rs"
+harness = false

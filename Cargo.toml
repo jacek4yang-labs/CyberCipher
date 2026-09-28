@@ -29,6 +29,7 @@ flate2 = "1"
 xxhash-rust = { version = "0.8", features = ["xxh3"] }
 dirs = "6"
 parking_lot = "0.12"
+criterion = "0.5"
 
 cybercipher-core = { path = "crates/cybercipher-core" }
 cybercipher-codec = { path = "crates/cybercipher-codec" }
