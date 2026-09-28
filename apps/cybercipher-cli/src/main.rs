@@ -33,6 +33,11 @@ enum Command {
         /// Input file path, `-` for stdin, or a literal string.
         input: String,
     },
+    /// PRNG recovery: LCG parameter/state recovery and MT19937 cloning.
+    Prng {
+        #[command(subcommand)]
+        cmd: PrngCmd,
+    },
     /// RSA parameter analysis and solving (JSON with n/e/c/d/p/q/phi/dp/dq/qinv/sets/ns).
     Rsa {
         /// Run attacks in order until the plaintext is recovered.
@@ -58,12 +63,53 @@ enum Command {
     },
 }
 
+#[derive(Subcommand)]
+enum PrngCmd {
+    /// Recover LCG parameters (a, b, m) from consecutive outputs.
+    LcgRecover {
+        /// Consecutive outputs, comma/space separated, or a file path / '-' for stdin.
+        outputs: String,
+    },
+    /// Predict LCG outputs forward/backward from a known state.
+    LcgPredict {
+        #[arg(long)]
+        a: String,
+        #[arg(long)]
+        b: String,
+        #[arg(long)]
+        modulus: String,
+        #[arg(long)]
+        state: String,
+        #[arg(long, default_value = "10")]
+        count: u64,
+        #[arg(long, default_value = "0")]
+        back: u64,
+    },
+    /// Clone MT19937 state from 624 consecutive 32-bit outputs and predict ahead.
+    MtClone {
+        /// File with 624 outputs (whitespace/comma separated) or '-' for stdin.
+        outputs: String,
+        #[arg(long, default_value = "10")]
+        predict: u64,
+    },
+    /// CPython-compatible getrandbits stream: random.seed(SEED).getrandbits(BITS).
+    MtBits {
+        #[arg(long)]
+        seed: String,
+        #[arg(long, default_value = "32")]
+        bits: u32,
+        #[arg(long, default_value = "5")]
+        count: u64,
+    },
+}
+
 fn main() {
     let cli = Cli::parse();
     let registry = Arc::new(cybercipher_engine::default_registry());
     let engine = RecipeEngine::new(registry.clone());
 
     match cli.command {
+        Command::Prng { cmd } => run_prng(cmd),
         Command::Ops => {
             for info in registry.info() {
                 println!("{:<22} {:<16} {}", info.id, info.category.name(), info.name);
@@ -211,6 +257,133 @@ no plaintext recovered (see findings)"
             }
         }
     }
+}
+
+fn run_prng(cmd: PrngCmd) {
+    use cybercipher_attack::prng;
+    match cmd {
+        PrngCmd::LcgRecover { outputs } => {
+            let outs = read_biguint_list(&outputs);
+            match prng::recover_params_unknown(&outs) {
+                Ok(rec) => {
+                    println!("m = {}", rec.params.m());
+                    println!("a = {}", rec.params.a());
+                    println!("b = {}", rec.params.b());
+                    println!("verified against all {} outputs", rec.outputs_used);
+                }
+                Err(e) => fail(&e),
+            }
+        }
+        PrngCmd::LcgPredict {
+            a,
+            b,
+            modulus,
+            state,
+            count,
+            back,
+        } => {
+            let parse = |v: &str| {
+                let t = v.trim();
+                let (radix, digits) = match t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) {
+                    Some(h) => (16u32, h),
+                    None => (10, t),
+                };
+                num_bigint::BigUint::parse_bytes(digits.as_bytes(), radix).unwrap_or_else(|| {
+                    eprintln!("error: `{v}` is not a valid integer");
+                    std::process::exit(2);
+                })
+            };
+            let params = prng::LcgParams::new(parse(&a), parse(&b), parse(&modulus))
+                .unwrap_or_else(|e| fail(&e));
+            let s0 = parse(&state);
+            if back > 0 {
+                println!("backward:");
+                for v in params
+                    .step_back(&s0, back.min(1 << 20) as usize)
+                    .unwrap_or_else(|e| fail(&e))
+                {
+                    println!("  {v}");
+                }
+            }
+            println!("forward:");
+            for v in params
+                .predict(&s0, count.max(1) as usize)
+                .unwrap_or_else(|e| fail(&e))
+            {
+                println!("  {v}");
+            }
+        }
+        PrngCmd::MtClone { outputs, predict } => {
+            let outs = read_u32_list(&outputs);
+            let mut gen = prng::Mt19937::from_outputs(&outs).unwrap_or_else(|e| fail(&e));
+            println!("state cloned from {} outputs", outs.len());
+            for i in 0..predict.max(1) {
+                println!("next[{i}] = {}", gen.next_u32());
+            }
+        }
+        PrngCmd::MtBits { seed, bits, count } => {
+            let parse = |v: &str| {
+                let t = v.trim();
+                let (radix, digits) = match t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) {
+                    Some(h) => (16, h),
+                    None => (10, t),
+                };
+                num_bigint::BigUint::parse_bytes(digits.as_bytes(), radix).unwrap_or_else(|| {
+                    eprintln!("error: `{v}` is not a valid integer");
+                    std::process::exit(2);
+                })
+            };
+            let mut gen =
+                prng::Mt19937::from_cpython_seed(&parse(&seed)).unwrap_or_else(|e| fail(&e));
+            for i in 0..count.max(1) {
+                println!(
+                    "getrandbits({bits})[{i}] = {}",
+                    gen.getrandbits(bits).unwrap_or_else(|e| fail(&e))
+                );
+            }
+        }
+    }
+}
+
+fn fail(e: &cybercipher_core::OperationError) -> ! {
+    eprintln!("error: {e}");
+    if let Some(d) = &e.details {
+        eprintln!("details: {d}");
+    }
+    std::process::exit(1)
+}
+
+fn read_biguint_list(spec: &str) -> Vec<num_bigint::BigUint> {
+    let text = read_input(spec);
+    let joined = String::from_utf8_lossy(&text);
+    joined
+        .split(|c: char| c == ',' || c.is_whitespace() || c == ';')
+        .filter(|t| !t.trim().is_empty())
+        .map(|t| {
+            let t = t.trim();
+            let (radix, digits) = match t.strip_prefix("0x").or_else(|| t.strip_prefix("0X")) {
+                Some(h) => (16u32, h),
+                None => (10, t),
+            };
+            num_bigint::BigUint::parse_bytes(digits.as_bytes(), radix).unwrap_or_else(|| {
+                eprintln!("error: `{t}` is not a valid integer");
+                std::process::exit(2);
+            })
+        })
+        .collect()
+}
+
+fn read_u32_list(spec: &str) -> Vec<u32> {
+    read_biguint_list(spec)
+        .into_iter()
+        .map(|v| {
+            let t: String = v.to_string();
+            t.parse::<u32>().unwrap_or_else(|_| {
+                eprintln!("error: `{t}` does not fit in 32 bits");
+                std::process::exit(2);
+            })
+        })
+        .collect()
 }
 
 fn parse_param(v: &str) -> ParamValue {

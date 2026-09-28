@@ -18,3 +18,4 @@ cybercipher-crypto.workspace = true
 cybercipher-attack.workspace = true
 serde_json.workspace = true
 clap = { version = "4", features = ["derive"] }
+num-bigint.workspace = true

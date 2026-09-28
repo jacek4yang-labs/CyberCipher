@@ -1,24 +1,27 @@
 {
   "schema": 1,
   "phase": "M4",
-  "main_sha": "f059741",
-  "active_branch": "feat/rsa-attack-lab",
+  "main_sha": "7caca73",
+  "active_branch": "feat/prng-cli",
   "active_pr": null,
-  "current_task": "M4-RSA-03",
+  "current_task": "M4-RSA-04",
   "last_completed": [
     "M0-BOOTSTRAP",
     "M1-WORKBENCH",
     "M2-CRYPTO-BASELINE",
     "M3-AUTO-DECODE",
     "M4-CORE-01",
-    "M4-RSA-01"
+    "M4-RSA-01",
+    "M4-RSA-02",
+    "M4-RSA-03",
+    "M4-PRNG-01",
+    "M4-PRNG-02"
   ],
   "blocked": [],
   "agent_lanes": {
-    "rsa": "agent/rsa/m4-rsa (worktree cc-agent-rsa) \u2014 attacks hardening + tests",
-    "prng": "agent/prng/m4-prng (worktree cc-agent-prng) \u2014 LCG + MT19937",
-    "aead": "queued (concurrency limit 2) \u2014 relaunch when a slot frees",
-    "qa": "queued (concurrency limit 2) \u2014 relaunch when a slot frees"
+    "aead": "agent/crypto/m5-aead (worktree cc-agent-crypto) \u2014 running",
+    "gui": "agent/gui/m4-attack-lab (worktree cc-agent-rsa-gui) \u2014 running",
+    "qa": "queued \u2014 worktree cc-agent-qa exists"
   },
   "validation": {
     "cargo_fmt": "pass",
@@ -26,5 +29,5 @@
     "cargo_test": "pass",
     "frontend": "pass"
   },
-  "notes": "Coordinator owns: codec integer ops (done), CLI rsa (done), .agent files, integration. Agents own their worktrees only."
+  "notes": "PRs #4 (RSA engine) and #5 (PRNG recovery) merged. CLI prng commands on feat/prng-cli (this PR). Subagent concurrency limit = 2."
 }
