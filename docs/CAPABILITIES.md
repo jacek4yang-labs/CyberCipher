@@ -41,10 +41,26 @@ implementation, UI/CLI exposure, tests, and documentation all exist.
 | UI | Dark/light themes, keyboard shortcuts (`/`, Ctrl+Enter, Ctrl+S) | done |
 | UI | Flag-pattern highlighting in status bar | done |
 
-## Later milestones (planned, not started)
+## Milestone 2 — practical CTF crypto baseline (current)
 
-- **Milestone 2 — crypto baseline:** AES, DES/3DES, SM4, RC4, TEA/XTEA/XXTEA,
-  MD5/SHA-1/SHA-2/SHA-3/SM3, HMAC. *(planned)*
+| Area | Item | Status |
+|---|---|---|
+| Crypto | AES encrypt/decrypt — ECB/CBC/CTR/CFB/OFB, keys 128/192/256 | done |
+| Crypto | DES / 3DES encrypt/decrypt — ECB/CBC (labeled Broken) | done |
+| Crypto | SM4 encrypt/decrypt — ECB/CBC/CTR/CFB/OFB | done |
+| Crypto | RC4 with RC4-drop[n] (labeled Broken) | done |
+| Crypto | TEA / XTEA / XXTEA encrypt/decrypt | done |
+| Crypto | Padding policies: PKCS7/None/Zero/ISO 7816-4, validated unpad with typed errors | done |
+| Crypto | Orthogonal mode/IV validation (block alignment, IV lengths, ECB rejects IV) | done |
+| Hash | MD5, SHA-1, SHA-224/256/384/512, SHA-3 family + SHAKE128/256, Keccak, SM3 | done |
+| MAC | HMAC (MD5/SHA-1/SHA-2/SHA-3-256/SM3) | done |
+| CLI | `cybercipher ops` / `run` / `recipe` sharing the engine | done |
+
+Known gaps vs the full Milestone 2 charter (follow-up PR): GCM/CCM/EAX AEAD
+modes, CTS/XTS, and a dedicated key-encoding live-length display in the UI
+parameter rows.
+
+## Later milestones (planned, not started)
 - **Milestone 3 — Auto Decode:** bounded explainable recursive decoding with
   candidate scoring and recipe reconstruction. *(planned)*
 - **Milestone 4 — attack labs:** RSA (Wiener, Fermat, Håstad, dp leak,

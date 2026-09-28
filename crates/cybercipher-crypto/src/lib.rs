@@ -1,4 +1,7 @@
 //! CyberCipher crypto: symmetric ciphers, hashes, and MACs.
+
+// See cybercipher-core/src/lib.rs for the rationale.
+#![allow(clippy::result_large_err)]
 //!
 //! Standardized algorithms use RustCrypto implementations; block-mode wiring,
 //! padding policy, key/IV validation, and diagnostics are CyberCipher's.
@@ -6,8 +9,8 @@
 //! with explicit expected/actual lengths.
 
 mod ciphers;
-mod helpers;
 mod hashes;
+mod helpers;
 mod tea;
 
 use cybercipher_core::OperationRegistry;

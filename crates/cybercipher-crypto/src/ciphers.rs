@@ -9,12 +9,12 @@
 //! - RustCrypto crates provide the primitives; this module owns mode wiring
 //!   and validation.
 
-use cybercipher_core::prelude::*;
-use cybercipher_codec::decode_input;
 use cipher::{
     generic_array::GenericArray, BlockCipher, BlockDecrypt, BlockDecryptMut, BlockEncrypt,
     BlockEncryptMut, KeyInit, KeyIvInit, StreamCipher,
 };
+use cybercipher_codec::decode_input;
+use cybercipher_core::prelude::*;
 
 use crate::helpers::decode_material;
 
@@ -116,22 +116,22 @@ fn pad(data: &[u8], block: usize, padding: Padding) -> OpResult<Vec<u8>> {
                     format!("{} bytes", data.len()),
                     "input length is not a multiple of the block size",
                 )
-                .with_details(format!(
-                    "Choose a padding scheme (PKCS7 is standard) or use a stream mode like CTR/CFB/OFB."
-                )));
+                .with_details(
+                    "Choose a padding scheme (PKCS7 is standard) or use a stream mode like CTR/CFB/OFB.",
+                ));
             }
             Ok(data.to_vec())
         }
         Padding::Pkcs7 => {
             let n = (block - rem) as u8;
             let mut out = data.to_vec();
-            out.extend(std::iter::repeat(n).take(n as usize));
+            out.extend(std::iter::repeat_n(n, n as usize));
             Ok(out)
         }
         Padding::Zero => {
             let mut out = data.to_vec();
             if rem != 0 {
-                out.extend(std::iter::repeat(0u8).take(block - rem));
+                out.extend(std::iter::repeat_n(0u8, block - rem));
             }
             Ok(out)
         }
@@ -140,7 +140,7 @@ fn pad(data: &[u8], block: usize, padding: Padding) -> OpResult<Vec<u8>> {
             out.push(0x80);
             let rem = out.len() % block;
             if rem != 0 {
-                out.extend(std::iter::repeat(0u8).take(block - rem));
+                out.extend(std::iter::repeat_n(0u8, block - rem));
             }
             Ok(out)
         }
@@ -160,9 +160,10 @@ fn unpad(data: &[u8], block: usize, padding: Padding) -> OpResult<Vec<u8>> {
             Ok(data[..end].to_vec())
         }
         Padding::Pkcs7 => {
-            let last = data.last().copied().ok_or_else(|| {
-                OperationError::new(ErrorKind::Decode, "PKCS7: empty plaintext")
-            })?;
+            let last = data
+                .last()
+                .copied()
+                .ok_or_else(|| OperationError::new(ErrorKind::Decode, "PKCS7: empty plaintext"))?;
             if last == 0 || last as usize > block {
                 return Err(padding_error(block, last, "padding length out of range"));
             }
@@ -242,7 +243,7 @@ fn encrypt_padded<C>(key: &[u8], data: &[u8]) -> OpResult<Vec<u8>>
 where
     C: BlockCipher + BlockEncrypt + KeyInit,
 {
-    if data.len() % C::block_size() != 0 {
+    if !data.len().is_multiple_of(C::block_size()) {
         return Err(OperationError::internal("pre-padded data misaligned"));
     }
     let enc = ecb::Encryptor::<C>::new(key.into());
@@ -262,7 +263,7 @@ fn cbc_encrypt<C>(key: &[u8], iv: &[u8], data: &[u8]) -> OpResult<Vec<u8>>
 where
     C: BlockCipher + BlockEncrypt + KeyInit,
 {
-    if data.len() % C::block_size() != 0 {
+    if !data.len().is_multiple_of(C::block_size()) {
         return Err(OperationError::internal("pre-padded data misaligned"));
     }
     let enc = cbc::Encryptor::<C>::new(key.into(), iv.into());
@@ -470,7 +471,10 @@ fn cipher_op(
     encrypt: bool,
     cost_note: &'static str,
     tags: &'static [&'static str],
-) -> (&'static OperationSpec, impl Fn(&Value, &ParamMap, &ExecutionContext) -> OpResult<Value> + Send + Sync + 'static) {
+) -> (
+    &'static OperationSpec,
+    impl Fn(&Value, &ParamMap, &ExecutionContext) -> OpResult<Value> + Send + Sync + 'static,
+) {
     let spec = crate::helpers::cipher_spec(op_id, name, description, cost_note, tags);
     let run = move |v: &Value, map: &ParamMap, _: &ExecutionContext| -> OpResult<Value> {
         let bytes = crate::helpers::input_bytes(v, name)?;
@@ -507,7 +511,13 @@ fn cipher_op(
             let padded = pad(bytes.as_ref(), algo.block_size(), padding)?;
             block_encrypt(algo, mode, &key, iv.as_deref().unwrap_or(&[]), &padded)?
         } else {
-            let decrypted = block_decrypt(algo, mode, &key, iv.as_deref().unwrap_or(&[]), bytes.as_ref())?;
+            let decrypted = block_decrypt(
+                algo,
+                mode,
+                &key,
+                iv.as_deref().unwrap_or(&[]),
+                bytes.as_ref(),
+            )?;
             unpad(&decrypted, algo.block_size(), padding)?
         };
         Ok(Value::Bytes(out))
@@ -541,7 +551,6 @@ fn rc4_apply(key: &[u8], data: &[u8], drop: usize) -> Vec<u8> {
 }
 
 pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
-
     let tags: &'static [&'static str] = &["crypto", "ctf"];
 
     let (spec, run) = cipher_op(
@@ -553,10 +562,12 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
     reg.add_simple(spec, run);
 
     let (spec, run) = cipher_op(
-        "aes-decrypt", "AES Decrypt",
+        "aes-decrypt",
+        "AES Decrypt",
         "Decrypts with AES and validates the selected padding scheme.",
         false,
-        "NIST FIPS 197 + SP 800-38 family", tags,
+        "NIST FIPS 197 + SP 800-38 family",
+        tags,
     );
     reg.add_simple(spec, run);
 
@@ -577,18 +588,22 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
     reg.add_simple(spec, run);
 
     let (spec, run) = cipher_op(
-        "sm4-encrypt", "SM4 Encrypt",
+        "sm4-encrypt",
+        "SM4 Encrypt",
         "Encrypts with SM4 (GB/T 32907). 16-byte key, 16-byte block.",
         true,
-        "GB/T 32907-2016", tags,
+        "GB/T 32907-2016",
+        tags,
     );
     reg.add_simple(spec, run);
 
     let (spec, run) = cipher_op(
-        "sm4-decrypt", "SM4 Decrypt",
+        "sm4-decrypt",
+        "SM4 Decrypt",
         "Decrypts with SM4 (GB/T 32907). 16-byte key, 16-byte block.",
         false,
-        "GB/T 32907-2016", tags,
+        "GB/T 32907-2016",
+        tags,
     );
     reg.add_simple(spec, run);
 
@@ -615,5 +630,4 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
         }
         Ok(Value::Bytes(rc4_apply(&key, bytes.as_ref(), drop as usize)))
     });
-
 }

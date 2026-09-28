@@ -6,7 +6,6 @@
 #![allow(clippy::result_large_err)]
 
 use cybercipher_core::prelude::*;
-use cybercipher_engine::{RecipeNodeV1, RecipeV1};
 use cybercipher_core::OperationRegistry;
 
 fn reg() -> OperationRegistry {
@@ -15,13 +14,22 @@ fn reg() -> OperationRegistry {
     r
 }
 
-fn run(reg: &OperationRegistry, id: &str, input: &[u8], params: &[(&'static str, ParamValue)]) -> OpResult<Value> {
+fn run(
+    reg: &OperationRegistry,
+    id: &str,
+    input: &[u8],
+    params: &[(&'static str, ParamValue)],
+) -> OpResult<Value> {
     let op = reg.get(id).unwrap_or_else(|| panic!("missing op {id}"));
     let mut map = ParamMap::new();
     for (k, v) in params {
         map.insert(*k, v.clone());
     }
-    op.execute(&Value::Bytes(input.to_vec()), &map, &ExecutionContext::new())
+    op.execute(
+        &Value::Bytes(input.to_vec()),
+        &map,
+        &ExecutionContext::new(),
+    )
 }
 
 fn s(v: &Value) -> String {
@@ -46,21 +54,31 @@ const FIPS_PT: &str = "6bc1bee22e409f96e93d7e117393172a";
 fn aes128_ecb_nist_vector() {
     let r = reg();
     // FIPS 197 Appendix C.1 / SP 800-38A F.1.1 (first block).
-    let out = run(&r, "aes-encrypt", &hex_bytes(FIPS_PT), &pv(&[
-        ("key", FIPS_KEY),
-        ("key_encoding", "hex"),
-        ("mode", "ecb"),
-        ("padding", "none"),
-    ]))
+    let out = run(
+        &r,
+        "aes-encrypt",
+        &hex_bytes(FIPS_PT),
+        &pv(&[
+            ("key", FIPS_KEY),
+            ("key_encoding", "hex"),
+            ("mode", "ecb"),
+            ("padding", "none"),
+        ]),
+    )
     .unwrap();
     assert_eq!(s(&out), "3ad77bb40d7a3660a89ecaf32466ef97");
 
-    let back = run(&r, "aes-decrypt", &hex_bytes(&s(&out)), &pv(&[
-        ("key", FIPS_KEY),
-        ("key_encoding", "hex"),
-        ("mode", "ecb"),
-        ("padding", "none"),
-    ]))
+    let back = run(
+        &r,
+        "aes-decrypt",
+        &hex_bytes(&s(&out)),
+        &pv(&[
+            ("key", FIPS_KEY),
+            ("key_encoding", "hex"),
+            ("mode", "ecb"),
+            ("padding", "none"),
+        ]),
+    )
     .unwrap();
     assert_eq!(s(&back), FIPS_PT);
 }
@@ -69,25 +87,35 @@ fn aes128_ecb_nist_vector() {
 fn aes128_cbc_nist_vector() {
     let r = reg();
     // SP 800-38A F.2.1 (first block) with the F.2.1 IV.
-    let out = run(&r, "aes-encrypt", &hex_bytes(FIPS_PT), &pv(&[
-        ("key", FIPS_KEY),
-        ("key_encoding", "hex"),
-        ("mode", "cbc"),
-        ("iv", "000102030405060708090a0b0c0d0e0f"),
-        ("iv_encoding", "hex"),
-        ("padding", "none"),
-    ]))
+    let out = run(
+        &r,
+        "aes-encrypt",
+        &hex_bytes(FIPS_PT),
+        &pv(&[
+            ("key", FIPS_KEY),
+            ("key_encoding", "hex"),
+            ("mode", "cbc"),
+            ("iv", "000102030405060708090a0b0c0d0e0f"),
+            ("iv_encoding", "hex"),
+            ("padding", "none"),
+        ]),
+    )
     .unwrap();
     assert_eq!(s(&out), "7649abac8119b246cee98e9b12e9197d");
 
-    let back = run(&r, "aes-decrypt", &hex_bytes(&s(&out)), &pv(&[
-        ("key", FIPS_KEY),
-        ("key_encoding", "hex"),
-        ("mode", "cbc"),
-        ("iv", "000102030405060708090a0b0c0d0e0f"),
-        ("iv_encoding", "hex"),
-        ("padding", "none"),
-    ]))
+    let back = run(
+        &r,
+        "aes-decrypt",
+        &hex_bytes(&s(&out)),
+        &pv(&[
+            ("key", FIPS_KEY),
+            ("key_encoding", "hex"),
+            ("mode", "cbc"),
+            ("iv", "000102030405060708090a0b0c0d0e0f"),
+            ("iv_encoding", "hex"),
+            ("padding", "none"),
+        ]),
+    )
     .unwrap();
     assert_eq!(s(&back), FIPS_PT);
 }
@@ -96,12 +124,20 @@ fn aes128_cbc_nist_vector() {
 fn aes256_ecb_nist_vector() {
     let r = reg();
     // SP 800-38A C.1 (first block).
-    let out = run(&r, "aes-encrypt", &hex_bytes(FIPS_PT), &pv(&[
-        ("key", "603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4"),
-        ("key_encoding", "hex"),
-        ("mode", "ecb"),
-        ("padding", "none"),
-    ]))
+    let out = run(
+        &r,
+        "aes-encrypt",
+        &hex_bytes(FIPS_PT),
+        &pv(&[
+            (
+                "key",
+                "603deb1015ca71be2b73aef0857d77811f352c073b6108d72d9810a30914dff4",
+            ),
+            ("key_encoding", "hex"),
+            ("mode", "ecb"),
+            ("padding", "none"),
+        ]),
+    )
     .unwrap();
     assert_eq!(s(&out), "f3eed1bdb5d2a03c064b5a7e3db181f8");
 }
@@ -142,12 +178,17 @@ fn aes_pkcs7_roundtrip_and_invalid_padding_diagnostics() {
     let mut bad = s(&ct).as_bytes().to_vec();
     let n = bad.len();
     bad[0] ^= 0xff;
-    let err = run(&r, "aes-decrypt", &bad, &pv(&[
-        ("key", FIPS_KEY),
-        ("key_encoding", "hex"),
-        ("mode", "cbc"),
-        ("iv", "00112233445566778899aabbccddeeff"),
-    ]))
+    let err = run(
+        &r,
+        "aes-decrypt",
+        &bad,
+        &pv(&[
+            ("key", FIPS_KEY),
+            ("key_encoding", "hex"),
+            ("mode", "cbc"),
+            ("iv", "00112233445566778899aabbccddeeff"),
+        ]),
+    )
     .unwrap_err();
     assert!(
         err.kind == ErrorKind::Decode || err.kind == ErrorKind::LengthMismatch,
@@ -160,12 +201,17 @@ fn aes_pkcs7_roundtrip_and_invalid_padding_diagnostics() {
 #[test]
 fn aes_key_length_validation() {
     let r = reg();
-    let err = run(&r, "aes-encrypt", b"x", &pv(&[
-        ("key", "2b7e151628aed2a6"),
-        ("key_encoding", "hex"),
-        ("mode", "ecb"),
-        ("padding", "pkcs7"),
-    ]))
+    let err = run(
+        &r,
+        "aes-encrypt",
+        b"x",
+        &pv(&[
+            ("key", "2b7e151628aed2a6"),
+            ("key_encoding", "hex"),
+            ("mode", "ecb"),
+            ("padding", "pkcs7"),
+        ]),
+    )
     .unwrap_err();
     assert_eq!(err.kind, ErrorKind::KeyError);
     assert!(err.message.contains("16 / 24 / 32"), "{}", err.message);
@@ -175,11 +221,12 @@ fn aes_key_length_validation() {
 #[test]
 fn cbc_requires_iv() {
     let r = reg();
-    let err = run(&r, "aes-encrypt", b"0123456789abcdef", &pv(&[
-        ("key", FIPS_KEY),
-        ("key_encoding", "hex"),
-        ("mode", "cbc"),
-    ]))
+    let err = run(
+        &r,
+        "aes-encrypt",
+        b"0123456789abcdef",
+        &pv(&[("key", FIPS_KEY), ("key_encoding", "hex"), ("mode", "cbc")]),
+    )
     .unwrap_err();
     assert_eq!(err.kind, ErrorKind::KeyError);
     assert!(err.message.contains("IV"), "{}", err.message);
@@ -189,21 +236,31 @@ fn cbc_requires_iv() {
 fn sm4_gb_standard_vector() {
     let r = reg();
     // GB/T 32907 standard example: key = plaintext = 0123456789abcdeffedcba9876543210.
-    let out = run(&r, "sm4-encrypt", &hex_bytes("0123456789abcdeffedcba9876543210"), &pv(&[
-        ("key", "0123456789abcdeffedcba9876543210"),
-        ("key_encoding", "hex"),
-        ("mode", "ecb"),
-        ("padding", "none"),
-    ]))
+    let out = run(
+        &r,
+        "sm4-encrypt",
+        &hex_bytes("0123456789abcdeffedcba9876543210"),
+        &pv(&[
+            ("key", "0123456789abcdeffedcba9876543210"),
+            ("key_encoding", "hex"),
+            ("mode", "ecb"),
+            ("padding", "none"),
+        ]),
+    )
     .unwrap();
     assert_eq!(s(&out), "681edf34d206965e86b3e94f536e4246");
 
-    let back = run(&r, "sm4-decrypt", &hex_bytes(&s(&out)), &pv(&[
-        ("key", "0123456789abcdeffedcba9876543210"),
-        ("key_encoding", "hex"),
-        ("mode", "ecb"),
-        ("padding", "none"),
-    ]))
+    let back = run(
+        &r,
+        "sm4-decrypt",
+        &hex_bytes(&s(&out)),
+        &pv(&[
+            ("key", "0123456789abcdeffedcba9876543210"),
+            ("key_encoding", "hex"),
+            ("mode", "ecb"),
+            ("padding", "none"),
+        ]),
+    )
     .unwrap();
     assert_eq!(s(&back), "0123456789abcdeffedcba9876543210");
 }
@@ -212,12 +269,17 @@ fn sm4_gb_standard_vector() {
 fn des_classic_vector_and_3des() {
     let r = reg();
     // Widely-cited DES example: key 0E329232EA6D0D73 encrypts 8787878787878787 to zero.
-    let out = run(&r, "des-encrypt", &hex_bytes("8787878787878787"), &pv(&[
-        ("key", "0E329232EA6D0D73"),
-        ("key_encoding", "hex"),
-        ("mode", "ecb"),
-        ("padding", "none"),
-    ]))
+    let out = run(
+        &r,
+        "des-encrypt",
+        &hex_bytes("8787878787878787"),
+        &pv(&[
+            ("key", "0E329232EA6D0D73"),
+            ("key_encoding", "hex"),
+            ("mode", "ecb"),
+            ("padding", "none"),
+        ]),
+    )
     .unwrap();
     assert_eq!(s(&out), "0000000000000000");
 
@@ -255,7 +317,13 @@ fn tea_reference_vector_and_family_roundtrips() {
     let r = reg();
     // Zero key/plaintext TEA vector, cross-verified against an independent
     // implementation of the original Wheeler definition (32 cycles).
-    let out = run(&r, "tea-encrypt", &[0u8; 8], &pv(&[("key", &"0".repeat(32))])).unwrap();
+    let out = run(
+        &r,
+        "tea-encrypt",
+        &[0u8; 8],
+        &pv(&[("key", &"0".repeat(32))]),
+    )
+    .unwrap();
     assert_eq!(s(&out), "41ea3a0a94baa940");
 
     // Round-trips for the whole family.
@@ -280,11 +348,23 @@ fn tea_reference_vector_and_family_roundtrips() {
 fn tea_input_validation() {
     let r = reg();
     // Not a multiple of 8.
-    let err = run(&r, "tea-encrypt", b"1234567", &pv(&[("key", &"0".repeat(32))])).unwrap_err();
+    let err = run(
+        &r,
+        "tea-encrypt",
+        b"1234567",
+        &pv(&[("key", &"0".repeat(32))]),
+    )
+    .unwrap_err();
     assert_eq!(err.kind, ErrorKind::LengthMismatch);
 
     // XXTEA needs at least two words.
-    let err = run(&r, "xxtea-encrypt", b"abcd", &pv(&[("key", &"0".repeat(32))])).unwrap_err();
+    let err = run(
+        &r,
+        "xxtea-encrypt",
+        b"abcd",
+        &pv(&[("key", &"0".repeat(32))]),
+    )
+    .unwrap_err();
     assert_eq!(err.kind, ErrorKind::LengthMismatch);
 }
 
@@ -329,11 +409,16 @@ fn hash_known_answers() {
 fn hmac_rfc4231_vector() {
     let r = reg();
     // RFC 4231 test case 1: key = 0x0b * 20, data "Hi There".
-    let out = run(&r, "hmac", b"Hi There", &pv(&[
-        ("key", "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"),
-        ("key_encoding", "hex"),
-        ("algorithm", "sha256"),
-    ]))
+    let out = run(
+        &r,
+        "hmac",
+        b"Hi There",
+        &pv(&[
+            ("key", "0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b0b"),
+            ("key_encoding", "hex"),
+            ("algorithm", "sha256"),
+        ]),
+    )
     .unwrap();
     assert_eq!(
         s(&out),
@@ -343,8 +428,9 @@ fn hmac_rfc4231_vector() {
 
 #[test]
 fn engine_integrates_crypto_ops() {
-    let engine = cybercipher_engine::RecipeEngine::new(Arc::new(cybercipher_engine::default_registry()));
-    let recipe = RecipeV1::new(vec![cybercipher_engine::RecipeNodeV1 {
+    let engine =
+        cybercipher_engine::RecipeEngine::new(Arc::new(cybercipher_engine::default_registry()));
+    let recipe = cybercipher_engine::RecipeV1::new(vec![cybercipher_engine::RecipeNodeV1 {
         id: "h".into(),
         op: "sha256".into(),
         enabled: true,
@@ -368,5 +454,5 @@ fn engine_integrates_crypto_ops() {
     }
 }
 
-use std::sync::Arc;
 // Engine integration requires the engine crate as a dev-dependency.
+use std::sync::Arc;

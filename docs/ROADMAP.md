@@ -10,9 +10,11 @@ with tests, docs, and honest capability status.
 - **Milestone 1 — working Workbench.** ✅ Search, drag/drop recipe, input/output,
   intermediate results, manual + auto bake, recipe save/load, 29 codec/byte
   operations.
-- **Milestone 2 — practical CTF crypto baseline.** AES (+ CBC/ECB/CTR/CFB/OFB,
-  PKCS7), DES/3DES, SM4, RC4, TEA/XTEA/XXTEA, MD5/SHA-1/SHA-2/SHA-3/SM3, HMAC,
-  with correct key/IV/padding UX and official vectors. CLI binary ships here.
+- **Milestone 2 — practical CTF crypto baseline.** ✅ AES (ECB/CBC/CTR/CFB/OFB,
+  PKCS7/Zero/ISO 7816 padding with validated unpad), DES/3DES, SM4, RC4(+drop),
+  TEA/XTEA/XXTEA, MD5/SHA-1/SHA-2/SHA-3/SHAKE/Keccak/SM3, HMAC, official NIST /
+  GB/T / RFC vectors. Shared-engine CLI binary (`cybercipher`) ships here.
+  Remaining polish: AEAD modes (GCM/CCM/EAX), CTS/XTS.
 - **Milestone 3 — Auto Decode.** Bounded, explainable recursive decoding:
   cheap detectors → candidate generation → execution → scoring → beam search,
   with evidence output and recipe reconstruction.

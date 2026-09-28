@@ -181,7 +181,10 @@ fn print_value(v: &Value) {
         Value::Integer(i) => println!("{i}"),
         Value::IntegerList(l) => println!(
             "{}",
-            l.iter().map(|i| i.to_string()).collect::<Vec<_>>().join(" ")
+            l.iter()
+                .map(|i| i.to_string())
+                .collect::<Vec<_>>()
+                .join(" ")
         ),
         Value::List(items) => {
             for item in items {

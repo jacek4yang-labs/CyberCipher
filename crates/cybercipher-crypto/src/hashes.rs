@@ -56,7 +56,10 @@ fn hash_op(
     security: Security,
     standard: &'static str,
     vectors: &'static str,
-) -> (&'static OperationSpec, impl Fn(&Value, &ParamMap, &ExecutionContext) -> OpResult<Value> + Send + Sync + 'static) {
+) -> (
+    &'static OperationSpec,
+    impl Fn(&Value, &ParamMap, &ExecutionContext) -> OpResult<Value> + Send + Sync + 'static,
+) {
     let spec = Box::leak(Box::new(OperationSpec {
         id,
         name,
@@ -107,12 +110,30 @@ fn sha3_spec(
                 hint: "SHAKE variants use the output length parameter.",
                 options: Box::leak(
                     vec![
-                        ParamOption { value: "sha3-224", label: "SHA3-224" },
-                        ParamOption { value: "sha3-256", label: "SHA3-256" },
-                        ParamOption { value: "sha3-384", label: "SHA3-384" },
-                        ParamOption { value: "sha3-512", label: "SHA3-512" },
-                        ParamOption { value: "shake128", label: "SHAKE128" },
-                        ParamOption { value: "shake256", label: "SHAKE256" },
+                        ParamOption {
+                            value: "sha3-224",
+                            label: "SHA3-224",
+                        },
+                        ParamOption {
+                            value: "sha3-256",
+                            label: "SHA3-256",
+                        },
+                        ParamOption {
+                            value: "sha3-384",
+                            label: "SHA3-384",
+                        },
+                        ParamOption {
+                            value: "sha3-512",
+                            label: "SHA3-512",
+                        },
+                        ParamOption {
+                            value: "shake128",
+                            label: "SHAKE128",
+                        },
+                        ParamOption {
+                            value: "shake256",
+                            label: "SHAKE256",
+                        },
                     ]
                     .into_boxed_slice(),
                 ),
@@ -133,11 +154,7 @@ fn sha3_spec(
     }))
 }
 
-fn hmac_run(
-    v: &Value,
-    map: &ParamMap,
-    _: &ExecutionContext,
-) -> OpResult<Value> {
+fn hmac_run(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<Value> {
     let bytes = input_bytes(v, "HMAC")?;
     let raw = map.require_str("key")?;
     let enc = map.str_or("key_encoding", "hex");
@@ -173,46 +190,100 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
     use cybercipher_core::Security::{Broken, Legacy, Modern};
 
     let (spec, run) = hash_op(
-        "md5", "MD5",
+        "md5",
+        "MD5",
         "Computes the MD5 digest. Broken for collision resistance; still ubiquitous in CTF.",
-        &["md5 hash"], Broken,
-        "RFC 1321", "RFC 1321 test suite",
+        &["md5 hash"],
+        Broken,
+        "RFC 1321",
+        "RFC 1321 test suite",
     );
     reg.add_simple(spec, run);
 
     let (spec, run) = hash_op(
-        "sha1", "SHA-1",
+        "sha1",
+        "SHA-1",
         "Computes the SHA-1 digest. Legacy; collision attacks are practical.",
-        &["sha1 hash"], Legacy,
-        "FIPS 180-4", "NIST / RFC 3174 vectors",
+        &["sha1 hash"],
+        Legacy,
+        "FIPS 180-4",
+        "NIST / RFC 3174 vectors",
     );
     reg.add_simple(spec, run);
 
     for (id, name, desc, aliases, security, standard) in [
-        ("sha224", "SHA-224", "Computes the SHA-224 digest.", &["sha224"][..], Modern, "FIPS 180-4"),
-        ("sha256", "SHA-256", "Computes the SHA-256 digest.", &["sha256"][..], Modern, "FIPS 180-4"),
-        ("sha384", "SHA-384", "Computes the SHA-384 digest.", &["sha384"][..], Modern, "FIPS 180-4"),
-        ("sha512", "SHA-512", "Computes the SHA-512 digest.", &["sha512"][..], Modern, "FIPS 180-4"),
+        (
+            "sha224",
+            "SHA-224",
+            "Computes the SHA-224 digest.",
+            &["sha224"][..],
+            Modern,
+            "FIPS 180-4",
+        ),
+        (
+            "sha256",
+            "SHA-256",
+            "Computes the SHA-256 digest.",
+            &["sha256"][..],
+            Modern,
+            "FIPS 180-4",
+        ),
+        (
+            "sha384",
+            "SHA-384",
+            "Computes the SHA-384 digest.",
+            &["sha384"][..],
+            Modern,
+            "FIPS 180-4",
+        ),
+        (
+            "sha512",
+            "SHA-512",
+            "Computes the SHA-512 digest.",
+            &["sha512"][..],
+            Modern,
+            "FIPS 180-4",
+        ),
     ] {
-        let (spec, run) = hash_op(id, name, desc, aliases, security, standard, "NIST FIPS 180-4 example vectors");
+        let (spec, run) = hash_op(
+            id,
+            name,
+            desc,
+            aliases,
+            security,
+            standard,
+            "NIST FIPS 180-4 example vectors",
+        );
         reg.add_simple(spec, run);
     }
 
     let (spec, run) = hash_op(
-        "sm3", "SM3",
+        "sm3",
+        "SM3",
         "Computes the SM3 digest (Chinese national standard).",
-        &["sm3 hash"], Modern,
-        "GB/T 32905-2016", "GB/T 32905 standard examples",
+        &["sm3 hash"],
+        Modern,
+        "GB/T 32905-2016",
+        "GB/T 32905 standard examples",
     );
     reg.add_simple(spec, run);
 
     // SHA-3 family with variant selection.
-    let sha3_spec = sha3_spec("sha3", "SHA-3 / SHAKE", &["sha3", "keccak", "shake"], "FIPS 202");
+    let sha3_spec = sha3_spec(
+        "sha3",
+        "SHA-3 / SHAKE",
+        &["sha3", "keccak", "shake"],
+        "FIPS 202",
+    );
     reg.add_simple(sha3_spec, |v, map, _| {
         let bytes = input_bytes(v, "SHA-3 / SHAKE")?;
         let variant = map.str_or("variant", "sha3-256");
-        let shake_len = map.int_or("output_length", 32).max(1).min(8192) as usize;
-        Ok(Value::Text(hex(&digest_bytes(variant, bytes.as_ref(), shake_len)?)))
+        let shake_len = map.int_or("output_length", 32).clamp(1, 8192) as usize;
+        Ok(Value::Text(hex(&digest_bytes(
+            variant,
+            bytes.as_ref(),
+            shake_len,
+        )?)))
     });
 
     let hmac_spec = Box::leak(Box::new(OperationSpec {
@@ -231,12 +302,30 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
                     "Algorithm",
                     "sha256",
                     &[
-                        ParamOption { value: "md5", label: "HMAC-MD5" },
-                        ParamOption { value: "sha1", label: "HMAC-SHA1" },
-                        ParamOption { value: "sha256", label: "HMAC-SHA256" },
-                        ParamOption { value: "sha512", label: "HMAC-SHA512" },
-                        ParamOption { value: "sha3-256", label: "HMAC-SHA3-256" },
-                        ParamOption { value: "sm3", label: "HMAC-SM3" },
+                        ParamOption {
+                            value: "md5",
+                            label: "HMAC-MD5",
+                        },
+                        ParamOption {
+                            value: "sha1",
+                            label: "HMAC-SHA1",
+                        },
+                        ParamOption {
+                            value: "sha256",
+                            label: "HMAC-SHA256",
+                        },
+                        ParamOption {
+                            value: "sha512",
+                            label: "HMAC-SHA512",
+                        },
+                        ParamOption {
+                            value: "sha3-256",
+                            label: "HMAC-SHA3-256",
+                        },
+                        ParamOption {
+                            value: "sm3",
+                            label: "HMAC-SM3",
+                        },
                     ],
                     "",
                 ),

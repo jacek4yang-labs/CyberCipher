@@ -50,25 +50,57 @@ pub fn cipher_spec(
             "Mode",
             "cbc",
             &[
-                ParamOption { value: "ecb", label: "ECB" },
-                ParamOption { value: "cbc", label: "CBC" },
-                ParamOption { value: "ctr", label: "CTR" },
-                ParamOption { value: "cfb", label: "CFB" },
-                ParamOption { value: "ofb", label: "OFB" },
+                ParamOption {
+                    value: "ecb",
+                    label: "ECB",
+                },
+                ParamOption {
+                    value: "cbc",
+                    label: "CBC",
+                },
+                ParamOption {
+                    value: "ctr",
+                    label: "CTR",
+                },
+                ParamOption {
+                    value: "cfb",
+                    label: "CFB",
+                },
+                ParamOption {
+                    value: "ofb",
+                    label: "OFB",
+                },
             ],
             "DES/3DES support ECB and CBC only.",
         ),
-        p_text("iv", "IV / counter", "", "IV for CBC/CTR/CFB/OFB. Empty for ECB."),
+        p_text(
+            "iv",
+            "IV / counter",
+            "",
+            "IV for CBC/CTR/CFB/OFB. Empty for ECB.",
+        ),
         p_enc("iv_encoding", "IV encoding", "hex", ""),
         p_opts(
             "padding",
             "Padding",
             "pkcs7",
             &[
-                ParamOption { value: "pkcs7", label: "PKCS#7" },
-                ParamOption { value: "none", label: "None" },
-                ParamOption { value: "zero", label: "Zero" },
-                ParamOption { value: "iso7816", label: "ISO 7816-4" },
+                ParamOption {
+                    value: "pkcs7",
+                    label: "PKCS#7",
+                },
+                ParamOption {
+                    value: "none",
+                    label: "None",
+                },
+                ParamOption {
+                    value: "zero",
+                    label: "Zero",
+                },
+                ParamOption {
+                    value: "iso7816",
+                    label: "ISO 7816-4",
+                },
             ],
             "ECB/CBC only; stream modes ignore padding.",
         ),
@@ -91,12 +123,15 @@ pub fn cipher_spec(
         reversible: true,
         aliases: Box::leak(
             vec![
-                id.split('-').next().unwrap_or(id).to_string(),
-                format!("{name} crypt"),
+                &*Box::leak(
+                    id.split('-')
+                        .next()
+                        .unwrap_or(id)
+                        .to_string()
+                        .into_boxed_str(),
+                ),
+                &*Box::leak(format!("{name} crypt").into_boxed_str()),
             ]
-            .iter()
-            .map(|s| -> &'static str { Box::leak(s.clone().into_boxed_str()) })
-            .collect::<Vec<_>>()
             .into_boxed_slice(),
         ),
         tags,
@@ -108,7 +143,12 @@ pub fn cipher_spec(
     }))
 }
 
-pub fn p_text(key: &'static str, label: &'static str, default: &'static str, hint: &'static str) -> ParamSpec {
+pub fn p_text(
+    key: &'static str,
+    label: &'static str,
+    default: &'static str,
+    hint: &'static str,
+) -> ParamSpec {
     ParamSpec {
         key,
         label,
@@ -120,12 +160,29 @@ pub fn p_text(key: &'static str, label: &'static str, default: &'static str, hin
     }
 }
 
-pub fn p_enc(key: &'static str, label: &'static str, default: &'static str, hint: &'static str) -> ParamSpec {
+pub fn p_enc(
+    key: &'static str,
+    label: &'static str,
+    default: &'static str,
+    hint: &'static str,
+) -> ParamSpec {
     static KEY_ENCODINGS: &[ParamOption] = &[
-        ParamOption { value: "utf8", label: "UTF-8 text" },
-        ParamOption { value: "hex", label: "Hex" },
-        ParamOption { value: "base64", label: "Base64" },
-        ParamOption { value: "decimal", label: "Decimal byte list" },
+        ParamOption {
+            value: "utf8",
+            label: "UTF-8 text",
+        },
+        ParamOption {
+            value: "hex",
+            label: "Hex",
+        },
+        ParamOption {
+            value: "base64",
+            label: "Base64",
+        },
+        ParamOption {
+            value: "decimal",
+            label: "Decimal byte list",
+        },
     ];
     ParamSpec {
         key,
@@ -138,7 +195,12 @@ pub fn p_enc(key: &'static str, label: &'static str, default: &'static str, hint
     }
 }
 
-pub fn p_int(key: &'static str, label: &'static str, default: i64, hint: &'static str) -> ParamSpec {
+pub fn p_int(
+    key: &'static str,
+    label: &'static str,
+    default: i64,
+    hint: &'static str,
+) -> ParamSpec {
     ParamSpec {
         key,
         label,
@@ -173,7 +235,12 @@ pub fn rc4_spec(tags: &'static [&'static str]) -> &'static OperationSpec {
     let params = vec![
         p_text("key", "Key", "", "1-256 bytes after decoding."),
         p_enc("key_encoding", "Key encoding", "hex", ""),
-        p_int("drop", "Drop bytes (RC4-drop[n])", 0, "Discard the first N keystream bytes (recommended: 768)."),
+        p_int(
+            "drop",
+            "Drop bytes (RC4-drop[n])",
+            0,
+            "Discard the first N keystream bytes (recommended: 768).",
+        ),
     ];
     Box::leak(Box::new(OperationSpec {
         id: "rc4",

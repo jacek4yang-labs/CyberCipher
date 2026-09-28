@@ -30,8 +30,15 @@ are marked `intentional-out-of-scope` with a reason.
 | Entropy | entropy | partial | no conditional-entropy chart yet |
 | Strings | strings | covered | |
 | UTF-8 decode/encode | decode-text / encode-text | covered | |
-| AES / DES / ciphers | — | missing | Milestone 2 |
-| Hashes / HMAC | — | missing | Milestone 2 |
+| AES Decrypt/Encrypt | aes-decrypt / aes-encrypt | partial | ECB/CBC/CTR/CFB/OFB + PKCS7/Zero/ISO7816; GCM/CCM/EAX/OCB AEAD still missing |
+| DES / 3DES | des-decrypt / des-encrypt | partial | ECB/CBC; no CFB/OFB for DES |
+| RC4 | rc4 | covered | includes RC4-drop[n] |
+| SM4 | sm4-decrypt / sm4-encrypt | partial | ECB/CBC/CTR/CFB/OFB |
+| TEA/XTEA/XXTEA | tea/xtea/xxtea encrypt/decrypt | covered | CyberChef parity for block ops |
+| MD5 / SHA-1 / SHA-2 | md5, sha1, sha224/256/384/512 | covered | |
+| SHA-3 / Keccak / SHAKE | sha3 (variant param) | covered | SHAKE output-length param |
+| SM3 | sm3 | covered | |
+| HMAC | hmac | partial | MD5/SHA-1/SHA-256/SHA-512/SHA3-256/SM3 variants |
 | Compression ops | — | missing | Milestone 9 |
 | Magic / Auto Decode | — | missing | Milestone 3 |
 | RSA / ECC ops | — | missing | Milestone 4/8 |
