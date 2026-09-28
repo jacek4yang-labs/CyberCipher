@@ -1,16 +1,16 @@
 # Handoff
 
 ## In flight
-- Agent C: AEAD/KDF -> agent/crypto/m5-aead (worktree ../cc-agent-crypto)
-- Agent A2: LLL/Coppersmith -> agent/lattice/m4-coppersmith (worktree ../cc-agent-lattice)
+- Agent A2: LLL/Coppersmith -> agent/lattice/m4-coppersmith (worktree ../cc-agent-lattice), continued from WIP checkpoint after an infra crash.
+- Agent D: QA/compatibility -> agent/qa/m4-coverage (worktree ../cc-agent-qa).
 
-## Merged (PRs #1-#7)
-bootstrap, crypto baseline+CLI, Auto Decode, RSA attack engine, PRNG recovery, prng CLI, RSA Lab GUI.
+## Merged (PRs #1-#12)
+bootstrap; crypto baseline+CLI; Auto Decode; RSA attack engine; PRNG recovery; prng CLI; RSA Lab GUI; agent state; AEAD/KDF; runtime PRNGs (Java/glibc/MSVC); runtime-PRNG CLI; criterion benches.
 
 ## Next concrete actions
-1. Integrate Agent C's AEAD branch -> PR #8; then relaunch Agent D (QA, worktree ../cc-agent-qa exists).
-2. Integrate lattice branch -> PR #9.
-3. Next lanes after those: XOR lab (M6), Auto Decode expansion (M7), Java Random/glibc/MSVC rand.
+1. Integrate lattice branch -> PR; then the XOR lab lane (M6-XOR-01) on the freed slot.
+2. Integrate QA branch -> PR (docs/matrix coverage closure).
+3. After lattice: M7 Auto Decode expansion (XOR candidates), Crypto Assist (AES Assist), classical ciphers.
 
 ## Blocked
-- Subagent concurrency limit = 2.
+- Subagent concurrency limit = 2. One infra failure mode seen twice: "Captcha instance timed out" kills background agents — always checkpoint worktrees before relaunching.

@@ -1,8 +1,8 @@
 {
   "schema": 1,
-  "phase": "M4",
-  "main_sha": "5ead721",
-  "active_branch": "docs/m4-progress",
+  "phase": "M4/M5",
+  "main_sha": "04e61a4",
+  "active_branch": "docs/state-m4-m5",
   "active_pr": null,
   "current_task": "M4-LAT-01/02",
   "last_completed": [
@@ -16,13 +16,15 @@
     "M4-RSA-03",
     "M4-RSA-04",
     "M4-PRNG-01",
-    "M4-PRNG-02"
+    "M4-PRNG-02",
+    "M4-PRNG-03",
+    "M5-AEAD-01",
+    "BENCH-01"
   ],
   "blocked": [],
   "agent_lanes": {
-    "aead": "agent/crypto/m5-aead (worktree cc-agent-crypto) \u2014 running",
-    "lattice": "agent/lattice/m4-coppersmith (worktree cc-agent-lattice) \u2014 running",
-    "qa": "queued \u2014 worktree cc-agent-qa exists (based on older main; cherry-pick on integration)"
+    "lattice": "agent/lattice/m4-coppersmith \u2014 running (continued from WIP checkpoint)",
+    "qa": "agent/qa/m4-coverage \u2014 running"
   },
   "validation": {
     "cargo_fmt": "pass",
@@ -30,5 +32,5 @@
     "cargo_test": "pass",
     "frontend": "pass"
   },
-  "notes": "PRs #1-#7 merged. main = 5ead721 (RSA Lab GUI). Remaining M4: lattice lane in flight. M5 AEAD lane in flight."
+  "notes": "PRs #1-#12 merged. main = 04e61a4. 71 registry ops + attack engine (RSA/PRNG/runtime-PRNGs) + criterion benches. Remaining M4: lattice. Next lanes: XOR lab (M6), Auto Decode expansion (M7), classical ciphers."
 }
