@@ -12,9 +12,9 @@
 mod byteops;
 mod compression;
 mod encoding;
-mod integer;
 mod helpers;
 mod inspect;
+mod integer;
 
 pub use encoding::decode_input;
 

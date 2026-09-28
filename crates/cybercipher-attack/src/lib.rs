@@ -11,6 +11,6 @@ pub mod prng;
 pub mod rsa;
 
 pub use rsa::{
-    analyze, AttackCost, AttackOutcome, AttackStatus, AnalyzerReport, PlaintextResult, RsaParams,
+    analyze, AnalyzerReport, AttackCost, AttackOutcome, AttackStatus, PlaintextResult, RsaParams,
     RsaSet,
 };

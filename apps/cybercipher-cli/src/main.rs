@@ -98,7 +98,11 @@ fn main() {
                 }
             }
         }
-        Command::Rsa { solve, budget_ms, input } => {
+        Command::Rsa {
+            solve,
+            budget_ms,
+            input,
+        } => {
             let text = read_input(&input);
             let value: serde_json::Value = serde_json::from_slice(&text).unwrap_or_else(|e| {
                 eprintln!("error: RSA parameter file is not valid JSON: {e}");
@@ -113,18 +117,17 @@ fn main() {
             for f in &report.findings {
                 let status = serde_json::to_string(&f.status).unwrap_or_default();
                 let status = status.trim_matches('"');
-                println!(
-                    "[{status:<14}] {:<28} ({:?}) {}",
-                    f.name, f.cost, f.message
-                );
+                println!("[{status:<14}] {:<28} ({:?}) {}", f.name, f.cost, f.message);
                 if let Some(d) = &f.details {
                     println!("                {d}");
                 }
             }
             match &report.plaintext {
                 Some(pt) => {
-                    println!("
-== Plaintext ==");
+                    println!(
+                        "
+== Plaintext =="
+                    );
                     println!("hex:     {}", pt.m_hex);
                     println!("decimal: {}", pt.m_decimal);
                     if let Some(utf8) = &pt.utf8 {
@@ -134,8 +137,10 @@ fn main() {
                         println!("flag:    {flag}");
                     }
                 }
-                None => println!("
-no plaintext recovered (see findings)"),
+                None => println!(
+                    "
+no plaintext recovered (see findings)"
+                ),
             }
         }
         Command::Auto { input } => {

@@ -15,9 +15,15 @@ fn parse_integer_text(text: &str, radix_mode: &str) -> OpResult<BigInt> {
             .with_expected("a decimal or 0x-prefixed hexadecimal integer"));
     }
     let (radix, digits) = match radix_mode {
-        "hex" => (16, cleaned.trim_start_matches("0x").trim_start_matches("0X")),
+        "hex" => (
+            16,
+            cleaned.trim_start_matches("0x").trim_start_matches("0X"),
+        ),
         "decimal" => (10, cleaned.as_str()),
-        _ => match cleaned.strip_prefix("0x").or_else(|| cleaned.strip_prefix("0X")) {
+        _ => match cleaned
+            .strip_prefix("0x")
+            .or_else(|| cleaned.strip_prefix("0X"))
+        {
             Some(hex) => (16, hex),
             None => (10, cleaned.as_str()),
         },
@@ -51,7 +57,9 @@ fn to_integer(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<Value
             if signed {
                 Ok(Value::Integer(BigInt::from_signed_bytes_be(&ordered)))
             } else {
-                Ok(Value::Integer(BigInt::from(BigUint::from_bytes_be(&ordered))))
+                Ok(Value::Integer(BigInt::from(BigUint::from_bytes_be(
+                    &ordered,
+                ))))
             }
         }
     }
@@ -79,7 +87,10 @@ fn from_integer(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<Val
             let mut hex = if digits.is_empty() {
                 "0".to_string()
             } else {
-                digits.iter().map(|b| format!("{b:02x}")).collect::<String>()
+                digits
+                    .iter()
+                    .map(|b| format!("{b:02x}"))
+                    .collect::<String>()
             };
             if sign == Sign::Minus {
                 hex.insert(0, '-');
@@ -118,7 +129,10 @@ fn from_integer(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<Val
 }
 
 pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
-    use cybercipher_core::{Category::Encoding as E, ValueKind::{Integer as I, Text as T}};
+    use cybercipher_core::{
+        Category::Encoding as E,
+        ValueKind::{Integer as I, Text as T},
+    };
 
     let tags: &'static [&'static str] = &["encoding", "math", "ctf"];
     let prov = "CyberCipher native Rust on num-bigint";

@@ -11,7 +11,12 @@ fn reg() -> OperationRegistry {
     r
 }
 
-fn run(reg: &OperationRegistry, id: &str, input: Value, params: &[(&'static str, ParamValue)]) -> OpResult<Value> {
+fn run(
+    reg: &OperationRegistry,
+    id: &str,
+    input: Value,
+    params: &[(&'static str, ParamValue)],
+) -> OpResult<Value> {
     let op = reg.get(id).unwrap_or_else(|| panic!("missing op {id}"));
     let mut map = ParamMap::new();
     for (k, v) in params {
@@ -43,7 +48,13 @@ fn text_decimal_and_hex_roundtrip() {
     let back = run(&reg, "from-integer", out, &pv(&[("output", "decimal")])).unwrap();
     assert_eq!(back, Value::Text(dec.to_string()));
 
-    let out = run(&reg, "to-integer", Value::Text("0xdeadbeef".to_string()), &[]).unwrap();
+    let out = run(
+        &reg,
+        "to-integer",
+        Value::Text("0xdeadbeef".to_string()),
+        &[],
+    )
+    .unwrap();
     let hex = run(&reg, "from-integer", out, &pv(&[("output", "hex")])).unwrap();
     assert_eq!(hex, Value::Text("deadbeef".to_string()));
 }
@@ -57,13 +68,34 @@ fn bytes_roundtrip_endianness_and_sign() {
     assert_eq!(back, Value::Bytes(bytes));
 
     // Little endian: byte order flips.
-    let out = run(&reg, "to-integer", Value::Bytes(vec![1, 0]), &[("byteorder", ParamValue::Str("little".into()))]).unwrap();
+    let out = run(
+        &reg,
+        "to-integer",
+        Value::Bytes(vec![1, 0]),
+        &[("byteorder", ParamValue::Str("little".into()))],
+    )
+    .unwrap();
     assert!(matches!(&out, Value::Integer(i) if *i == 1.into()));
 
     // Signed negative: -1 as one signed byte = 0xff.
-    let out = run(&reg, "to-integer", Value::Bytes(vec![0xff]), &[("signed", ParamValue::Bool(true))]).unwrap();
+    let out = run(
+        &reg,
+        "to-integer",
+        Value::Bytes(vec![0xff]),
+        &[("signed", ParamValue::Bool(true))],
+    )
+    .unwrap();
     assert!(matches!(&out, Value::Integer(i) if i.to_string() == "-1"));
-    let back = run(&reg, "from-integer", out, &[("output", ParamValue::Str("bytes".into())), ("signed", ParamValue::Bool(true))]).unwrap();
+    let back = run(
+        &reg,
+        "from-integer",
+        out,
+        &[
+            ("output", ParamValue::Str("bytes".into())),
+            ("signed", ParamValue::Bool(true)),
+        ],
+    )
+    .unwrap();
     assert_eq!(back, Value::Bytes(vec![0xff]));
 }
 
@@ -71,7 +103,16 @@ fn bytes_roundtrip_endianness_and_sign() {
 fn min_length_padding() {
     let reg = reg();
     let out = run(&reg, "to-integer", Value::Text("255".to_string()), &[]).unwrap();
-    let back = run(&reg, "from-integer", out, &[("output", ParamValue::Str("bytes".into())), ("min_length", ParamValue::Int(4))]).unwrap();
+    let back = run(
+        &reg,
+        "from-integer",
+        out,
+        &[
+            ("output", ParamValue::Str("bytes".into())),
+            ("min_length", ParamValue::Int(4)),
+        ],
+    )
+    .unwrap();
     assert_eq!(back, Value::Bytes(vec![0, 0, 0, 0xff]));
 }
 
@@ -100,7 +141,8 @@ fn engine_transports_big_ints_without_precision_loss() {
         params: ParamMap::new(),
     };
     let mut from = mk("from-integer");
-    from.params.insert("output", ParamValue::Str("decimal".into()));
+    from.params
+        .insert("output", ParamValue::Str("decimal".into()));
     let recipe = cybercipher_engine::RecipeV1::new(vec![mk("to-integer"), from]);
     let input = "123456789012345678901234567890123456789012345678901234567890".to_string();
     let report = engine

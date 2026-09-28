@@ -137,8 +137,8 @@ pub async fn rsa_analyze(
     request: RsaAnalyzeRequest,
 ) -> Result<cybercipher_attack::AnalyzerReport, CmdError> {
     // Reject unknown/invalid parameter keys before running anything.
-    let params = cybercipher_attack::RsaParams::from_json(&request.params)
-        .map_err(|e| CmdError {
+    let params =
+        cybercipher_attack::RsaParams::from_json(&request.params).map_err(|e| CmdError {
             kind: "\"invalid_param\"".to_string(),
             message: e,
         })?;
