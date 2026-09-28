@@ -21,6 +21,10 @@ pub const BEAM_WIDTH: usize = 16;
 /// Candidates at or above this score are flagged as confident.
 pub const CONFIDENT_SCORE: f64 = 0.70;
 const MAX_CANDIDATES_REPORTED: usize = 12;
+/// XOR exploration is O(256·len): cap the input size to keep the beam cheap.
+const XOR_EXPLORE_LIMIT: usize = 32 * 1024;
+/// How many XOR-decoded nodes may enter the beam per expanded node.
+const XOR_BEAM_SLOTS: usize = 3;
 const DEADLINE: Duration = Duration::from_millis(3000);
 
 #[derive(Debug, Clone, Serialize)]
@@ -205,6 +209,35 @@ pub fn auto_decode(
                 .map(|c| c.to_vec())
                 .unwrap_or_default();
             let kind = node.kind.clone();
+            // Single-byte XOR exploration: 256 cheap candidates for small
+            // inputs — the classic CTF layer that syntax detectors cannot see.
+            // All are scored and reported, but only the best few enter the
+            // beam so they cannot crowd out the syntax-driven steps.
+            if bytes.len() <= XOR_EXPLORE_LIMIT {
+                let mut xor_nodes: Vec<Frontier> = Vec::new();
+                for key in 1u16..256 {
+                    if ctx.is_cancelled() || started.elapsed() >= DEADLINE {
+                        break;
+                    }
+                    let key = key as u8;
+                    let unxored: Vec<u8> = bytes.iter().map(|b| b ^ key).collect();
+                    let out = Value::from_bytes(unxored);
+                    let mut path = node.path.clone();
+                    path.push("xor-single-byte".to_string());
+                    let mut evidence = node.evidence.clone();
+                    evidence.push(format!("single-byte XOR key 0x{key:02x}"));
+                    let candidate = Frontier {
+                        kind: out.kind().name().to_string(),
+                        value: out,
+                        path,
+                        evidence,
+                    };
+                    collect_candidate(&candidate, &bytes, &mut seen, &mut results);
+                    xor_nodes.push(candidate);
+                }
+                xor_nodes.sort_by_cached_key(|n| std::cmp::Reverse(beam_rank(n)));
+                next.extend(xor_nodes.into_iter().take(XOR_BEAM_SLOTS));
+            }
             for step in STEPS {
                 if !(step.applies)(&bytes, &kind) {
                     continue;
@@ -324,6 +357,17 @@ fn collect_candidate(
     if !is_utf8 && printable < 0.2 {
         score *= 0.4;
     }
+    // Mass-search candidates (255 of 256 XOR keys are noise): penalize so a
+    // lucky printable decoding cannot outrank a positive syntax decode —
+    // strong evidence (flags, JSON, magic) still lifts them back to the top.
+    if node
+        .path
+        .last()
+        .map(|p| p == "xor-single-byte")
+        .unwrap_or(false)
+    {
+        score *= 0.85;
+    }
     score = score.min(0.99);
 
     let preview: String = String::from_utf8_lossy(&bytes[..bytes.len().min(2048)]).into_owned();
@@ -338,7 +382,10 @@ fn collect_candidate(
         is_utf8,
         flag_like,
     });
+    // Keep the best 64 (not the newest): the 255-candidate XOR sweep must
+    // not starve the syntax-driven decoders out of the report.
     if results.len() > 64 {
+        results.sort_by(|a, b| b.score.total_cmp(&a.score));
         results.truncate(64);
     }
 }
