@@ -14,6 +14,7 @@ import { RecipePanel } from "./components/RecipePanel";
 import { DataPanel } from "./components/DataPanel";
 import { RecipesPage } from "./components/RecipesPage";
 import { AutoPage } from "./components/AutoPage";
+import { RsaLabPage } from "./components/RsaLabPage";
 import { SettingsPage } from "./components/SettingsPage";
 import { useStore, debounce } from "./store";
 import { useState } from "react";
@@ -36,6 +37,8 @@ export default function App() {
       <TopBar />
       {page === "workbench" ? (
         <Workbench />
+      ) : page === "rsa-lab" ? (
+        <RsaLabPage />
       ) : page === "auto" ? (
         <AutoPage />
       ) : page === "recipes" ? (
