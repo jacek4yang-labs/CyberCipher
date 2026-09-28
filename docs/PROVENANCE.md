@@ -40,6 +40,9 @@ Principles:
 | SM3 | GB/T 32905-2016 | RustCrypto `sm3` | GB/T 32905 standard examples |
 | HMAC | RFC 2104 / FIPS 198-1 | RustCrypto `hmac` | RFC 4231 test vectors |
 
+| Number theory / RSA attacks | Original papers: Wiener (1990), Håstad (1988), Fermat method, Pollard rho (1975) / Brent (1980) / p−1 (1974); RFC 8017 for key relations | CyberCipher native Rust on `num-bigint` | Synthetic vulnerable instances + negative tests (generated deterministically); CTF regression vectors when distributable |
+| LCG / MT19937 recovery | Matsumoto & Nishimura (1998) for MT19937; CPython `random` module semantics for compat | CyberCipher native Rust | Reference generator outputs + CPython-compatible KATs |
+
 ## Upcoming (planned provenance targets)
 
 - AES: NIST FIPS 197; modes: NIST SP 800-38 family; vectors: NIST AESAVS.

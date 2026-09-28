@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "phase": "M4",
+  "main_sha": "f059741",
+  "active_branch": "feat/rsa-attack-lab",
+  "active_pr": null,
+  "current_task": "M4-RSA-03",
+  "last_completed": [
+    "M0-BOOTSTRAP",
+    "M1-WORKBENCH",
+    "M2-CRYPTO-BASELINE",
+    "M3-AUTO-DECODE",
+    "M4-CORE-01",
+    "M4-RSA-01"
+  ],
+  "blocked": [],
+  "agent_lanes": {
+    "rsa": "agent/rsa/m4-rsa (worktree cc-agent-rsa) \u2014 attacks hardening + tests",
+    "prng": "agent/prng/m4-prng (worktree cc-agent-prng) \u2014 LCG + MT19937",
+    "aead": "queued (concurrency limit 2) \u2014 relaunch when a slot frees",
+    "qa": "queued (concurrency limit 2) \u2014 relaunch when a slot frees"
+  },
+  "validation": {
+    "cargo_fmt": "pass",
+    "cargo_clippy": "pass",
+    "cargo_test": "pass",
+    "frontend": "pass"
+  },
+  "notes": "Coordinator owns: codec integer ops (done), CLI rsa (done), .agent files, integration. Agents own their worktrees only."
+}

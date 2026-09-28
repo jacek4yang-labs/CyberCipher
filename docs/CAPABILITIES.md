@@ -60,6 +60,18 @@ Known gaps vs the full Milestone 2 charter (follow-up PR): GCM/CCM/EAX AEAD
 modes, CTS/XTS, and a dedicated key-encoding live-length display in the UI
 parameter rows.
 
+## Milestone 4 — CTF cryptanalysis core (in progress)
+
+| Area | Item | Status |
+|---|---|---|
+| Core | BigInt plumbing: to-integer/from-integer ops (bytes/text ⇄ bigint, endianness, two's complement, min-length padding), exact transport (strings, never JS numbers) | done |
+| Attack | Number theory: gcd, xgcd, modinv, iroot, CRT, Miller-Rabin, Pollard rho (Brent), Pollard p−1, trial division | done |
+| Attack | RSA attack primitives + analyzer (known p/q/d/φ, dp leak, Wiener, Fermat, low-e, common modulus, Håstad, shared prime, rho, p−1) with per-attack positive/negative tests | partial (hardening + tests in flight) |
+| Attack | CLI `cybercipher rsa [--solve]` | done |
+| Attack | RSA Lab GUI | planned |
+| Attack | LCG / MT19937 recovery | partial (in flight) |
+| Attack | LLL / Coppersmith | planned |
+
 ## Later milestones (planned, not started)
 - **Milestone 3 — Auto Decode:** bounded explainable recursive decoding with
   candidate scoring and recipe reconstruction. *(planned)*
