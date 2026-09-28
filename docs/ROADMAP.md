@@ -20,9 +20,11 @@ with tests, docs, and honest capability status.
   (depth 6 / width 16 / 3s deadline), evidence output, recipe reconstruction,
   corpus tests (multi-layer, traps, random data), Auto Analyze page, `auto`
   CLI command. Extensions (XOR exploration, Unicode-escape wrappers) follow.
-- **Milestone 4 — RSA / PRNG attack labs.** Known p/q, dp/dq leaks, Wiener,
-  Fermat, low-e, common modulus, Håstad, shared prime, Pollard rho/p−1,
-  LCG recovery, MT19937 state cloning; lattice/LLL layer and Coppersmith next.
+- **Milestone 4 — RSA / PRNG attack labs.** ✅ RSA analyzer + 12 attacks
+  (CLI + dedicated GUI Lab with BigInt field UX), LCG recovery (known/unknown
+  m, prediction, reverse stepping), MT19937 state cloning with CPython
+  compatibility. Remaining: LLL/Coppersmith lattice lane (in flight),
+  Java Random / glibc / MSVC rand.
 - **Milestone 5 — broad symmetric coverage.** RustCrypto-backed Serpent,
   Twofish, Blowfish, Camellia, ARIA, CAST5/6, IDEA, RC2/5/6, Threefish, SEED,
   GOST family; MAC/KDF/AEAD set.
