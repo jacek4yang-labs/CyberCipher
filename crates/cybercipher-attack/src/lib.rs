@@ -11,7 +11,9 @@ pub mod math;
 pub mod prng;
 pub mod rsa;
 
-pub use lattice::{Lattice, LllConfig, LllResult};
+pub use lattice::{
+    small_roots, CoppersmithParams, Lattice, LllConfig, LllResult, Poly, SmallRootsResult,
+};
 pub use rsa::{
     analyze, AnalyzerReport, AttackCost, AttackOutcome, AttackStatus, PlaintextResult, RsaParams,
     RsaSet,

@@ -25,14 +25,21 @@
 // churn, so the oversized-Err lint is silenced per module.
 #![allow(clippy::result_large_err)]
 
+pub mod coppersmith;
 pub mod lll;
 pub mod matrix;
+pub mod poly;
 
+pub use coppersmith::{
+    choose_params, guaranteed_bound, small_roots, CoppersmithParams, SmallRootsResult,
+    MAX_COPPERSMITH_DIM,
+};
 pub use lll::{
     gram_schmidt_data, lll_reduce, LllConfig, LllDiagnostics, LllResult, DEFAULT_DELTA_DEN,
     DEFAULT_DELTA_NUM, MAX_LLL_STEPS,
 };
 pub use matrix::Lattice;
+pub use poly::Poly;
 
 use cybercipher_core::error::OperationError;
 use num_bigint::BigInt;
