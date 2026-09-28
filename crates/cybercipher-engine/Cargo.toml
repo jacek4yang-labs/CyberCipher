@@ -19,3 +19,9 @@ parking_lot.workspace = true
 [dev-dependencies]
 base64.workspace = true
 flate2.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "recipe"
+path = "benches/recipe.rs"
+harness = false

@@ -47,3 +47,9 @@ scrypt = { version = "0.11", default-features = false }
 
 [dev-dependencies]
 cybercipher-engine.workspace = true
+criterion.workspace = true
+
+[[bench]]
+name = "crypto"
+path = "benches/crypto.rs"
+harness = false
