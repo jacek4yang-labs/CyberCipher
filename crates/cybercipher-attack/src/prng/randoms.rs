@@ -144,7 +144,9 @@ impl GlibcRand {
         out
     }
 
-    pub fn next(&mut self) -> u32 {
+    /// Draw the next 31-bit value (named `rand` like the C API to avoid the
+    /// `Iterator::next` confusion clippy flags).
+    pub fn rand(&mut self) -> u32 {
         self.step()
     }
 
@@ -166,7 +168,8 @@ impl MsvcRand {
         MsvcRand { state: seed }
     }
 
-    pub fn next(&mut self) -> u32 {
+    /// Draw the next 15-bit value (named `rand` like the C API).
+    pub fn rand(&mut self) -> u32 {
         self.state = self.state.wrapping_mul(214013).wrapping_add(2531011);
         (self.state >> 16) & 0x7fff
     }
@@ -200,10 +203,10 @@ impl MsvcRand {
         }
         for low16 in 0u32..(1 << 16) {
             for high_bit in 0u32..2 {
-                let s1 = ((o1 as u32) << 16) | low16 | (high_bit << 31);
+                let s1 = (o1 << 16) | low16 | (high_bit << 31);
                 let s0 = MsvcRand::prev_state(s1);
                 let mut rng = MsvcRand { state: s0 };
-                if rng.next() == o1 && rng.next() == o2 && rng.next() == o3 {
+                if rng.rand() == o1 && rng.rand() == o2 && rng.rand() == o3 {
                     return Ok(MsvcRand { state: s0 });
                 }
             }
@@ -243,37 +246,37 @@ mod tests {
     fn glibc_rand_matches_reference() {
         // srand(1); rand() on glibc: 1804289383, 846930886, 1681692777.
         let mut rng = GlibcRand::new(1);
-        assert_eq!(rng.next(), 1804289383);
-        assert_eq!(rng.next(), 846930886);
-        assert_eq!(rng.next(), 1681692777);
+        assert_eq!(rng.rand(), 1804289383);
+        assert_eq!(rng.rand(), 846930886);
+        assert_eq!(rng.rand(), 1681692777);
         // srand(0) behaves like srand(1).
         let mut rng = GlibcRand::new(0);
-        assert_eq!(rng.next(), 1804289383);
+        assert_eq!(rng.rand(), 1804289383);
     }
 
     #[test]
     fn msvc_rand_known_values() {
         // rand() sequence with srand(0) on MSVC: 38, 7719, 21238, 2437, ...
         let mut rng = MsvcRand::new(0);
-        assert_eq!(rng.next(), 38);
-        assert_eq!(rng.next(), 7719);
-        assert_eq!(rng.next(), 21238);
-        assert_eq!(rng.next(), 2437);
+        assert_eq!(rng.rand(), 38);
+        assert_eq!(rng.rand(), 7719);
+        assert_eq!(rng.rand(), 21238);
+        assert_eq!(rng.rand(), 2437);
     }
 
     #[test]
     fn msvc_state_recovery() {
         let mut rng = MsvcRand::new(0xCAFE);
-        let o1 = rng.next();
-        let o2 = rng.next();
-        let o3 = rng.next();
+        let o1 = rng.rand();
+        let o2 = rng.rand();
+        let o3 = rng.rand();
         // The recovered generator is positioned before the first observed output.
         let mut recovered = MsvcRand::recover_from_outputs(o1, o2, o3).unwrap();
-        assert_eq!(recovered.next(), o1);
-        assert_eq!(recovered.next(), o2);
-        assert_eq!(recovered.next(), o3);
-        assert_eq!(recovered.next(), rng.next());
-        assert_eq!(recovered.next(), rng.next());
+        assert_eq!(recovered.rand(), o1);
+        assert_eq!(recovered.rand(), o2);
+        assert_eq!(recovered.rand(), o3);
+        assert_eq!(recovered.rand(), rng.rand());
+        assert_eq!(recovered.rand(), rng.rand());
     }
 
     #[test]
