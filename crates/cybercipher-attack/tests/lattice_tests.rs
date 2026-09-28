@@ -35,17 +35,17 @@ fn err_kind(e: &cybercipher_core::error::OperationError) -> ErrorKind {
 /// Lovász condition holds with the configured δ.
 fn assert_reduced(lattice: &Lattice, config: &LllConfig) {
     let (lam, d) = gram_schmidt_data(lattice).unwrap();
-    let n = lattice.nrows();
     let two = bi(2);
-    for i in 0..n {
-        for j in 0..i {
+    // λ[i] has exactly i entries, so enumerate covers every (i, j<i) pair.
+    for (i, lam_i) in lam.iter().enumerate() {
+        for (j, lam_ij) in lam_i.iter().enumerate() {
             assert!(
-                (&lam[i][j] * &two).abs() <= d[j],
+                (lam_ij * &two).abs() <= d[j],
                 "size reduction violated at ({i},{j})"
             );
         }
     }
-    for k in 1..n {
+    for k in 1..lattice.nrows() {
         let dk2 = if k >= 2 { d[k - 2].clone() } else { bi(1) };
         let c = &lam[k][k - 1];
         let lhs = BigInt::from(config.delta_den) * (&dk2 * &d[k] + c * c);
