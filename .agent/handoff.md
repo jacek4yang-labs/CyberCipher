@@ -1,18 +1,16 @@
 # Handoff
 
 ## In flight
-- Agent C: AEAD/KDF -> branch agent/crypto/m5-aead (worktree ../cc-agent-crypto)
-- Agent E: RSA Lab GUI -> branch agent/gui/m4-attack-lab (worktree ../cc-agent-rsa-gui)
-- Coordinator branch feat/prng-cli: CLI prng commands (this PR)
+- Agent C: AEAD/KDF -> agent/crypto/m5-aead (worktree ../cc-agent-crypto)
+- Agent A2: LLL/Coppersmith -> agent/lattice/m4-coppersmith (worktree ../cc-agent-lattice)
 
-## Merged
-- #1 bootstrap, #2 crypto baseline, #3 Auto Decode, #4 RSA attack engine (12 attacks + analyzer + BigInt ops), #5 PRNG recovery (LCG + MT19937)
+## Merged (PRs #1-#7)
+bootstrap, crypto baseline+CLI, Auto Decode, RSA attack engine, PRNG recovery, prng CLI, RSA Lab GUI.
 
 ## Next concrete actions
-1. Merge feat/prng-cli when CI green.
-2. Integrate Agent C's AEAD branch -> PR; then relaunch Agent D (QA) on the free slot.
-3. Integrate Agent E's GUI branch -> PR.
-4. Next lanes: LLL/Coppersmith (worktree from post-#5 main), Java Random/glibc/MSVC rand, then M7 Auto Decode expansion.
+1. Integrate Agent C's AEAD branch -> PR #8; then relaunch Agent D (QA, worktree ../cc-agent-qa exists).
+2. Integrate lattice branch -> PR #9.
+3. Next lanes after those: XOR lab (M6), Auto Decode expansion (M7), Java Random/glibc/MSVC rand.
 
 ## Blocked
-- Subagent concurrency limit = 2 (queue lanes accordingly).
+- Subagent concurrency limit = 2.

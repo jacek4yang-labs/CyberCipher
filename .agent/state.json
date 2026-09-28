@@ -1,10 +1,10 @@
 {
   "schema": 1,
   "phase": "M4",
-  "main_sha": "7caca73",
-  "active_branch": "feat/prng-cli",
+  "main_sha": "5ead721",
+  "active_branch": "docs/m4-progress",
   "active_pr": null,
-  "current_task": "M4-RSA-04",
+  "current_task": "M4-LAT-01/02",
   "last_completed": [
     "M0-BOOTSTRAP",
     "M1-WORKBENCH",
@@ -14,14 +14,15 @@
     "M4-RSA-01",
     "M4-RSA-02",
     "M4-RSA-03",
+    "M4-RSA-04",
     "M4-PRNG-01",
     "M4-PRNG-02"
   ],
   "blocked": [],
   "agent_lanes": {
     "aead": "agent/crypto/m5-aead (worktree cc-agent-crypto) \u2014 running",
-    "gui": "agent/gui/m4-attack-lab (worktree cc-agent-rsa-gui) \u2014 running",
-    "qa": "queued \u2014 worktree cc-agent-qa exists"
+    "lattice": "agent/lattice/m4-coppersmith (worktree cc-agent-lattice) \u2014 running",
+    "qa": "queued \u2014 worktree cc-agent-qa exists (based on older main; cherry-pick on integration)"
   },
   "validation": {
     "cargo_fmt": "pass",
@@ -29,5 +30,5 @@
     "cargo_test": "pass",
     "frontend": "pass"
   },
-  "notes": "PRs #4 (RSA engine) and #5 (PRNG recovery) merged. CLI prng commands on feat/prng-cli (this PR). Subagent concurrency limit = 2."
+  "notes": "PRs #1-#7 merged. main = 5ead721 (RSA Lab GUI). Remaining M4: lattice lane in flight. M5 AEAD lane in flight."
 }

@@ -66,11 +66,13 @@ parameter rows.
 |---|---|---|
 | Core | BigInt plumbing: to-integer/from-integer ops (bytes/text ⇄ bigint, endianness, two's complement, min-length padding), exact transport (strings, never JS numbers) | done |
 | Attack | Number theory: gcd, xgcd, modinv, iroot, CRT, Miller-Rabin, Pollard rho (Brent), Pollard p−1, trial division | done |
-| Attack | RSA attack primitives + analyzer (known p/q/d/φ, dp leak, Wiener, Fermat, low-e, common modulus, Håstad, shared prime, rho, p−1) with per-attack positive/negative tests | partial (hardening + tests in flight) |
+| Attack | RSA attack primitives + analyzer — 12 attacks (known p/q/d/φ, dp leak, Wiener, Fermat, low-e, common modulus, Håstad, shared prime, rho, p−1), verified successes, 40 tests | done |
 | Attack | CLI `cybercipher rsa [--solve]` | done |
-| Attack | RSA Lab GUI | planned |
-| Attack | LCG / MT19937 recovery | partial (in flight) |
-| Attack | LLL / Coppersmith | planned |
+| Attack | RSA Lab GUI — dedicated page, BigInt field validation (bits/bytes ✓), analyze & solve, recovered-key round-trip | done |
+| Attack | LCG recovery (known/unknown m/a/b, prediction, reverse step, seed recovery) — 34 tests incl. 3-source-verified MT vectors | done |
+| Attack | MT19937 (temper/untemper, 624-output state cloning, prediction, CPython getrandbits compatibility) | done |
+| Attack | CLI `cybercipher prng {lcg-recover, lcg-predict, mt-clone, mt-bits}` | done |
+| Attack | LLL lattice core + Coppersmith univariate small roots | partial (in flight) |
 
 ## Later milestones (planned, not started)
 - **Milestone 3 — Auto Decode:** bounded explainable recursive decoding with
