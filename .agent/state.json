@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "phase": "M4",
+  "main_sha": "f059741",
+  "active_branch": "feat/rsa-attack-lab",
+  "active_pr": null,
+  "current_task": "M4-RSA-02",
+  "last_completed": [
+    "M0-BOOTSTRAP",
+    "M1-WORKBENCH",
+    "M2-CRYPTO-BASELINE",
+    "M3-AUTO-DECODE"
+  ],
+  "blocked": [],
+  "validation": {
+    "cargo_fmt": "pass",
+    "cargo_clippy": "pass",
+    "cargo_test": "pass",
+    "frontend": "pass"
+  },
+  "notes": "PRs #1-#3 merged (bootstrap, crypto baseline + CLI, Auto Decode). 55 registry operations. CI checks Rust/Frontend/TauriLinuxSmoke are required on main."
+}

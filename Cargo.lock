@@ -614,6 +614,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "cybercipher-attack"
+version = "0.1.0"
+dependencies = [
+ "cybercipher-core",
+ "num-bigint",
+ "num-traits",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "cybercipher-cli"
 version = "0.1.0"
 dependencies = [
@@ -2172,6 +2183,7 @@ checksum = "c89e69e7e0f03bea5ef08013795c25018e101932225a656383bd384495ecc367"
 dependencies = [
  "num-integer",
  "num-traits",
+ "serde",
 ]
 
 [[package]]
