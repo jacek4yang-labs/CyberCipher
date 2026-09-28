@@ -72,7 +72,13 @@ parameter rows.
 | Attack | LCG recovery (known/unknown m/a/b, prediction, reverse step, seed recovery) — 34 tests incl. 3-source-verified MT vectors | done |
 | Attack | MT19937 (temper/untemper, 624-output state cloning, prediction, CPython getrandbits compatibility) | done |
 | Attack | CLI `cybercipher prng {lcg-recover, lcg-predict, mt-clone, mt-bits}` | done |
-| Attack | LLL lattice core + Coppersmith univariate small roots | partial (in flight) |
+| Attack | LLL lattice core (exact rational-free Gram-Schmidt, unimodular transform, dimension caps) | done |
+| Attack | Coppersmith univariate small roots (Howgrave-Graham, β-divisor regime, certified bounds, verified candidates) | done |
+| Attack | RSA analyzer Coppersmith escalation — stereotyped messages via known prefix (`hint`) | done |
+| Crypto | AEAD: AES-GCM, AES-CCM, ChaCha20-Poly1305, XChaCha20-Poly1305, AES-GCM-SIV (combined ct‖tag, AAD, verified tags) | done |
+| Crypto | KDFs: PBKDF2, HKDF, scrypt (memory-capped), EVP_BytesToKey (OpenSSL-compatible) | done |
+| Analysis | Auto Decode single-byte XOR exploration (bounded sweep, honest scoring penalty, beam-protected) | done |
+| Perf | Criterion benches: codec/crypto/recipe hot paths at 64 KiB incl. cold-vs-warm cache comparison | done |
 
 ## Later milestones (planned, not started)
 - **Milestone 3 — Auto Decode:** bounded explainable recursive decoding with
