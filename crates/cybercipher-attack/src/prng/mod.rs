@@ -18,6 +18,8 @@
 
 pub mod lcg;
 pub mod mt19937;
+pub mod randoms;
+pub use randoms::{java_recover_state, GlibcRand, JavaRandom, MsvcRand};
 
 pub use lcg::{
     recover_params_known_m, recover_params_unknown, LcgParams, LcgRecovery, MAX_OUTPUTS,
