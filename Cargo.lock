@@ -634,6 +634,7 @@ dependencies = [
  "cybercipher-core",
  "cybercipher-crypto",
  "cybercipher-engine",
+ "num-bigint",
  "serde_json",
 ]
 
