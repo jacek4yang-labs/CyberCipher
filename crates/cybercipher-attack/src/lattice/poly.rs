@@ -255,7 +255,7 @@ impl Poly {
                 "modular inverse of leading coefficient not found despite gcd = 1",
             )
         })?;
-        Ok(red.scalar_mul(&inv).reduce_mod(n)?)
+        red.scalar_mul(&inv).reduce_mod(n)
     }
 
     /// Content: gcd of all coefficients (0 for the zero polynomial).

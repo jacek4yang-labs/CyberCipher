@@ -31,8 +31,8 @@ pub mod matrix;
 pub mod poly;
 
 pub use coppersmith::{
-    choose_params, guaranteed_bound, small_roots, CoppersmithParams, SmallRootsResult,
-    MAX_COPPERSMITH_DIM,
+    choose_params, guaranteed_bound, small_roots, CoppersmithBeta, CoppersmithParams,
+    SmallRootsResult, MAX_COPPERSMITH_DIM,
 };
 pub use lll::{
     gram_schmidt_data, lll_reduce, LllConfig, LllDiagnostics, LllResult, DEFAULT_DELTA_DEN,
