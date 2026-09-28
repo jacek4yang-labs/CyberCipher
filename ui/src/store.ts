@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import {
   api,
+  type AutoCandidate,
   type BakeResponse,
   type ExecutionReport,
   type InputStats,
@@ -12,7 +13,7 @@ import {
   type ValuePayload,
 } from "./api";
 
-export type Page = "workbench" | "recipes" | "settings";
+export type Page = "workbench" | "auto" | "recipes" | "settings";
 
 let runCounter = 0;
 let nodeCounter = 0;
@@ -43,6 +44,8 @@ export interface Store {
   output: ValuePayload | null;
   report: ExecutionReport | null;
   inputStats: InputStats | null;
+  autoCandidates: AutoCandidate[];
+  autoRunning: boolean;
   autoBake: boolean;
   baking: boolean;
   lastError: string | null;
@@ -71,6 +74,8 @@ export interface Store {
   importRecipeJson: (json: string) => boolean;
   outputToInput: () => void;
   swapInputOutput: () => void;
+  runAuto: () => Promise<void>;
+  applyAutoCandidate: (index: number) => void;
 }
 
 export const useStore = create<Store>((set, get) => ({
@@ -84,6 +89,8 @@ export const useStore = create<Store>((set, get) => ({
   output: null,
   report: null,
   inputStats: null,
+  autoCandidates: [],
+  autoRunning: false,
   autoBake: true,
   baking: false,
   lastError: null,
@@ -250,6 +257,41 @@ export const useStore = create<Store>((set, get) => ({
     } catch {
       return false;
     }
+  },
+
+  runAuto: async () => {
+    const { inputText, inputEncoding } = get();
+    set({ autoRunning: true });
+    try {
+      const candidates = await api.autoAnalyze({
+        input_text: inputText,
+        input_encoding: inputEncoding,
+      });
+      set({ autoCandidates: candidates });
+    } catch (e) {
+      set({ lastError: String(e) });
+    } finally {
+      set({ autoRunning: false });
+    }
+  },
+
+  applyAutoCandidate: (index) => {
+    const { autoCandidates, opsById } = get();
+    const candidate = autoCandidates[index];
+    if (!candidate) return;
+    nodeCounter = 0;
+    const nodes = candidate.path.map((opId) => {
+      nodeCounter += 1;
+      const op = opsById[opId];
+      return {
+        id: `n${nodeCounter}`,
+        op: opId,
+        enabled: true,
+        params: initParams(op),
+      };
+    });
+    set({ recipe: nodes, page: "workbench" });
+    void get().bake(false);
   },
 
   outputToInput: () => {

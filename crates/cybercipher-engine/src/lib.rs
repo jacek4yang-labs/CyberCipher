@@ -8,10 +8,12 @@
 //! The public recipe format is stable JSON (version 1). Rust internals are
 //! never serialized into it.
 
+mod auto;
 mod executor;
 mod payload;
 mod recipe;
 
+pub use auto::{auto_decode, AutoCandidate};
 pub use executor::{ExecutionReport, RunMode, StageStatus};
 pub use payload::{ValuePayload, ValueSummary};
 pub use recipe::{RecipeEdge, RecipeNodeV1, RecipeV1};

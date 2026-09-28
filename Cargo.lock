@@ -631,6 +631,7 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "cybercipher-core",
+ "flate2",
  "num-traits",
  "percent-encoding",
  "serde",
@@ -683,6 +684,7 @@ dependencies = [
  "cybercipher-codec",
  "cybercipher-core",
  "cybercipher-crypto",
+ "flate2",
  "parking_lot",
  "serde",
  "serde_json",

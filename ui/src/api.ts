@@ -150,6 +150,18 @@ export interface RecipeMeta {
   modified: string;
 }
 
+export interface AutoCandidate {
+  score: number;
+  confident: boolean;
+  path: string[];
+  evidence: string[];
+  kind: string;
+  size: number;
+  preview: string;
+  is_utf8: boolean;
+  flag_like: string | null;
+}
+
 export interface CmdError {
   kind: string;
   message: string;
@@ -170,6 +182,9 @@ export const api = {
 
   inputStats: (input: { text: string; encoding: string }) =>
     invoke<InputStats>("input_stats", { input }),
+
+  autoAnalyze: (request: { input_text: string; input_encoding: string }) =>
+    invoke<AutoCandidate[]>("auto_analyze", { request }),
 
   saveRecipe: (request: { name: string; recipe: RecipeV1 }) =>
     invoke<RecipeMeta>("save_recipe", { request }),

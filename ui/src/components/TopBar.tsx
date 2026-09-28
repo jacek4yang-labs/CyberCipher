@@ -24,6 +24,7 @@ export function TopBar() {
         {(
           [
             ["workbench", "Workbench"],
+            ["auto", "Auto Analyze"],
             ["recipes", "Recipes"],
             ["settings", "Settings"],
           ] as [Page, string][]

@@ -26,6 +26,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             commands::list_operations,
             commands::bake,
+            commands::auto_analyze,
             commands::cancel_run,
             commands::input_stats,
             commands::save_recipe,

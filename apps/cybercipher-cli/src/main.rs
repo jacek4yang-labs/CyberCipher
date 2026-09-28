@@ -33,6 +33,11 @@ enum Command {
         /// Input file path, `-` for stdin, or a literal string.
         input: String,
     },
+    /// Bounded explainable automatic decoding.
+    Auto {
+        /// Input file path, `-` for stdin, or a literal string.
+        input: String,
+    },
     /// Execute a recipe file (JSON, format v1) on input.
     Recipe {
         /// Recipe JSON file path.
@@ -80,6 +85,31 @@ fn main() {
                     }
                     std::process::exit(1);
                 }
+            }
+        }
+        Command::Auto { input } => {
+            let data = read_input(&input);
+            let candidates = cybercipher_engine::auto_decode(
+                &registry,
+                &data,
+                &cybercipher_core::ExecutionContext::new(),
+            );
+            if candidates.is_empty() {
+                println!("no plausible decoding found");
+            }
+            for (i, c) in candidates.iter().enumerate() {
+                println!(
+                    "#{} score {:.2}{} path: {}",
+                    i + 1,
+                    c.score,
+                    if c.confident { " (confident)" } else { "" },
+                    c.path.join(" -> ")
+                );
+                for e in &c.evidence {
+                    println!("    + {e}");
+                }
+                let head: String = c.preview.chars().take(120).collect();
+                println!("    preview: {head:?}");
             }
         }
         Command::Recipe { recipe, input } => {
