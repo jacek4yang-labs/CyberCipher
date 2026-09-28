@@ -1,0 +1,16 @@
+[package]
+name = "cybercipher-engine"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Recipe model and incremental execution engine for CyberCipher"
+
+[dependencies]
+cybercipher-core.workspace = true
+cybercipher-codec.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+xxhash-rust.workspace = true
+base64.workspace = true
+parking_lot.workspace = true
