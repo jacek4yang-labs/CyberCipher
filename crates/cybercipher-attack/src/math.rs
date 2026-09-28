@@ -125,7 +125,7 @@ pub fn isqrt_exact(n: &BigUint) -> Option<BigUint> {
     let r = iroot(n, 2);
     if &r * &r == *n {
         Some(r)
-        } else {
+    } else {
         None
     }
 }
@@ -156,7 +156,7 @@ pub fn crt(remainders: &[BigUint], moduli: &[BigUint]) -> Option<(BigUint, BigUi
 
 /// Small primes for trial division (first 2048 primes).
 pub fn small_primes() -> &'static [u64] {
-    &SMALL_PRIMES
+    SMALL_PRIMES
 }
 
 const SMALL_PRIMES: &[u64] = &[
@@ -348,7 +348,7 @@ pub fn pollard_rho_bounded(
 
 fn deadline_hit(deadline: Option<std::time::Instant>, steps: u64) -> bool {
     match deadline {
-        Some(d) => steps % 1024 == 0 && std::time::Instant::now() >= d,
+        Some(d) => steps.is_multiple_of(1024) && std::time::Instant::now() >= d,
         None => false,
     }
 }

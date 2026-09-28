@@ -240,8 +240,7 @@ pub fn attack_known_pq(params: &mut RsaParams) -> AttackOutcome {
             NAME,
             AttackStatus::Failed,
             AttackCost::Instant,
-            "decryption with the key derived from p, q failed round-trip verification"
-                .to_string(),
+            "decryption with the key derived from p, q failed round-trip verification".to_string(),
         )
         .with_details(
             "p·q = n but (c^d)^e ≠ c — n may have more than two prime factors".to_string(),
@@ -261,8 +260,7 @@ pub fn attack_known_pq(params: &mut RsaParams) -> AttackOutcome {
 pub fn attack_known_d(params: &mut RsaParams) -> AttackOutcome {
     const ID: &str = "known-d";
     const NAME: &str = "Known private exponent d";
-    let (Some(n), Some(e), Some(d)) = (params.n.clone(), params.e.clone(), params.d.clone())
-    else {
+    let (Some(n), Some(e), Some(d)) = (params.n.clone(), params.e.clone(), params.d.clone()) else {
         return AttackOutcome::not_applicable(ID, NAME, "n, e and d");
     };
     if !modulus_usable(&n) || e.is_zero() || d.is_zero() {
@@ -311,9 +309,8 @@ pub fn attack_known_d(params: &mut RsaParams) -> AttackOutcome {
             outcome.status = AttackStatus::Applicable;
             outcome.message = "d inconsistent with c, but (e, d) factored n".to_string();
         } else {
-            outcome.details = Some(
-                "n factored from (e, d) via non-trivial square roots of 1 mod n".to_string(),
-            );
+            outcome.details =
+                Some("n factored from (e, d) via non-trivial square roots of 1 mod n".to_string());
         }
         return outcome;
     }
@@ -347,7 +344,7 @@ fn factor_from_ed(
     }
     let mut state = 0x5EEDu64;
     for _ in 0..attempts {
-        let a = math::weak_random_odd(n.bits().min(32).max(8), &mut state) % n;
+        let a = math::weak_random_odd(n.bits().clamp(8, 32), &mut state) % n;
         if a <= BigUint::one() || math::gcd(&a, n) != one {
             continue;
         }
@@ -393,10 +390,7 @@ pub fn attack_known_phi(params: &mut RsaParams) -> AttackOutcome {
             AttackCost::Instant,
             "e is not invertible modulo φ(n) — parameters are inconsistent".to_string(),
         )
-        .with_details(format!(
-            "gcd(e, φ(n)) = {} ≠ 1",
-            math::gcd(&e, &phi)
-        ));
+        .with_details(format!("gcd(e, φ(n)) = {} ≠ 1", math::gcd(&e, &phi)));
     };
     params.d = Some(d);
     if let Some(m) = params.decrypt() {
@@ -463,7 +457,7 @@ pub fn attack_dp_leak(params: &mut RsaParams, deadline: Instant) -> AttackOutcom
         // The recovered factor must be consistent with the leak:
         // d mod (p−1) must reproduce dp exactly.
         match (&params.d, params.e.as_ref()) {
-            (Some(d), Some(_)) => &(d % &(p - BigUint::one())) == &dp,
+            (Some(d), Some(_)) => d % &(p - BigUint::one()) == dp,
             _ => true,
         }
     };
@@ -486,9 +480,15 @@ pub fn attack_dp_leak(params: &mut RsaParams, deadline: Instant) -> AttackOutcom
             params.q = Some(&n / &g);
             params.enrich_from_factors();
             if accepted(params, &g) {
-                if let Some(mut o) =
-                    finish_factorization(params, g.clone(), &n / &g, ID, NAME, AttackCost::Fast, "dp leak")
-                {
+                if let Some(mut o) = finish_factorization(
+                    params,
+                    g.clone(),
+                    &n / &g,
+                    ID,
+                    NAME,
+                    AttackCost::Fast,
+                    "dp leak",
+                ) {
                     o.details = Some(format!("p = gcd({a}^(e·dp−1) − 1, n)"));
                     return o;
                 }
@@ -521,7 +521,7 @@ pub fn attack_dp_leak(params: &mut RsaParams, deadline: Instant) -> AttackOutcom
     let mut checked = 0u64;
     for k in 1..e_u64 {
         checked += 1;
-        if checked % 1024 == 0 && Instant::now() >= deadline {
+        if checked.is_multiple_of(1024) && Instant::now() >= deadline {
             return AttackOutcome::new(
                 ID,
                 NAME,
@@ -629,10 +629,11 @@ pub fn attack_wiener(params: &mut RsaParams) -> AttackOutcome {
         let p = (&b + &root) >> 1usize;
         let q = (&b - &root) >> 1usize;
         if p > one && q > one && &p * &q == n {
+            let (lo, hi) = if p <= q { (p, q) } else { (q, p) };
             if let Some(o) = finish_factorization(
                 params,
-                p.min(q.clone()),
-                q,
+                lo,
+                hi,
                 ID,
                 NAME,
                 AttackCost::Instant,
@@ -664,9 +665,15 @@ pub fn attack_fermat(params: &mut RsaParams, deadline: Instant) -> AttackOutcome
     }
     if (&n & BigUint::one()).is_zero() {
         // Even n factors trivially; Fermat's iteration would wander.
-        if let Some(o) =
-            finish_factorization(params, BigUint::from(2u32), &n >> 1usize, ID, NAME, AttackCost::Instant, "trial split (n even)")
-        {
+        if let Some(o) = finish_factorization(
+            params,
+            BigUint::from(2u32),
+            &n >> 1usize,
+            ID,
+            NAME,
+            AttackCost::Instant,
+            "trial split (n even)",
+        ) {
             return o;
         }
         return AttackOutcome::new(
@@ -678,6 +685,30 @@ pub fn attack_fermat(params: &mut RsaParams, deadline: Instant) -> AttackOutcome
         );
     }
     let one = BigUint::one();
+    // Perfect square: n = r² with r > 1 is a valid (p = q = r) factorization
+    // that the a ≥ √n + 1 iteration would step over.
+    if let Some(r) = math::isqrt_exact(&n) {
+        if r > one {
+            if let Some(o) = finish_factorization(
+                params,
+                r.clone(),
+                r,
+                ID,
+                NAME,
+                AttackCost::Instant,
+                "perfect square (p = q)",
+            ) {
+                return o;
+            }
+            return AttackOutcome::new(
+                ID,
+                NAME,
+                AttackStatus::Failed,
+                AttackCost::Instant,
+                "n is a perfect square but the split did not verify".to_string(),
+            );
+        }
+    }
     let mut a = math::iroot(&n, 2) + &one;
     let max_iter = 1u64 << 20;
     for i in 0..max_iter {
@@ -732,8 +763,7 @@ pub fn attack_fermat(params: &mut RsaParams, deadline: Instant) -> AttackOutcome
 pub fn attack_low_e(params: &mut RsaParams, deadline: Instant) -> AttackOutcome {
     const ID: &str = "low-e";
     const NAME: &str = "Low public exponent (small message)";
-    let (Some(n), Some(e), Some(c)) = (params.n.clone(), params.e.clone(), params.c.clone())
-    else {
+    let (Some(n), Some(e), Some(c)) = (params.n.clone(), params.e.clone(), params.c.clone()) else {
         return AttackOutcome::not_applicable(ID, NAME, "n, e and c");
     };
     if !modulus_usable(&n) {
@@ -825,10 +855,7 @@ pub fn attack_common_modulus(params: &mut RsaParams) -> AttackOutcome {
         return AttackOutcome::not_applicable(ID, NAME, "distinct exponents e1 ≠ e2");
     }
 
-    let (g, s1, s2) = math::extended_gcd(
-        &BigInt::from(e1.clone()),
-        &BigInt::from(e2.clone()),
-    );
+    let (g, s1, s2) = math::extended_gcd(&BigInt::from(e1.clone()), &BigInt::from(e2.clone()));
     if g.abs() != BigInt::one() {
         return AttackOutcome::new(
             ID,
@@ -878,7 +905,7 @@ pub fn attack_common_modulus(params: &mut RsaParams) -> AttackOutcome {
 
     // Round-trip verification: m^e1 must reproduce c1 (holds exactly when
     // s1·e1 + s2·e2 = 1 and the ciphertexts encrypt the same m).
-    if &m.modpow(&e1, &n) != &c1 {
+    if m.modpow(&e1, &n) != c1 {
         return AttackOutcome::new(
             ID,
             NAME,
@@ -886,9 +913,7 @@ pub fn attack_common_modulus(params: &mut RsaParams) -> AttackOutcome {
             AttackCost::Instant,
             "recovered message failed verification (m^e1 ≠ c1)".to_string(),
         )
-        .with_details(
-            "the two ciphertexts may encrypt different messages".to_string(),
-        );
+        .with_details("the two ciphertexts may encrypt different messages".to_string());
     }
     success_plaintext(
         ID,
@@ -929,13 +954,14 @@ pub fn attack_hastad(params: &mut RsaParams) -> AttackOutcome {
     };
     let mut remainders: Vec<BigUint> = Vec::new();
     let mut moduli: Vec<BigUint> = Vec::new();
-    let push = |r: &BigUint, m: &BigUint, remainders: &mut Vec<BigUint>, moduli: &mut Vec<BigUint>| {
-        if moduli.len() >= 64 || moduli.contains(m) {
-            return; // bound the CRT product; skip duplicate moduli
-        }
-        remainders.push(r.clone());
-        moduli.push(m.clone());
-    };
+    let push =
+        |r: &BigUint, m: &BigUint, remainders: &mut Vec<BigUint>, moduli: &mut Vec<BigUint>| {
+            if moduli.len() >= 64 || moduli.contains(m) {
+                return; // bound the CRT product; skip duplicate moduli
+            }
+            remainders.push(r.clone());
+            moduli.push(m.clone());
+        };
     if let (Some(n), Some(c)) = (&params.n, &params.c) {
         push(c, n, &mut remainders, &mut moduli);
     }
@@ -1085,14 +1111,16 @@ pub fn attack_pollard_rho(params: &mut RsaParams, deadline: Instant) -> AttackOu
         );
     };
     let q = &n / &f;
+    let fbits = f.bits();
+    let (lo, hi) = if f <= q { (f, q) } else { (q, f) };
     finish_factorization(
         params,
-        f.clone().min(q.clone()),
-        q,
+        lo,
+        hi,
         ID,
         NAME,
         AttackCost::Slow,
-        &format!("Pollard rho (factor has {} bits)", f.bits()),
+        &format!("Pollard rho (factor has {fbits} bits)"),
     )
     .unwrap_or_else(|| {
         AttackOutcome::new(
@@ -1137,10 +1165,11 @@ pub fn attack_pollard_pm1(params: &mut RsaParams, deadline: Instant) -> AttackOu
         );
     };
     let q = &n / &f;
+    let (lo, hi) = if f <= q { (f, q) } else { (q, f) };
     finish_factorization(
         params,
-        f.clone().min(q.clone()),
-        q,
+        lo,
+        hi,
         ID,
         NAME,
         AttackCost::Slow,
@@ -1188,7 +1217,8 @@ const PIPELINE: &[(&str, AttackFn)] = &[
 ];
 
 /// Factorization escalations that are redundant once p and q are known.
-const FACTORIZATION_ATTACKS: &[&str] = &["dp-leak", "wiener", "fermat", "pollard-rho", "pollard-pm1"];
+const FACTORIZATION_ATTACKS: &[&str] =
+    &["dp-leak", "wiener", "fermat", "pollard-rho", "pollard-pm1"];
 
 /// Verified plaintext from the current parameter set: decrypt with d and
 /// confirm re-encryption reproduces c (when e, n, c are all known).
@@ -1211,7 +1241,7 @@ pub fn analyze(params: &RsaParams, solve: bool, deadline_ms: u64) -> AnalyzerRep
 
     for (id, attack) in PIPELINE {
         // Skip factorization escalations once the modulus is already factored.
-        if FACTORIZATION_ATTACKS.contains(&id) && work.p.is_some() && work.q.is_some() {
+        if FACTORIZATION_ATTACKS.contains(id) && work.p.is_some() && work.q.is_some() {
             continue;
         }
         let outcome = attack(&mut work, deadline);

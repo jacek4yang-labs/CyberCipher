@@ -1,6 +1,7 @@
 //! RSA parameter model and parsing.
 
 use num_bigint::BigUint;
+use num_traits::Zero;
 use serde::{Deserialize, Serialize};
 
 /// Known RSA parameters. Any subset may be provided; attacks declare what
@@ -46,8 +47,7 @@ impl RsaParams {
         let mut params = RsaParams::default();
         for (key, val) in obj {
             let key = key.to_lowercase();
-            let parsed = parse_big_value(val)
-                .map_err(|e| format!("parameter `{key}`: {e}"))?;
+            let parsed = parse_big_value(val).map_err(|e| format!("parameter `{key}`: {e}"))?;
             match key.as_str() {
                 "n" => params.n = parsed,
                 "e" => params.e = parsed,
@@ -59,9 +59,7 @@ impl RsaParams {
                 "dp" | "dmp" => params.dp = parsed,
                 "dq" | "dmq" => params.dq = parsed,
                 "qinv" | "iqmp" => params.qinv = parsed,
-                "hint" | "plaintext_hint" => {
-                    params.hint = val.as_str().map(|s| s.to_string())
-                }
+                "hint" | "plaintext_hint" => params.hint = val.as_str().map(|s| s.to_string()),
                 "sets" => {
                     let arr = val
                         .as_array()
@@ -87,9 +85,7 @@ impl RsaParams {
                     params.sets = sets;
                 }
                 "ns" | "moduli" => {
-                    let arr = val
-                        .as_array()
-                        .ok_or("`ns` must be an array of integers")?;
+                    let arr = val.as_array().ok_or("`ns` must be an array of integers")?;
                     let mut ns = Vec::new();
                     for item in arr {
                         if let Some(v) = parse_big_value(item)? {
@@ -187,6 +183,9 @@ impl RsaParams {
     /// Decrypt ciphertext via an explicit d, returning m.
     pub fn decrypt_with(&self, d: &BigUint) -> Option<BigUint> {
         let (n, c) = (self.n.as_ref()?, self.c.as_ref()?);
+        if n.is_zero() {
+            return None; // modpow would panic on a zero modulus
+        }
         Some(c.modpow(d, n))
     }
 
@@ -221,14 +220,12 @@ pub fn parse_big_value(val: &serde_json::Value) -> Result<Option<BigUint>, Strin
             if text.is_empty() {
                 return Ok(None);
             }
-            let (radix, digits) = if let Some(hex) = text
-                .strip_prefix("0x")
-                .or_else(|| text.strip_prefix("0X"))
-            {
-                (16, hex)
-            } else {
-                (10, text)
-            };
+            let (radix, digits) =
+                if let Some(hex) = text.strip_prefix("0x").or_else(|| text.strip_prefix("0X")) {
+                    (16, hex)
+                } else {
+                    (10, text)
+                };
             let cleaned: String = digits.chars().filter(|c| !c.is_whitespace()).collect();
             let value = BigUint::parse_bytes(cleaned.as_bytes(), radix)
                 .ok_or_else(|| format!("`{text}` is not a valid base-{radix} integer"))?;
