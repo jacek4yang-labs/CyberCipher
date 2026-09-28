@@ -1,27 +1,22 @@
 # Handoff
 
 ## In flight
-- Branch `feat/rsa-attack-lab` → PR #4 (open once pushed): M4-CORE-01 +
-  M4-RSA-01/02/03 — BigInt ops, `cybercipher-attack` crate (math foundation,
-  RSA attack primitives, analyzer), CLI `rsa analyze`.
+- Branch `feat/rsa-attack-lab` (integration branch for PR #4):
+  - coordinator commits: attack-crate skeleton, BigInt codec ops (done, tested), CLI `rsa` (done), `rsa_analyze` Tauri command (done), docs/state.
+  - Agent A (worktree ../cc-agent-rsa, branch agent/rsa/m4-rsa): hardening + tests for RSA attacks + math lints.
+  - Agent B (worktree ../cc-agent-prng, branch agent/prng/m4-prng): LCG + MT19937 under src/prng.
+- Queued (concurrency limit 2): Agent C (AEAD, worktree ../cc-agent-crypto exists), Agent D (QA, worktree ../cc-agent-qa exists). Relaunch as soon as a slot frees.
 
-## Next concrete action
-- Implement `crates/cybercipher-attack` (math.rs, rsa/attacks.rs,
-  rsa/analyzer.rs), BigInt ops in codec, CLI wiring, tests; validate; push;
-  open PR; green CI; squash merge; update `.agent`.
-
-## After that
-- M4-RSA-04 (RSA Lab GUI) and M4-PRNG-01/02 (LCG, MT19937) → PR #5.
-- Then M5-AEAD-01 (AEAD) and M4-LAT-01/02 (LLL + Coppersmith).
+## Next concrete actions
+1. When Agent A reports: merge agent/rsa/m4-rsa into feat/rsa-attack-lab, full validation, open PR #4, CI green, squash merge.
+2. Relaunch Agent C (AEAD) on the free slot; then Agent D (QA).
+3. PR #5 = agent/prng/m4-prng (+ GUI RSA Lab as Agent E lane afterwards).
 
 ## Blocked
-- None.
+- Nothing external. Subagent concurrency limit = 2 (two failures observed).
 
 ## Environment notes for a fresh agent
-- Windows host, Git Bash. Node + Rust stable present. `gh` authenticated as
-  `jacek4yang` (admin of jacek4yang-labs).
-- Frontend lives in `ui/` (npm). Tauri app: `apps/cybercipher-gui`.
-- CI required checks: Rust / Frontend / TauriLinuxSmoke (strict).
-- Clippy is `-D warnings`; `clippy::result_large_err` is allowed per-crate
-  with rationale (see `.agent/decisions.md`).
--cargo workspace: 6 crates; tests: `cargo test --workspace` (~60 tests).
+- Windows host, Git Bash. `gh` authenticated as jacek4yang (org admin).
+- Required CI checks on main: Rust / Frontend / TauriLinuxSmoke (strict).
+- clippy -D warnings; result_large_err allowed per-crate with rationale comment.
+- `cargo test --workspace` currently 17 suites / ~77 tests green on this branch.
