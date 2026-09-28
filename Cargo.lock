@@ -629,6 +629,7 @@ name = "cybercipher-cli"
 version = "0.1.0"
 dependencies = [
  "clap",
+ "cybercipher-attack",
  "cybercipher-codec",
  "cybercipher-core",
  "cybercipher-crypto",
@@ -642,7 +643,9 @@ version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
  "cybercipher-core",
+ "cybercipher-engine",
  "flate2",
+ "num-bigint",
  "num-traits",
  "percent-encoding",
  "serde",

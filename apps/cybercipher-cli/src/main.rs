@@ -33,6 +33,17 @@ enum Command {
         /// Input file path, `-` for stdin, or a literal string.
         input: String,
     },
+    /// RSA parameter analysis and solving (JSON with n/e/c/d/p/q/phi/dp/dq/qinv/sets/ns).
+    Rsa {
+        /// Run attacks in order until the plaintext is recovered.
+        #[arg(long)]
+        solve: bool,
+        /// Time budget per run in milliseconds.
+        #[arg(long, default_value = "10000")]
+        budget_ms: u64,
+        /// JSON file path or `-` for stdin.
+        input: String,
+    },
     /// Bounded explainable automatic decoding.
     Auto {
         /// Input file path, `-` for stdin, or a literal string.
@@ -85,6 +96,46 @@ fn main() {
                     }
                     std::process::exit(1);
                 }
+            }
+        }
+        Command::Rsa { solve, budget_ms, input } => {
+            let text = read_input(&input);
+            let value: serde_json::Value = serde_json::from_slice(&text).unwrap_or_else(|e| {
+                eprintln!("error: RSA parameter file is not valid JSON: {e}");
+                std::process::exit(2);
+            });
+            let params = cybercipher_attack::RsaParams::from_json(&value).unwrap_or_else(|e| {
+                eprintln!("error: {e}");
+                std::process::exit(2);
+            });
+            let report = cybercipher_attack::analyze(&params, solve, budget_ms);
+            println!("== Applicable findings ==");
+            for f in &report.findings {
+                let status = serde_json::to_string(&f.status).unwrap_or_default();
+                let status = status.trim_matches('"');
+                println!(
+                    "[{status:<14}] {:<28} ({:?}) {}",
+                    f.name, f.cost, f.message
+                );
+                if let Some(d) = &f.details {
+                    println!("                {d}");
+                }
+            }
+            match &report.plaintext {
+                Some(pt) => {
+                    println!("
+== Plaintext ==");
+                    println!("hex:     {}", pt.m_hex);
+                    println!("decimal: {}", pt.m_decimal);
+                    if let Some(utf8) = &pt.utf8 {
+                        println!("utf8:    {utf8:?}");
+                    }
+                    if let Some(flag) = &pt.flag_like {
+                        println!("flag:    {flag}");
+                    }
+                }
+                None => println!("
+no plaintext recovered (see findings)"),
             }
         }
         Command::Auto { input } => {

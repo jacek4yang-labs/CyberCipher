@@ -12,6 +12,7 @@
 mod byteops;
 mod compression;
 mod encoding;
+mod integer;
 mod helpers;
 mod inspect;
 
@@ -22,6 +23,7 @@ use cybercipher_core::OperationRegistry;
 /// Register every codec operation into the registry.
 pub fn register_all(reg: &mut OperationRegistry) {
     compression::register(reg);
+    integer::register(reg);
     encoding::register(reg);
     byteops::register(reg);
     inspect::register(reg);

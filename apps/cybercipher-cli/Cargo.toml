@@ -15,5 +15,6 @@ cybercipher-core.workspace = true
 cybercipher-engine.workspace = true
 cybercipher-codec.workspace = true
 cybercipher-crypto.workspace = true
+cybercipher-attack.workspace = true
 serde_json.workspace = true
 clap = { version = "4", features = ["derive"] }
