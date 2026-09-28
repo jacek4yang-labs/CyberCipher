@@ -7,10 +7,12 @@ It combines a CyberChef-style recipe workbench (operations → recipe → input 
 output) with a Rust engine built for real cryptanalysis work. Everything runs
 on your machine: no telemetry, no remote processing, no accounts.
 
-**Status: early development.** The Workbench UI and the codec/byte-operation
-foundation are functional. Symmetric crypto, hashes, Auto Decode, and the
-attack labs are the next milestones — see [docs/CAPABILITIES.md](docs/CAPABILITIES.md)
-and [docs/ROADMAP.md](docs/ROADMAP.md) for the honest current state.
+**Status: pre-1.0 development.** The Workbench UI, the codec/byte-operation
+foundation, and the practical crypto baseline (AES, DES/3DES, SM4, RC4,
+TEA/XTEA/XXTEA, MD5/SHA-1/SHA-2/SHA-3/SM3, HMAC) are functional, with a CLI
+sharing the same engine. Auto Decode and the attack labs are the next
+milestones — see [docs/CAPABILITIES.md](docs/CAPABILITIES.md) and
+[docs/ROADMAP.md](docs/ROADMAP.md) for the honest current state.
 
 ## Key properties
 
@@ -40,9 +42,14 @@ crates: cybercipher-core · cybercipher-codec · cybercipher-crypto (next)
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
 
-## Current capabilities (Milestone 1)
+## Current capabilities (Milestones 1–2)
 
-- 29 working operations: hex, Base64/URL-safe, Base32/Base32hex, URL percent
+- 47 working operations. Crypto baseline: AES (ECB/CBC/CTR/CFB/OFB,
+  128/192/256-bit keys, validated PKCS7/Zero/ISO7816 padding), DES/3DES, SM4,
+  RC4(+drop), TEA/XTEA/XXTEA, hashes (MD5, SHA-1/2/3, SHAKE, Keccak, SM3), and
+  HMAC — all with official test vectors and provenance metadata. Legacy/broken
+  primitives are labeled, never hidden.
+- 18 codec/inspection operations: hex, Base64/URL-safe, Base32/Base32hex, URL percent
   encoding, binary/octal/decimal, hexdump, UTF-8 encode/decode, reverse,
   split/join, XOR (standard/rolling/incrementing, null-preserving), AND/OR/NOT,
   rotate left/right, swap endianness, entropy report, strings extraction.
@@ -52,7 +59,9 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
   per-stage caching, structured error rendering, save/load/import/export
   recipes, dark/light themes, copy-as (hex / Base64 / Python bytes / C array /
   decimal / integer), input↔output swap, flag-pattern highlighting.
-- CLI and GUI share the same engine (`cybercipher-engine`).
+- CLI (`cybercipher`) shares the same engine: `cybercipher ops`,
+  `cybercipher run --op from-base64 <input>`,
+  `cybercipher recipe run recipe.json input.bin`.
 
 ## Development
 
@@ -63,6 +72,9 @@ Prerequisites: Rust 1.85+, Node 20+, and Tauri 2 system dependencies
 ```bash
 # backend
 cargo test --workspace
+
+# CLI (after cargo build)
+cargo run -p cybercipher-cli -- run --op sha256 -- README.md
 
 # frontend
 cd ui && npm install && npm run typecheck && npm run build

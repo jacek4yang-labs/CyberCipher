@@ -28,6 +28,15 @@ CI runs all of the above plus a Linux Tauri build smoke test.
   cost gating, cancellation, operation error capture, panic isolation,
   execution-count cache proof, recipe JSON round-trip + validation.
 
+- **crypto** (15 tests): AES-128 ECB/CBC + AES-256 NIST SP 800-38A vectors,
+  stream-mode round-trips (CTR/CFB/OFB, non-aligned tails), PKCS7 round-trip +
+  corrupted-ciphertext typed error, key-length validation with expected/actual,
+  missing-IV diagnostics, SM4 GB/T standard vector, DES classic vector + 3DES
+  round-trips, RC4 classic vector + involution, TEA zero-vector KAT
+  (cross-verified against an independent implementation), family round-trips,
+  block/word validation, hash KATs (MD5/SHA-1/SHA-256/SHA-512/SHA3-256/SM3),
+  HMAC RFC 4231 case 1, engine-level integration of crypto ops.
+
 ## Requirements for later milestones
 
 Every standardized crypto implementation ships with:

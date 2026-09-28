@@ -4,7 +4,9 @@ members = [
     "crates/cybercipher-core",
     "crates/cybercipher-codec",
     "crates/cybercipher-engine",
+    "crates/cybercipher-crypto",
     "apps/cybercipher-gui",
+    "apps/cybercipher-cli",
 ]
 
 [workspace.package]
@@ -29,6 +31,7 @@ parking_lot = "0.12"
 cybercipher-core = { path = "crates/cybercipher-core" }
 cybercipher-codec = { path = "crates/cybercipher-codec" }
 cybercipher-engine = { path = "crates/cybercipher-engine" }
+cybercipher-crypto = { path = "crates/cybercipher-crypto" }
 
 [profile.release]
 opt-level = 3
