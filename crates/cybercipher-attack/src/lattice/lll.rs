@@ -207,13 +207,6 @@ fn round_ratio(lam: &BigInt, den: &BigInt) -> BigInt {
     floor_div(&((lam << 1u32) + den), &(den << 1u32))
 }
 
-/// `target -= q * src` elementwise (zip stops at the shorter row).
-fn sub_scaled_row(target: &mut [BigInt], src: &[BigInt], q: &BigInt) {
-    for (t, s) in target.iter_mut().zip(src.iter()) {
-        *t -= q * s;
-    }
-}
-
 /// Integral Gram–Schmidt tables: `λ` rows (`λ[i]` has `i` entries) and the
 /// determinant sequence `d`.
 pub type GramSchmidtTables = (Vec<Vec<BigInt>>, Vec<BigInt>);
@@ -242,11 +235,7 @@ fn init_gram_schmidt(lattice: &Lattice) -> Result<InitTables, OperationError> {
 
     for i in 0..n {
         // λ[i][j] = ⟨b_i, w_j⟩ — plain integer inner products.
-        let row_lam: Vec<BigInt> = w
-            .iter()
-            .take(i)
-            .map(|wj| dot(lattice.row(i), wj))
-            .collect();
+        let row_lam: Vec<BigInt> = w.iter().take(i).map(|wj| dot(lattice.row(i), wj)).collect();
         // w_i = d[i-1]·b_i − Σ_{j<i} (λ[i][j]·d[i-1]/(d[j]·d[j-1]))·w_j.
         // The coefficients are rational but the result is provably integral
         // (w_i = d[i-1]·b*_i by Cramer's rule); verify rather than assume.
@@ -380,15 +369,20 @@ pub fn lll_reduce(lattice: &Lattice, config: &LllConfig) -> Result<LllResult, Op
         for j in (0..k).rev() {
             let q = round_ratio(&lam[k][j], &d[j]);
             if !q.is_zero() {
-                for (bk, bj) in basis[k].iter_mut().zip(basis[j].iter()) {
+                // j < k, so split_at_mut(k) yields row j (head) and row k
+                // (tail[0]) as disjoint simultaneous borrows.
+                let (basis_head, basis_tail) = basis.split_at_mut(k);
+                for (bk, bj) in basis_tail[0].iter_mut().zip(basis_head[j].iter()) {
                     *bk -= &q * bj;
                 }
-                for (uk, uj) in u[k].iter_mut().zip(u[j].iter()) {
+                let (u_head, u_tail) = u.split_at_mut(k);
+                for (uk, uj) in u_tail[0].iter_mut().zip(u_head[j].iter()) {
                     *uk -= &q * uj;
                 }
                 // λ[k][t] ← λ[k][t] − q·λ[j][t] for t < j (λ[j][t] = 0 for
                 // t > j because ⟨b_j, b*_t⟩ = 0), and λ[k][j] ← λ[k][j] − q·d[j].
-                for (lk, lj) in lam[k].iter_mut().zip(lam[j].iter()) {
+                let (lam_head, lam_tail) = lam.split_at_mut(k);
+                for (lk, lj) in lam_tail[0].iter_mut().zip(lam_head[j].iter()) {
                     *lk -= &q * lj;
                 }
                 lam[k][j] -= &q * &d[j];
