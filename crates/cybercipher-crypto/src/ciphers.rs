@@ -814,7 +814,9 @@ fn mode_apply(
     // block-size mode IV in IV modes.
     let tweak: &[u8] = if entry.tweak_required { &iv[..16] } else { &[] };
     let engine = entry.engine(key, tweak)?;
-    if !data.len().is_multiple_of(engine.block_size()) {
+    // Only ECB/CBC require block alignment; CTR/OFB/CFB are stream modes and
+    // handle arbitrary lengths natively.
+    if matches!(mode, Mode::Ecb | Mode::Cbc) && !data.len().is_multiple_of(engine.block_size()) {
         return Err(OperationError::internal("pre-padded data misaligned"));
     }
     match mode {
@@ -887,8 +889,15 @@ fn cipher_run(
         };
         let padding = Padding::parse(map.str_or("padding", "pkcs7"))?;
 
+        // Stream modes (CTR/CFB/OFB) have no padding concept — their output
+        // length equals input length regardless of alignment.
+        let stream_mode = matches!(mode, Mode::Ctr | Mode::Cfb | Mode::Ofb);
         let out = if encrypt {
-            let padded = pad(bytes.as_ref(), block, padding)?;
+            let padded: Vec<u8> = if stream_mode {
+                bytes.as_ref().to_vec()
+            } else {
+                pad(bytes.as_ref(), block, padding)?
+            };
             mode_apply(
                 entry,
                 mode,
@@ -906,7 +915,11 @@ fn cipher_run(
                 bytes.as_ref().to_vec(),
                 false,
             )?;
-            unpad(&decrypted, block, padding)?
+            if stream_mode {
+                decrypted
+            } else {
+                unpad(&decrypted, block, padding)?
+            }
         };
         Ok(Value::Bytes(out))
     }

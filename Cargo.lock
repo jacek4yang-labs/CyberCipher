@@ -954,6 +954,7 @@ name = "cybercipher-attack"
 version = "0.1.0"
 dependencies = [
  "cybercipher-core",
+ "cybercipher-engine",
  "num-bigint",
  "num-traits",
  "serde",

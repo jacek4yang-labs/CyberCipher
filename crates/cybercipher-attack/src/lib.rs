@@ -8,6 +8,7 @@
 //! returns a typed outcome with diagnostics — positive and negative tests
 //! exist for each.
 
+pub mod assist;
 pub mod classical;
 pub mod lattice;
 pub mod math;
