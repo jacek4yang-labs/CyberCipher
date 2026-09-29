@@ -171,10 +171,11 @@ mod tests {
         let key = 0x37u8;
         let cipher: Vec<u8> = plaintext.iter().map(|b| b ^ key).collect();
         let result = crib_drag(&cipher, "the ", &CribDragOptions::default()).unwrap();
+        // At the true alignment the fragment IS the key stream (cipher ^ crib).
         assert!(result
             .hits
             .iter()
-            .any(|h| h.fragment == "the " && h.key_fragment.iter().all(|&b| b == key)));
+            .any(|h| h.position == 16 && h.key_fragment.iter().all(|&b| b == key)));
     }
 
     #[test]
