@@ -34,15 +34,10 @@ pub fn hex(data: &[u8]) -> String {
     out
 }
 
-/// Build a leaked spec for a cipher operation.
-pub fn cipher_spec(
-    id: &'static str,
-    name: &'static str,
-    description: &'static str,
-    standard: &'static str,
-    tags: &'static [&'static str],
-) -> &'static OperationSpec {
-    let params: Vec<ParamSpec> = vec![
+/// Parameter set shared by every block cipher operation: key + encoding,
+/// mode selector, IV (+ encoding) and padding policy.
+fn block_mode_params() -> Vec<ParamSpec> {
+    vec![
         p_text("key", "Key", "", "Key material; see the encoding selector."),
         p_enc("key_encoding", "Key encoding", "hex", ""),
         p_opts(
@@ -71,13 +66,13 @@ pub fn cipher_spec(
                     label: "OFB",
                 },
             ],
-            "DES/3DES support ECB and CBC only.",
+            "Every block cipher supports all five modes.",
         ),
         p_text(
             "iv",
             "IV / counter",
             "",
-            "IV for CBC/CTR/CFB/OFB. Empty for ECB.",
+            "IV for CBC/CTR/CFB/OFB. Empty for ECB. Carries the mandatory 16-byte tweak for Threefish.",
         ),
         p_enc("iv_encoding", "IV encoding", "hex", ""),
         p_opts(
@@ -104,7 +99,21 @@ pub fn cipher_spec(
             ],
             "ECB/CBC only; stream modes ignore padding.",
         ),
-    ];
+    ]
+}
+
+/// Leak a spec built from the shared block-mode parameter set.
+fn leak_cipher_spec(
+    id: &'static str,
+    name: &'static str,
+    description: &'static str,
+    standard: &'static str,
+    implementation: &'static str,
+    test_vectors: &'static str,
+    security: Security,
+    tags: &'static [&'static str],
+) -> &'static OperationSpec {
+    let params = block_mode_params();
     Box::leak(Box::new(OperationSpec {
         id,
         name,
@@ -114,11 +123,7 @@ pub fn cipher_spec(
         output_kind: ValueKind::Bytes,
         params: Box::leak(params.into_boxed_slice()),
         cost: CostClass::Instant,
-        security: if id.starts_with("des") {
-            Security::Broken
-        } else {
-            Security::Modern
-        },
+        security,
         deterministic: true,
         reversible: true,
         aliases: Box::leak(
@@ -137,10 +142,57 @@ pub fn cipher_spec(
         tags,
         provenance: Provenance {
             standard,
-            implementation: "RustCrypto crates (aes/des/sm4 + mode crates)",
-            test_vectors: "NIST SP 800-38A / GB/T 0002 / known-answer tests",
+            implementation,
+            test_vectors,
         },
     }))
+}
+
+/// Build a leaked spec for the legacy AES/DES/SM4 cipher operations.
+pub fn cipher_spec(
+    id: &'static str,
+    name: &'static str,
+    description: &'static str,
+    standard: &'static str,
+    tags: &'static [&'static str],
+) -> &'static OperationSpec {
+    leak_cipher_spec(
+        id,
+        name,
+        description,
+        standard,
+        "RustCrypto block cipher crates + CyberCipher native mode wiring",
+        "NIST SP 800-38A / GB/T 0002 / known-answer tests",
+        if id.starts_with("des") {
+            Security::Broken
+        } else {
+            Security::Modern
+        },
+        tags,
+    )
+}
+
+/// Build a leaked spec for a table-registered block cipher operation with
+/// explicit security classification (implementation/vectors provenance is
+/// completed by the caller from the registry row).
+pub fn block_cipher_spec(
+    id: &'static str,
+    name: &'static str,
+    description: &'static str,
+    standard: &'static str,
+    security: Security,
+    tags: &'static [&'static str],
+) -> &'static OperationSpec {
+    leak_cipher_spec(
+        id,
+        name,
+        description,
+        standard,
+        "RustCrypto block cipher crates + CyberCipher native mode wiring",
+        "NIST SP 800-38A / RFC / NESSIE known-answer tests",
+        security,
+        tags,
+    )
 }
 
 pub fn p_text(

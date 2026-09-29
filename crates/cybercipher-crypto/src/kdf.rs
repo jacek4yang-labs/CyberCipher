@@ -152,7 +152,6 @@ fn hkdf_run(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<Value> 
 }
 
 // -------------------------------------------------------- scrypt ----
-
 fn scrypt_run(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<Value> {
     let _ = v;
     let password = decode_param(map, "password", "password_encoding", "utf8")?;
@@ -219,6 +218,90 @@ fn scrypt_run(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<Value
     let mut dk = vec![0u8; dk_len];
     scrypt::scrypt(&password, &salt, &params, &mut dk)
         .map_err(|e| OperationError::internal(format!("scrypt derivation failed: {e}")))?;
+    Ok(Value::Text(hex(&dk)))
+}
+
+// ------------------------------------------------------ Argon2id ----
+
+/// Argon2id memory cost cap: m_cost is expressed in KiB, so 1 GiB = 2^20 KiB.
+const MAX_ARGON2_M_COST_KIB: i64 = 1 << 20;
+const MAX_ARGON2_T_COST: i64 = 10_000;
+const MAX_ARGON2_P_COST: i64 = 255;
+
+fn argon2id_run(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<Value> {
+    let _ = v;
+    let password = decode_param(map, "password", "password_encoding", "utf8")?;
+    let salt = decode_param(map, "salt", "salt_encoding", "utf8")?;
+    let m_cost = map.int_or("m_cost", 19_456);
+    if !(8..=MAX_ARGON2_M_COST_KIB).contains(&m_cost) {
+        return Err(OperationError::invalid_param(
+            "m_cost",
+            format!(
+                "Argon2 memory cost must be 8-{MAX_ARGON2_M_COST_KIB} KiB (<= 1 GiB), got {m_cost}"
+            ),
+        )
+        .with_parameter("m_cost")
+        .with_expected(format!("8-{MAX_ARGON2_M_COST_KIB} KiB"))
+        .with_actual(format!("{m_cost} KiB")));
+    }
+    let t_cost = map.int_or("t_cost", 2);
+    if !(1..=MAX_ARGON2_T_COST).contains(&t_cost) {
+        return Err(OperationError::invalid_param(
+            "t_cost",
+            format!("Argon2 time cost must be 1-{MAX_ARGON2_T_COST}, got {t_cost}"),
+        )
+        .with_parameter("t_cost"));
+    }
+    let p_cost = map.int_or("p_cost", 1);
+    if !(1..=MAX_ARGON2_P_COST).contains(&p_cost) {
+        return Err(OperationError::invalid_param(
+            "p_cost",
+            format!("Argon2 parallelism must be 1-{MAX_ARGON2_P_COST}, got {p_cost}"),
+        )
+        .with_parameter("p_cost"));
+    }
+    let dk_len = map.int_or("dk_len", 32);
+    if !(4..=MAX_DK_LEN).contains(&dk_len) {
+        return Err(OperationError::invalid_param(
+            "dk_len",
+            format!("Argon2 output length must be 4-{MAX_DK_LEN} bytes, got {dk_len}"),
+        )
+        .with_parameter("dk_len")
+        .with_expected(format!("4-{MAX_DK_LEN} bytes"))
+        .with_actual(format!("{dk_len} bytes")));
+    }
+    if salt.len() < 8 {
+        return Err(OperationError::length(
+            "at least 8 bytes (Argon2 requires a >= 64-bit salt)",
+            format!("{} bytes", salt.len()),
+            "salt is too short for Argon2",
+        )
+        .with_parameter("salt")
+        .with_expected(">= 8 bytes")
+        .with_actual(format!("{} bytes", salt.len())));
+    }
+    if m_cost < 8 * p_cost {
+        return Err(OperationError::invalid_param(
+            "m_cost",
+            format!(
+                "Argon2 requires m_cost >= 8 * p_cost = {}, got {m_cost}",
+                8 * p_cost
+            ),
+        )
+        .with_parameter("m_cost")
+        .with_expected(format!(">= {} KiB", 8 * p_cost))
+        .with_actual(format!("{m_cost} KiB")));
+    }
+
+    let params = argon2::Params::new(m_cost as u32, t_cost as u32, p_cost as u32, Some(dk_len as usize))
+        .map_err(|e| {
+            OperationError::invalid_param("m_cost", format!("Argon2 rejected the parameters: {e}"))
+        })?;
+    let argon = argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
+    let mut dk = vec![0u8; dk_len as usize];
+    argon
+        .hash_password_into(&password, &salt, &mut dk)
+        .map_err(|e| OperationError::internal(format!("Argon2id derivation failed: {e}")))?;
     Ok(Value::Text(hex(&dk)))
 }
 
@@ -505,4 +588,44 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
         "Generated and cross-checked against OpenSSL 3.x `enc -md md5`",
     );
     reg.add_simple(spec, evp_run);
+
+    // Argon2id (RFC 9106)
+    let mut argon2_params = text_params("Password bytes after decoding; UTF-8 text is typical.");
+    argon2_params.push(p_int(
+        "m_cost",
+        "Memory cost (KiB)",
+        19_456,
+        "Memory in KiB (8-1048576; 1 GiB cap). Must match the original derivation.",
+    ));
+    argon2_params.push(p_int(
+        "t_cost",
+        "Time cost",
+        2,
+        "Number of passes (1-10000). Must match the original derivation.",
+    ));
+    argon2_params.push(p_int(
+        "p_cost",
+        "Parallelism",
+        1,
+        "Degree of parallelism lanes (1-255). Must match the original derivation.",
+    ));
+    argon2_params.push(p_int(
+        "dk_len",
+        "Derived key length",
+        32,
+        "Output length in bytes (4-8192).",
+    ));
+    let spec = kdf_spec(
+        "kdf-argon2id",
+        "Argon2id",
+        "Derives a key from a password with Argon2id (RFC 9106), the memory-hard PHC winner. All cost parameters must match the original derivation exactly.",
+        &["argon2", "argon2id"],
+        argon2_params,
+        CostClass::Heavy,
+        Security::Modern,
+        "RFC 9106",
+        "RustCrypto `argon2` crate",
+        "RFC 9106 section 5.3 test vector",
+    );
+    reg.add_simple(spec, argon2id_run);
 }
