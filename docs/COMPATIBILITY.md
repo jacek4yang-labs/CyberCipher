@@ -11,10 +11,10 @@ features a baseline has that are irrelevant to a CTF-oriented crypto
 workbench are marked `intentional-out-of-scope` with a reason.
 
 Entries reflect implemented reality only. They were verified against the
-code and tests on `main` (commit `5d5ab8e`, 2026-09-28: 59 recipe-registry
-operations + the attack engine, 154 tests green), not against names or
-plans. Work that exists on a reviewed feature branch is marked
-"PR in flight" rather than counted as landed.
+code and tests on `main`, not against names or plans. Earlier revisions
+marked unmerged feature-branch work as pending; all such entries have since
+merged and are counted as landed. The matrices are re-verified against
+current `main` at each reconciliation.
 
 | Baseline | Matrix | Why it is tracked |
 |---|---|---|
