@@ -27,6 +27,11 @@ der = { version = "0.7", features = ["alloc"] }
 # component extraction and CRT-parameter arithmetic.
 num-bigint-dig = "0.8"
 
-sha2 = "0.10"
+# Hashes for the digest-parameterized operations. `oid` enables
+# `AssociatedOid`, which `rsa::Pkcs1v15Sign::new::<D>()` requires to build the
+# RFC 8017 DigestInfo prefixes. sha2 is version-aligned with the copy rsa
+# re-exports (both resolve to digest 0.10, so hasher types are interchangeable).
+sha1 = { version = "0.10", features = ["oid"] }
+sha2 = { version = "0.10", features = ["oid"] }
 rand = "0.8"
 base64ct = "1"

@@ -1,6 +1,7 @@
 //! CyberCipher PKI: public-key infrastructure foundations — key generation,
-//! key-format handling (PEM/DER, PKCS#1, PKCS#8, SPKI), key inspection, and
-//! JWK/JWKS (RFC 7517) conversion.
+//! key-format handling (PEM/DER, PKCS#1, PKCS#8, SPKI), key inspection,
+//! JWK/JWKS (RFC 7517) conversion, and standard RSA encryption/signature
+//! operations (RFC 8017).
 //!
 //! This crate intentionally depends only on `cybercipher-core` and the
 //! RustCrypto ASN.1 stack. GUI/CLI/registry wiring is a later phase; the
@@ -14,6 +15,8 @@
 
 pub mod error;
 pub mod keys;
+pub mod ops;
 
 pub use error::{PkiError, PkiResult};
 pub use keys::*;
+pub use ops::{PssSaltLength, RsaDigest, SignatureVerifyResult};
