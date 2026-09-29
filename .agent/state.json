@@ -1,7 +1,6 @@
 {
   "schema": 1,
   "phase": "M7/M8/Release",
-  "main_sha": "da3851d",
   "active_branch": null,
   "active_pr": null,
   "current_task": null,
@@ -43,5 +42,6 @@
     "cargo_test": "pass",
     "frontend": "pass"
   },
-  "notes": "Session 3 end: 27 PRs merged, main=da3851d. New: tar.gz release pipeline (#26), Crypto Assist framework with AES Assist (#27), stream-mode padding bug fix in crypto crate. Registry ~99 ops, 374 tests. Next ready: M8-PKI-01, M6-CTF-ENC-01, M6-CLASSICAL-MISC-01, M7-AUTO-02."
+  "notes": "Session 3 end: 27 PRs merged, main=da3851d. New: tar.gz release pipeline (#26), Crypto Assist framework with AES Assist (#27), stream-mode padding bug fix in crypto crate. Registry ~99 ops, 374 tests. Next ready: M8-PKI-01, M6-CTF-ENC-01, M6-CLASSICAL-MISC-01, M7-AUTO-02.",
+  "last_reconciled_sha": "dc917ad"
 }
