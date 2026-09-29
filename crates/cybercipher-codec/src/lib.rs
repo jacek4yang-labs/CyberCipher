@@ -11,6 +11,7 @@
 
 mod basefamilies;
 mod byteops;
+mod classical_misc;
 mod compression;
 mod encoding;
 mod helpers;
@@ -27,6 +28,7 @@ pub fn register_all(reg: &mut OperationRegistry) {
     integer::register(reg);
     encoding::register(reg);
     basefamilies::register(reg);
+    classical_misc::register(reg);
     byteops::register(reg);
     inspect::register(reg);
 }
