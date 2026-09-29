@@ -1,17 +1,21 @@
 //! CyberCipher attack: number-theory primitives, RSA attack engine, PRNG
-//! recovery, and XOR analysis (single-byte, repeating-key, crib dragging,
-//! multi-time-pad).
+//! recovery, XOR analysis (single-byte, repeating-key, crib dragging,
+//! multi-time-pad), and the classical cipher workbench (encode/decode for the
+//! pencil-and-paper ciphers plus ranked statistical attacks).
 //!
 //! Attacks are first-class analyzable units: every one declares its
 //! preconditions, validates them, runs under explicit resource bounds, and
 //! returns a typed outcome with diagnostics — positive and negative tests
 //! exist for each.
 
+pub mod classical;
 pub mod lattice;
 pub mod math;
 pub mod prng;
 pub mod rsa;
 pub mod xor;
+
+pub use classical::TextResult;
 
 pub use lattice::{
     small_roots, CoppersmithBeta, CoppersmithParams, Lattice, LllConfig, LllResult, Poly,
