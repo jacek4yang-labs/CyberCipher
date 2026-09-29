@@ -246,9 +246,8 @@ pub fn crack_repeating_key(
             evidence.push("key byte locked by crib".to_string());
             if chosen_key != best_key {
                 evidence.push(format!(
-                    "note: best-scoring key {} (score {best_score:.4}) differs from the \
-                     crib-locked key",
-                    format!("0x{best_key:02x}")
+                    "note: best-scoring key 0x{best_key:02x} (score {best_score:.4}) \
+                     differs from the crib-locked key"
                 ));
             }
         } else {
