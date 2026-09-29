@@ -123,15 +123,9 @@ pub fn crack_single_byte(
 
     // Deterministic order: score descending, then ascending key byte as the
     // tie-breaker.
-    scored.sort_by(|a, b| {
-        b.1.score
-            .total_cmp(&a.1.score)
-            .then_with(|| a.0.cmp(&b.0))
-    });
+    scored.sort_by(|a, b| b.1.score.total_cmp(&a.1.score).then_with(|| a.0.cmp(&b.0)));
 
-    let runner_up_gap = scored
-        .get(1)
-        .map(|(_, s, _)| scored[0].1.score - s.score);
+    let runner_up_gap = scored.get(1).map(|(_, s, _)| scored[0].1.score - s.score);
     let tie = runner_up_gap.is_some_and(|gap| gap == 0.0);
 
     let best_score = scored[0].1.score;
@@ -174,7 +168,10 @@ pub fn crack_single_byte(
 pub(crate) fn evidence_lines(s: &CompositeScore) -> Vec<String> {
     let mut evidence = Vec::with_capacity(5);
     evidence.push(format!("printable {:.1}%", s.printable * 100.0));
-    evidence.push(format!("ASCII letters {:.1}% of bytes", s.letter_ratio * 100.0));
+    evidence.push(format!(
+        "ASCII letters {:.1}% of bytes",
+        s.letter_ratio * 100.0
+    ));
     match s.chi_per_letter {
         Some(chi) => evidence.push(format!("English chi2/letter {chi:.3}")),
         None => evidence.push("no ASCII letters to score".to_string()),
@@ -203,12 +200,12 @@ fn validate_input(data: &[u8]) -> Result<(), OperationError> {
         );
     }
     if data.len() > MAX_INPUT_BYTES {
-        return Err(OperationError::invalid_input(
-            "ciphertext exceeds the analysis bound",
-        )
-        .with_parameter("ciphertext")
-        .with_expected(format!("at most {MAX_INPUT_BYTES} bytes (1 MiB)"))
-        .with_actual(format!("{} bytes", data.len())));
+        return Err(
+            OperationError::invalid_input("ciphertext exceeds the analysis bound")
+                .with_parameter("ciphertext")
+                .with_expected(format!("at most {MAX_INPUT_BYTES} bytes (1 MiB)"))
+                .with_actual(format!("{} bytes", data.len())),
+        );
     }
     Ok(())
 }

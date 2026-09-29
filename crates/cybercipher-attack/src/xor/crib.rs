@@ -87,16 +87,19 @@ pub fn crib_drag(
         );
     }
     if data.len() > MAX_INPUT_BYTES {
-        return Err(OperationError::invalid_input(
-            "ciphertext exceeds the analysis bound",
-        )
-        .with_parameter("ciphertext")
-        .with_expected(format!("at most {MAX_INPUT_BYTES} bytes (1 MiB)"))
-        .with_actual(format!("{} bytes", data.len())));
+        return Err(
+            OperationError::invalid_input("ciphertext exceeds the analysis bound")
+                .with_parameter("ciphertext")
+                .with_expected(format!("at most {MAX_INPUT_BYTES} bytes (1 MiB)"))
+                .with_actual(format!("{} bytes", data.len())),
+        );
     }
     let crib_bytes = crib.as_bytes();
     if crib_bytes.is_empty() {
-        return Err(OperationError::invalid_param("crib", "crib must not be empty"));
+        return Err(OperationError::invalid_param(
+            "crib",
+            "crib must not be empty",
+        ));
     }
     if crib_bytes.len() > MAX_CRIB_BYTES {
         return Err(OperationError::invalid_param(
@@ -107,12 +110,12 @@ pub fn crib_drag(
         .with_actual(format!("{} bytes", crib_bytes.len())));
     }
     if crib_bytes.len() > data.len() {
-        return Err(OperationError::invalid_input(
-            "crib is longer than the ciphertext",
-        )
-        .with_parameter("crib")
-        .with_expected(format!("crib of at most {} bytes", data.len()))
-        .with_actual(format!("{} bytes", crib_bytes.len())));
+        return Err(
+            OperationError::invalid_input("crib is longer than the ciphertext")
+                .with_parameter("crib")
+                .with_expected(format!("crib of at most {} bytes", data.len()))
+                .with_actual(format!("{} bytes", crib_bytes.len())),
+        );
     }
     if options.top_n == 0 || options.top_n > MAX_TOP_N {
         return Err(OperationError::invalid_param(

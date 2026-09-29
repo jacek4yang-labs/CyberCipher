@@ -36,32 +36,32 @@ use serde::{Deserialize, Serialize};
 /// Standard English letter frequencies in percent, `a`..=`z` (Lewand,
 /// *Cryptological Mathematics*, 2000; sums to ~99.99%).
 pub const ENGLISH_LETTER_FREQ_PCT: [f64; 26] = [
-    8.167, // a
-    1.492, // b
-    2.782, // c
-    4.253, // d
+    8.167,  // a
+    1.492,  // b
+    2.782,  // c
+    4.253,  // d
     12.702, // e
-    2.228, // f
-    2.015, // g
-    6.094, // h
-    6.966, // i
-    0.153, // j
-    0.772, // k
-    4.025, // l
-    2.406, // m
-    6.749, // n
-    7.507, // o
-    1.929, // p
-    0.095, // q
-    5.987, // r
-    6.327, // s
-    9.056, // t
-    2.758, // u
-    0.978, // v
-    2.360, // w
-    0.150, // x
-    1.974, // y
-    0.074, // z
+    2.228,  // f
+    2.015,  // g
+    6.094,  // h
+    6.966,  // i
+    0.153,  // j
+    0.772,  // k
+    4.025,  // l
+    2.406,  // m
+    6.749,  // n
+    7.507,  // o
+    1.929,  // p
+    0.095,  // q
+    5.987,  // r
+    6.327,  // s
+    9.056,  // t
+    2.758,  // u
+    0.978,  // v
+    2.360,  // w
+    0.150,  // x
+    1.974,  // y
+    0.074,  // z
 ];
 
 /// Known CTF flag token prefixes, matched case-insensitively. `htb` = Hack

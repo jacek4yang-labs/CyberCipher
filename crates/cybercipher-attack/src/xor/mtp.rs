@@ -122,12 +122,12 @@ pub fn mtp_break(ciphertexts: &[Vec<u8>]) -> Result<MtpBreakResult, OperationErr
     }
     let message_len = ciphertexts[0].len();
     if message_len == 0 {
-        return Err(OperationError::invalid_input(
-            "ciphertexts must not be empty",
-        )
-        .with_parameter("ciphertexts")
-        .with_expected("at least 1 byte per ciphertext")
-        .with_actual("0 bytes"));
+        return Err(
+            OperationError::invalid_input("ciphertexts must not be empty")
+                .with_parameter("ciphertexts")
+                .with_expected("at least 1 byte per ciphertext")
+                .with_actual("0 bytes"),
+        );
     }
     if message_len > MTP_MAX_MESSAGE_BYTES {
         return Err(OperationError::invalid_param(
@@ -281,10 +281,7 @@ impl PositionState {
 
 /// Fraction of the column that decrypts to printable bytes under `k`.
 fn printable_fraction_for(column: &[u8], k: u8) -> f64 {
-    let printable = column
-        .iter()
-        .filter(|&&c| is_printable_byte(c ^ k))
-        .count();
+    let printable = column.iter().filter(|&&c| is_printable_byte(c ^ k)).count();
     printable as f64 / column.len() as f64
 }
 

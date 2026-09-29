@@ -107,20 +107,20 @@ pub fn estimate_key_length(
     options: &KeyLengthOptions,
 ) -> Result<KeyLengthResult, OperationError> {
     if data.len() < MIN_KEYLEN_SAMPLE {
-        return Err(OperationError::invalid_input(
-            "input too short for key-length estimation",
-        )
-        .with_parameter("ciphertext")
-        .with_expected(format!("at least {MIN_KEYLEN_SAMPLE} bytes"))
-        .with_actual(format!("{} bytes", data.len())));
+        return Err(
+            OperationError::invalid_input("input too short for key-length estimation")
+                .with_parameter("ciphertext")
+                .with_expected(format!("at least {MIN_KEYLEN_SAMPLE} bytes"))
+                .with_actual(format!("{} bytes", data.len())),
+        );
     }
     if data.len() > MAX_INPUT_BYTES {
-        return Err(OperationError::invalid_input(
-            "input exceeds the analysis bound",
-        )
-        .with_parameter("ciphertext")
-        .with_expected(format!("at most {MAX_INPUT_BYTES} bytes (1 MiB)"))
-        .with_actual(format!("{} bytes", data.len())));
+        return Err(
+            OperationError::invalid_input("input exceeds the analysis bound")
+                .with_parameter("ciphertext")
+                .with_expected(format!("at most {MAX_INPUT_BYTES} bytes (1 MiB)"))
+                .with_actual(format!("{} bytes", data.len())),
+        );
     }
     if options.max_length == 0 || options.max_length > MAX_KEY_LENGTH {
         return Err(OperationError::invalid_param(

@@ -52,7 +52,7 @@ pub use repeating::{
 };
 pub use scoring::{
     chi_square_english, english_fit, find_flag_pattern, is_printable_byte, preview_text,
-    Confidence, CompositeScore, ENGLISH_LETTER_FREQ_PCT, FLAG_BONUS, FLAG_PREFIXES, PREVIEW_MAX,
+    CompositeScore, Confidence, ENGLISH_LETTER_FREQ_PCT, FLAG_BONUS, FLAG_PREFIXES, PREVIEW_MAX,
     UTF8_SAMPLE_MAX,
 };
 pub use single::{

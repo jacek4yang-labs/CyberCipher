@@ -129,20 +129,20 @@ pub fn crack_repeating_key(
     options: &RepeatingOptions,
 ) -> Result<RepeatingKeyCrackResult, OperationError> {
     if data.is_empty() {
-        return Err(OperationError::invalid_input(
-            "cannot crack an empty ciphertext",
-        )
-        .with_parameter("ciphertext")
-        .with_expected(format!("1..={MAX_INPUT_BYTES} bytes"))
-        .with_actual("0 bytes"));
+        return Err(
+            OperationError::invalid_input("cannot crack an empty ciphertext")
+                .with_parameter("ciphertext")
+                .with_expected(format!("1..={MAX_INPUT_BYTES} bytes"))
+                .with_actual("0 bytes"),
+        );
     }
     if data.len() > MAX_INPUT_BYTES {
-        return Err(OperationError::invalid_input(
-            "ciphertext exceeds the analysis bound",
-        )
-        .with_parameter("ciphertext")
-        .with_expected(format!("at most {MAX_INPUT_BYTES} bytes (1 MiB)"))
-        .with_actual(format!("{} bytes", data.len())));
+        return Err(
+            OperationError::invalid_input("ciphertext exceeds the analysis bound")
+                .with_parameter("ciphertext")
+                .with_expected(format!("at most {MAX_INPUT_BYTES} bytes (1 MiB)"))
+                .with_actual(format!("{} bytes", data.len())),
+        );
     }
     if key_length == 0 || key_length > MAX_KEY_LENGTH {
         return Err(OperationError::invalid_param(
@@ -161,12 +161,12 @@ pub fn crack_repeating_key(
         .with_actual(format!("{} bytes", data.len())));
     }
     if options.crib_offset > data.len() {
-        return Err(OperationError::invalid_input(
-            "crib_offset is beyond the ciphertext",
-        )
-        .with_parameter("crib_offset")
-        .with_expected(format!("<= {}", data.len()))
-        .with_actual(options.crib_offset.to_string()));
+        return Err(
+            OperationError::invalid_input("crib_offset is beyond the ciphertext")
+                .with_parameter("crib_offset")
+                .with_expected(format!("<= {}", data.len()))
+                .with_actual(options.crib_offset.to_string()),
+        );
     }
     let locked = match &options.crib {
         None => vec![None; key_length],
@@ -191,10 +191,7 @@ pub fn crack_repeating_key(
                     "crib extends past the end of the ciphertext",
                 )
                 .with_parameter("crib_offset")
-                .with_expected(format!(
-                    "crib_offset + crib_len <= {}",
-                    data.len()
-                ))
+                .with_expected(format!("crib_offset + crib_len <= {}", data.len()))
                 .with_actual(format!(
                     "{} + {}",
                     options.crib_offset,
