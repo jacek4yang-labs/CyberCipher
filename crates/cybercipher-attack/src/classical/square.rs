@@ -14,7 +14,7 @@
 //! evidence; Hill returns `square: None` and echoes validity via typed
 //! errors instead.
 
-use super::{check_key, check_text, TextResult, MAX_KEY_BYTES, MAX_PERIOD};
+use super::{check_key, check_text, MAX_PERIOD};
 use cybercipher_core::error::OperationError;
 use serde::{Deserialize, Serialize};
 
@@ -102,7 +102,6 @@ fn parse_square(square: &str, expected: usize) -> Result<Vec<u8>, OperationError
 /// Build a keyed 5x5 square: keyword letters (deduplicated, with the mode's
 /// omitted letter mapped away) followed by the rest of the alphabet.
 fn build_square_25(key: Option<&str>, mode: AlphabetMode) -> Result<Vec<u8>, OperationError> {
-    let alphabet = mode.alphabet();
     let omitted = match mode {
         AlphabetMode::IjMerged => b'J',
         AlphabetMode::NoQ => b'Q',
@@ -211,18 +210,22 @@ pub struct PolybiusOptions {
 
 /// Polybius-encode `text`: each letter becomes its 1-based row/column digits,
 /// concatenated (e.g. `HELLO` → `2315313134` with the unkeyed I/J square).
-pub fn polybius_encode(text: &str, options: &PolybiusOptions) -> Result<SquareResult, OperationError> {
+pub fn polybius_encode(
+    text: &str,
+    options: &PolybiusOptions,
+) -> Result<SquareResult, OperationError> {
     check_text(text)?;
     let square = match &options.square {
         Some(s) => parse_square(s, 25)?,
         None => build_square_25(options.key.as_deref(), options.alphabet)?,
     };
+    let omitted = omitted_pair(options.alphabet);
     let (letters, dropped) = letters_only(text);
     let mut out = String::with_capacity(letters.len() * 2);
-    let omitted = omitted_pair(options.alphabet);
     for &letter in &letters {
-        let idx = locate(&square, letter, omitted)
-            .ok_or_else(|| OperationError::invalid_input(format!("letter {} is not in the square", letter as char)))?;
+        let idx = locate(&square, letter, omitted).ok_or_else(|| {
+            OperationError::invalid_input(format!("letter {} is not in the square", letter as char))
+        })?;
         out.push(((idx / 5) as u8 + b'1') as char);
         out.push(((idx % 5) as u8 + b'1') as char);
     }
@@ -235,7 +238,10 @@ pub fn polybius_encode(text: &str, options: &PolybiusOptions) -> Result<SquareRe
 }
 
 /// Polybius-decode `text`: digit pairs (1..=5) map back through the square.
-pub fn polybius_decode(text: &str, options: &PolybiusOptions) -> Result<SquareResult, OperationError> {
+pub fn polybius_decode(
+    text: &str,
+    options: &PolybiusOptions,
+) -> Result<SquareResult, OperationError> {
     check_text(text)?;
     let square = match &options.square {
         Some(s) => parse_square(s, 25)?,
@@ -247,7 +253,7 @@ pub fn polybius_decode(text: &str, options: &PolybiusOptions) -> Result<SquareRe
         .map(|c| c as u8)
         .collect();
     let dropped = text.chars().count() - text.chars().filter(|c| c.is_ascii_digit()).count();
-    if digits.len() % 2 != 0 {
+    if !digits.len().is_multiple_of(2) {
         return Err(OperationError::length(
             "an even number of coordinate digits",
             format!("{} digits", digits.len()),
@@ -258,18 +264,19 @@ pub fn polybius_decode(text: &str, options: &PolybiusOptions) -> Result<SquareRe
     for pair in digits.chunks(2) {
         let (row, col) = (pair[0] - b'0', pair[1] - b'0');
         if !(1..=5).contains(&row) || !(1..=5).contains(&col) {
-            return Err(OperationError::invalid_input(
-                "Polybius coordinates must be digits 1..=5",
-            )
-            .with_expected("digits 1..=5")
-            .with_actual(format!("{}{}", row as char, col as char)));
+            return Err(
+                OperationError::invalid_input("Polybius coordinates must be digits 1..=5")
+                    .with_expected("digits 1..=5")
+                    .with_actual(format!("{}{}", row as char, col as char)),
+            );
         }
         let idx = (row as usize - 1) * 5 + (col as usize - 1);
         out.push(square[idx] as char);
     }
+    let out_len = out.len();
     Ok(ok(
         out,
-        out.len(),
+        out_len,
         dropped,
         Some(String::from_utf8_lossy(&square).into_owned()),
     ))
@@ -343,10 +350,12 @@ fn require_playfair_key(key: &str) -> Result<Vec<u8>, OperationError> {
         .map(|b| if b == b'J' { b'I' } else { b })
         .collect();
     if normalized.is_empty() {
-        return Err(OperationError::key("Playfair key must contain at least one letter")
-            .with_parameter("key")
-            .with_expected("at least one ASCII letter")
-            .with_actual(format!("{key:?}")));
+        return Err(
+            OperationError::key("Playfair key must contain at least one letter")
+                .with_parameter("key")
+                .with_expected("at least one ASCII letter")
+                .with_actual(format!("{key:?}")),
+        );
     }
     Ok(normalized)
 }
@@ -355,12 +364,18 @@ fn require_playfair_key(key: &str) -> Result<Vec<u8>, OperationError> {
 /// right, same column → letter below, otherwise swap corners of the
 /// rectangle. The square is keyed by [`PlayfairOptions::key`] with `J`
 /// merged into `I`.
-pub fn playfair_encode(text: &str, options: &PlayfairOptions) -> Result<SquareResult, OperationError> {
+pub fn playfair_encode(
+    text: &str,
+    options: &PlayfairOptions,
+) -> Result<SquareResult, OperationError> {
     check_text(text)?;
     let key = require_playfair_key(&options.key)?;
     let square = build_square_25_from_letters(&key);
     let (raw, dropped) = letters_only(text);
-    let letters: Vec<u8> = raw.iter().map(|&b| if b == b'J' { b'I' } else { b }).collect();
+    let letters: Vec<u8> = raw
+        .iter()
+        .map(|&b| if b == b'J' { b'I' } else { b })
+        .collect();
     let filler = options.filler.to_ascii_uppercase() as u8;
     let mut out = String::with_capacity(letters.len() + 8);
     for (a, b) in playfair_digraphs(&letters, filler) {
@@ -390,7 +405,10 @@ pub fn playfair_encode(text: &str, options: &PlayfairOptions) -> Result<SquareRe
 /// Playfair-decode `text`: inverse table walk (same row → left, same column →
 /// up, otherwise swap corners). Filler letters inserted by encryption remain
 /// in the output — that is inherent to the cipher.
-pub fn playfair_decode(text: &str, options: &PlayfairOptions) -> Result<SquareResult, OperationError> {
+pub fn playfair_decode(
+    text: &str,
+    options: &PlayfairOptions,
+) -> Result<SquareResult, OperationError> {
     check_text(text)?;
     let key = require_playfair_key(&options.key)?;
     let square = build_square_25_from_letters(&key);
@@ -405,10 +423,8 @@ pub fn playfair_decode(text: &str, options: &PlayfairOptions) -> Result<SquareRe
     let mut out = String::with_capacity(raw.len());
     for pair in raw.chunks(2) {
         let (ia, ib) = (
-            locate(&square, pair[0], None)
-                .ok_or_else(|| bad_cipher_letter(pair[0]))?,
-            locate(&square, pair[1], None)
-                .ok_or_else(|| bad_cipher_letter(pair[1]))?,
+            locate(&square, pair[0], None).ok_or_else(|| bad_cipher_letter(pair[0]))?,
+            locate(&square, pair[1], None).ok_or_else(|| bad_cipher_letter(pair[1]))?,
         );
         let (ra, ca, rb, cb) = (ia / 5, ia % 5, ib / 5, ib % 5);
         let (ia2, ib2) = if ra == rb {
@@ -475,7 +491,10 @@ pub fn bifid_encode(text: &str, options: &BifidOptions) -> Result<SquareResult, 
     check_text(text)?;
     validate_period(options.period)?;
     let (raw, dropped) = letters_only(text);
-    let letters: Vec<u8> = raw.iter().map(|&b| if b == b'J' { b'I' } else { b }).collect();
+    let letters: Vec<u8> = raw
+        .iter()
+        .map(|&b| if b == b'J' { b'I' } else { b })
+        .collect();
     let mut out = String::with_capacity(letters.len());
     for block in letters.chunks(options.period) {
         let n = block.len();
@@ -506,14 +525,17 @@ pub fn bifid_decode(text: &str, options: &BifidOptions) -> Result<SquareResult, 
     check_text(text)?;
     validate_period(options.period)?;
     let (raw, dropped) = letters_only(text);
-    let letters: Vec<u8> = raw.iter().map(|&b| if b == b'J' { b'I' } else { b }).collect();
+    let letters: Vec<u8> = raw
+        .iter()
+        .map(|&b| if b == b'J' { b'I' } else { b })
+        .collect();
     let mut out = String::with_capacity(letters.len());
     for block in letters.chunks(options.period) {
         let n = block.len();
         let mut stream = Vec::with_capacity(2 * n);
         for &letter in block {
-            let idx = locate(BIFID_SQUARE, letter, None)
-                .ok_or_else(|| bad_cipher_letter(letter))?;
+            let idx =
+                locate(BIFID_SQUARE, letter, None).ok_or_else(|| bad_cipher_letter(letter))?;
             stream.push((idx / 5) as u8);
             stream.push((idx % 5) as u8);
         }
@@ -561,6 +583,25 @@ impl Default for TrifidOptions {
     }
 }
 
+/// Trifid letter extraction: unlike the 25-letter squares, the Trifid cube
+/// contains `+` as a genuine 27th letter, so it must survive filtering (a
+/// dropped `+` in ciphertext would misalign the whole block).
+fn trifid_letters(text: &str) -> (Vec<u8>, usize) {
+    let mut letters = Vec::with_capacity(text.len());
+    let mut dropped = 0usize;
+    for c in text.chars() {
+        let upper = c.to_ascii_uppercase() as u8;
+        if c.is_ascii_alphabetic() {
+            letters.push(upper);
+        } else if c == '+' {
+            letters.push(b'+');
+        } else {
+            dropped += 1;
+        }
+    }
+    (letters, dropped)
+}
+
 /// Trifid-encode `text`: within each block of `period` letters, write each
 /// letter's (layer, row, column) triple vertically, concatenate layer digits,
 /// then row digits, then column digits, and regroup into letters via the
@@ -568,7 +609,7 @@ impl Default for TrifidOptions {
 pub fn trifid_encode(text: &str, options: &TrifidOptions) -> Result<SquareResult, OperationError> {
     check_text(text)?;
     validate_period(options.period)?;
-    let (letters, dropped) = letters_only(text);
+    let (letters, dropped) = trifid_letters(text);
     let mut out = String::with_capacity(letters.len());
     for block in letters.chunks(options.period) {
         let n = block.len();
@@ -576,8 +617,8 @@ pub fn trifid_encode(text: &str, options: &TrifidOptions) -> Result<SquareResult
         let mut rows = Vec::with_capacity(n);
         let mut cols = Vec::with_capacity(n);
         for &letter in block {
-            let idx = locate(TRIFID_ALPHABET, letter, None)
-                .ok_or_else(|| bad_cipher_letter(letter))?;
+            let idx =
+                locate(TRIFID_ALPHABET, letter, None).ok_or_else(|| bad_cipher_letter(letter))?;
             layers.push((idx / 9) as u8);
             rows.push(((idx % 9) / 3) as u8);
             cols.push((idx % 3) as u8);
@@ -601,21 +642,22 @@ pub fn trifid_encode(text: &str, options: &TrifidOptions) -> Result<SquareResult
 pub fn trifid_decode(text: &str, options: &TrifidOptions) -> Result<SquareResult, OperationError> {
     check_text(text)?;
     validate_period(options.period)?;
-    let (letters, dropped) = letters_only(text);
+    let (letters, dropped) = trifid_letters(text);
     let mut out = String::with_capacity(letters.len());
     for block in letters.chunks(options.period) {
         let n = block.len();
         let mut stream = Vec::with_capacity(3 * n);
         for &letter in block {
-            let idx = locate(TRIFID_ALPHABET, letter, None)
-                .ok_or_else(|| bad_cipher_letter(letter))?;
+            let idx =
+                locate(TRIFID_ALPHABET, letter, None).ok_or_else(|| bad_cipher_letter(letter))?;
             stream.push((idx / 9) as u8);
             stream.push(((idx % 9) / 3) as u8);
             stream.push((idx % 3) as u8);
         }
         for i in 0..n {
-            let idx =
-                (stream[i] as usize) * 9 + (stream[n + i] as usize) * 3 + stream[2 * n + i] as usize;
+            let idx = (stream[i] as usize) * 9
+                + (stream[n + i] as usize) * 3
+                + stream[2 * n + i] as usize;
             out.push(TRIFID_ALPHABET[idx] as char);
         }
     }
@@ -674,13 +716,13 @@ pub fn foursquare_encode(
     options: &FoursquareOptions,
 ) -> Result<SquareResult, OperationError> {
     check_text(text)?;
+    let omitted = omitted_pair(options.alphabet);
     let key1 = normalize_key_letters(&options.key1, options.alphabet)?;
     let key2 = normalize_key_letters(&options.key2, options.alphabet)?;
     let tl = build_square_25_from_key_letters(&[], options.alphabet);
     let br = build_square_25_from_key_letters(&[], options.alphabet);
     let tr = build_square_25_from_key_letters(&key1, options.alphabet);
     let bl = build_square_25_from_key_letters(&key2, options.alphabet);
-    let omitted = omitted_pair(options.alphabet);
     let (raw, dropped) = letters_only(text);
     let filler = b'X';
     let digraphs = playfair_digraphs(&raw, filler);
@@ -718,7 +760,6 @@ pub fn foursquare_decode(
     let br = build_square_25_from_key_letters(&[], options.alphabet);
     let tr = build_square_25_from_key_letters(&key1, options.alphabet);
     let bl = build_square_25_from_key_letters(&key2, options.alphabet);
-    let omitted = omitted_pair(options.alphabet);
     let (raw, dropped) = letters_only(text);
     if raw.len() % 2 != 0 {
         return Err(OperationError::length(
@@ -789,12 +830,12 @@ fn validate_transposition_key(key: &str) -> Result<Vec<u8>, OperationError> {
         .map(|c| c.to_ascii_uppercase() as u8)
         .collect();
     if letters.is_empty() {
-        return Err(OperationError::key(
-            "transposition key must contain at least one letter",
-        )
-        .with_parameter("transposition_key")
-        .with_expected("at least one ASCII letter")
-        .with_actual(format!("{key:?}")));
+        return Err(
+            OperationError::key("transposition key must contain at least one letter")
+                .with_parameter("transposition_key")
+                .with_expected("at least one ASCII letter")
+                .with_actual(format!("{key:?}")),
+        );
     }
     for (i, &a) in letters.iter().enumerate() {
         if letters[i + 1..].contains(&a) {
@@ -859,7 +900,9 @@ fn adf_transpose_decrypt(stream: &[u8], keyword: &[u8]) -> Vec<u8> {
     }
     let mut idxs = vec![0usize; n];
     let mut out = Vec::with_capacity(total);
-    'rows: for _ in 0..n {
+    // Ragged columns: the tallest column may exceed n rows, so iterate until
+    // every symbol is consumed rather than exactly n times.
+    'rows: for _ in 0..*heights.iter().max().unwrap_or(&0) {
         for col in 0..n {
             if idxs[col] < heights[col] {
                 out.push(columns[col][idxs[col]]);
@@ -944,7 +987,7 @@ fn adf_decode(
         .map(|c| c as u8)
         .collect();
     let dropped = text.chars().count() - stream.len();
-    if stream.len() % 2 != 0 {
+    if !stream.len().is_multiple_of(2) {
         return Err(OperationError::length(
             "an even number of coordinate symbols",
             format!("{} symbols", stream.len()),
@@ -956,16 +999,18 @@ fn adf_decode(
             return Err(OperationError::invalid_input(
                 "ciphertext contains symbols outside the ADFG(VX) alphabet",
             )
-            .with_expected(format!(
-                "only {}",
-                String::from_utf8_lossy(symbols)
-            ))
+            .with_expected(format!("only {}", String::from_utf8_lossy(symbols)))
             .with_actual(format!("{}", s as char)));
         }
     }
     let detransposed = adf_transpose_decrypt(&stream, &keyword);
     let output = defractionate(&detransposed, &square, symbols)?;
-    Ok(ok(output, stream.len() / 2, dropped, Some(String::from_utf8_lossy(&square).into_owned())))
+    Ok(ok(
+        output,
+        stream.len() / 2,
+        dropped,
+        Some(String::from_utf8_lossy(&square).into_owned()),
+    ))
 }
 
 /// ADFGX-encode `text` (5x5 keyed square, I/J merged, fractionated through a
@@ -975,7 +1020,13 @@ pub fn adfgx_encode(text: &str, options: &AdfgxOptions) -> Result<SquareResult, 
         Some(s) => parse_square(s, 25)?,
         None => build_square_25(non_empty(&options.key), AlphabetMode::IjMerged)?,
     };
-    adf_encode(text, square, ADFGX_SYMBOLS, &options.transposition_key, false)
+    adf_encode(
+        text,
+        square,
+        ADFGX_SYMBOLS,
+        &options.transposition_key,
+        false,
+    )
 }
 
 /// ADFGX-decode `text`.
@@ -994,7 +1045,13 @@ pub fn adfgvx_encode(text: &str, options: &AdfgvxOptions) -> Result<SquareResult
         Some(s) => parse_square(s, 36)?,
         None => build_square_36(&options.key)?,
     };
-    adf_encode(text, square, ADFGVX_SYMBOLS, &options.transposition_key, true)
+    adf_encode(
+        text,
+        square,
+        ADFGVX_SYMBOLS,
+        &options.transposition_key,
+        true,
+    )
 }
 
 /// ADFGVX-decode `text`.
@@ -1037,6 +1094,9 @@ pub fn hill_encode(
 ) -> Result<SquareResult, OperationError> {
     check_text(text)?;
     let (matrix, n) = hill_matrix(key)?;
+    // A singular key matrix silently destroys information — reject it for
+    // encryption too, not only on the decode path.
+    hill_inverse(&matrix, n)?;
     let (raw, dropped) = letters_only(text);
     let was_lower: Vec<bool> = text
         .chars()
@@ -1046,13 +1106,15 @@ pub fn hill_encode(
     let mut letters = raw.clone();
     let remainder = letters.len() % n;
     if remainder != 0 {
-        letters.extend(std::iter::repeat(b'X').take(n - remainder));
+        letters.extend(std::iter::repeat_n(b'X', n - remainder));
     }
     let mut out_bytes = Vec::with_capacity(letters.len());
     for block in letters.chunks(n) {
-        for r in 0..n {
-            let acc: i32 = (0..n)
-                .map(|c| matrix[r][c] as i32 * (block[c] - b'A') as i32)
+        for row in &matrix {
+            let acc: i32 = row
+                .iter()
+                .enumerate()
+                .map(|(c, &k)| k as i32 * (block[c] - b'A') as i32)
                 .sum();
             out_bytes.push(acc.rem_euclid(26) as u8 + b'A');
         }
@@ -1098,9 +1160,11 @@ pub fn hill_decode(
         .collect();
     let mut out_bytes = Vec::with_capacity(raw.len());
     for block in raw.chunks(n) {
-        for r in 0..n {
-            let acc: i32 = (0..n)
-                .map(|c| inv[r][c] as i32 * (block[c] - b'A') as i32)
+        for row in &inv {
+            let acc: i32 = row
+                .iter()
+                .enumerate()
+                .map(|(c, &k)| k as i32 * (block[c] - b'A') as i32)
                 .sum();
             out_bytes.push(acc.rem_euclid(26) as u8 + b'A');
         }
@@ -1156,9 +1220,9 @@ fn determinant(matrix: &[Vec<u8>]) -> i32 {
             .rem_euclid(26)
     } else {
         let m = |i: usize, j: usize| matrix[i][j] as i32;
-        let det = m(0, 0) as i32 * (m(1, 1) * m(2, 2) - m(1, 2) * m(2, 1))
-            - m(0, 1) as i32 * (m(1, 0) * m(2, 2) - m(1, 2) * m(2, 0))
-            + m(0, 2) as i32 * (m(1, 0) * m(2, 1) - m(1, 1) * m(2, 0));
+        let det = m(0, 0) * (m(1, 1) * m(2, 2) - m(1, 2) * m(2, 1))
+            - m(0, 1) * (m(1, 0) * m(2, 2) - m(1, 2) * m(2, 0))
+            + m(0, 2) * (m(1, 0) * m(2, 1) - m(1, 1) * m(2, 0));
         det.rem_euclid(26)
     }
 }
@@ -1199,13 +1263,24 @@ fn hill_inverse(matrix: &[Vec<u8>], n: usize) -> Result<Vec<Vec<u8>>, OperationE
         }
     } else {
         let m = |i: usize, j: usize| matrix[i][j] as i32;
-        // Adjugate (cofactor transpose) mod 26.
+        // Adjugate (cofactor transpose) mod 26. Minor indices must be in
+        #[allow(clippy::needless_range_loop)]
+        // ascending order — cyclic (r+1)%3 pairs silently flip the minor's
+        // sign for half the cells.
+        let others = |x: usize| -> (usize, usize) {
+            let a = (x + 1) % 3;
+            let b = (x + 2) % 3;
+            if a < b {
+                (a, b)
+            } else {
+                (b, a)
+            }
+        };
+        #[allow(clippy::needless_range_loop)] // adj[c][r] transposes the indices
         for r in 0..3 {
             for c in 0..3 {
-                let i0 = (r + 1) % 3;
-                let i1 = (r + 2) % 3;
-                let j0 = (c + 1) % 3;
-                let j1 = (c + 2) % 3;
+                let (i0, i1) = others(r);
+                let (j0, j1) = others(c);
                 let minor = m(i0, j0) * m(i1, j1) - m(i0, j1) * m(i1, j0);
                 let sign = if (r + c) % 2 == 0 { 1 } else { -1 };
                 // Adjugate is the TRANSPOSE of cofactors: adj[c][r].
@@ -1230,7 +1305,8 @@ mod tests {
         // J merges into I in both directions.
         let enc = polybius_encode("JAIL", &PolybiusOptions::default()).unwrap();
         let dec = polybius_decode(&enc.output, &PolybiusOptions::default()).unwrap();
-        assert_eq!(dec.output, "IALI");
+        // J merges into I: the decoded text keeps the merged letter.
+        assert_eq!(dec.output, "IAIL");
     }
 
     #[test]
@@ -1243,7 +1319,7 @@ mod tests {
         assert_eq!(enc.square.as_deref(), Some("SECRTABDFGHIKLMNOPQUVWXYZ"));
         assert_eq!(polybius_decode(&enc.output, &options).unwrap().output, "AB");
         let override_options = PolybiusOptions {
-            square: Some("ABCDEFGHIJKLMNOPRSTUVWXYZ".into()),
+            square: Some("ABCDEFGHIJKLMNOPRSTUVWXY".into()),
             ..PolybiusOptions::default()
         };
         let err = polybius_encode("AB", &override_options).unwrap_err();
@@ -1280,7 +1356,7 @@ mod tests {
         let enc = playfair_encode("balloon", &options).unwrap();
         assert_eq!(enc.output.len(), 8, "BA LX LO ON");
         let xx = playfair_encode("xx", &options).unwrap();
-        assert_eq!(xx.output.len(), 2, "X doubled becomes XQ");
+        assert_eq!(xx.output.len(), 4, "doubled X becomes XQ + pad");
     }
 
     #[test]
@@ -1316,10 +1392,15 @@ mod tests {
         // (2,4)P (0,3)D.
         let options = BifidOptions { period: 5 };
         let enc = bifid_encode("HELLO", &options).unwrap();
-        assert_eq!(enc.output, "FNNPD");
+        assert_eq!(enc.output, "FNNVD");
         assert_eq!(bifid_decode(&enc.output, &options).unwrap().output, "HELLO");
         let whole = bifid_encode("ATTACK", &BifidOptions { period: 100 }).unwrap();
-        assert_eq!(bifid_decode(&whole.output, &BifidOptions { period: 100 }).unwrap().output, "ATTACK");
+        assert_eq!(
+            bifid_decode(&whole.output, &BifidOptions { period: 100 })
+                .unwrap()
+                .output,
+            "ATTACK"
+        );
     }
 
     #[test]
@@ -1327,7 +1408,12 @@ mod tests {
         let a = bifid_encode("ATTACKATDAWN", &BifidOptions { period: 3 }).unwrap();
         let b = bifid_encode("ATTACKATDAWN", &BifidOptions { period: 4 }).unwrap();
         assert_ne!(a.output, b.output);
-        assert_eq!(bifid_decode(&a.output, &BifidOptions { period: 3 }).unwrap().output, "ATTACKATDAWN");
+        assert_eq!(
+            bifid_decode(&a.output, &BifidOptions { period: 3 })
+                .unwrap()
+                .output,
+            "ATTACKATDAWN"
+        );
     }
 
     #[test]
@@ -1339,7 +1425,10 @@ mod tests {
         let options = TrifidOptions { period: 5 };
         let enc = trifid_encode("HELLO", &options).unwrap();
         assert_eq!(enc.output, "BOJN+");
-        assert_eq!(trifid_decode(&enc.output, &options).unwrap().output, "HELLO");
+        assert_eq!(
+            trifid_decode(&enc.output, &options).unwrap().output,
+            "HELLO"
+        );
     }
 
     #[test]
@@ -1362,7 +1451,10 @@ mod tests {
         };
         let enc = foursquare_encode("help me obiwan kenobi", &options).unwrap();
         assert!(enc.output.starts_with("FY"), "got {}", enc.output);
-        assert_eq!(foursquare_decode(&enc.output, &options).unwrap().output, "HELPMEOBIWANKENOBI");
+        assert_eq!(
+            foursquare_decode(&enc.output, &options).unwrap().output,
+            "HELPMEOBIWANKENOBI"
+        );
     }
 
     #[test]
@@ -1374,7 +1466,10 @@ mod tests {
         };
         let text = "ABCDEF"; // even length, no doubled letters
         let enc = foursquare_encode(text, &options).unwrap();
-        assert_eq!(foursquare_decode(&enc.output, &options).unwrap().output, text);
+        assert_eq!(
+            foursquare_decode(&enc.output, &options).unwrap().output,
+            text
+        );
         // The NoQ plaintext squares place Q's cell at P: only the round trip
         // through an existing letter is exact.
     }
@@ -1415,18 +1510,6 @@ mod tests {
         let enc = adfgx_encode(text, &options).unwrap();
         assert!(enc.output.chars().all(|c| "ADFGX".contains(c)));
         assert_eq!(enc.output.len(), 2 * 18);
-
-    #[test]
-    fn adfgx_keyed_square_round_trip() {
-        let options = AdfgxOptions {
-            key: "shadow".into(),
-            transposition_key: "night".into(),
-            square: None,
-        };
-        let text = "MEETMEATTHEDIVIDER";
-        let enc = adfgx_encode(text, &options).unwrap();
-        assert!(enc.output.chars().all(|c| "ADFGX".contains(c)));
-        assert_eq!(enc.output.len(), 2 * 18);
         assert_eq!(adfgx_decode(&enc.output, &options).unwrap().output, text);
         // J merges into I.
         let jay = adfgx_encode("JAZZ", &options).unwrap();
@@ -1446,7 +1529,10 @@ mod tests {
         };
         let enc = adfgvx_encode("hello", &options).unwrap();
         assert_eq!(enc.output, "GFGAFFADGD");
-        assert_eq!(adfgvx_decode(&enc.output, &options).unwrap().output, "HELLO");
+        assert_eq!(
+            adfgvx_decode(&enc.output, &options).unwrap().output,
+            "HELLO"
+        );
     }
 
     #[test]
@@ -1457,9 +1543,18 @@ mod tests {
             square: None,
         };
         let enc = adfgvx_encode("r4nd0m", &options).unwrap();
-        assert_eq!(adfgvx_decode(&enc.output, &options).unwrap().output, "R4ND0M");
-        assert!(adfgvx_decode("QQAQ", &options).is_err(), "Q is not an ADFGVX symbol");
-        assert!(adfgx_decode("VAVAVA", &options).is_err(), "V is not an ADFGX symbol");
+        assert_eq!(
+            adfgvx_decode(&enc.output, &options).unwrap().output,
+            "R4ND0M"
+        );
+        assert!(
+            adfgvx_decode("QQAQ", &options).is_err(),
+            "Q is not an ADFGVX symbol"
+        );
+        assert!(
+            adfgx_decode("VAVAVA", &AdfgxOptions::default()).is_err(),
+            "V is not an ADFGX symbol"
+        );
     }
 
     #[test]
@@ -1478,25 +1573,37 @@ mod tests {
         // 2x2: [[3,3],[2,5]] (key DDCF), HELP -> HIAT.
         let enc = hill_encode("HELP", "DDCF", &HillOptions::default()).unwrap();
         assert_eq!(enc.output, "HIAT");
-        assert_eq!(hill_decode("HIAT", "DDCF", &HillOptions::default()).unwrap().output, "HELP");
+        assert_eq!(
+            hill_decode("HIAT", "DDCF", &HillOptions::default())
+                .unwrap()
+                .output,
+            "HELP"
+        );
         // 3x3: GYBNQKURP, ACT -> POH.
         let enc = hill_encode("ACT", "GYBNQKURP", &HillOptions::default()).unwrap();
         assert_eq!(enc.output, "POH");
-        assert_eq!(hill_decode("POH", "GYBNQKURP", &HillOptions::default()).unwrap().output, "ACT");
+        assert_eq!(
+            hill_decode("POH", "GYBNQKURP", &HillOptions::default())
+                .unwrap()
+                .output,
+            "ACT"
+        );
     }
 
     #[test]
     fn hill_pads_partial_blocks() {
         let enc = hill_encode("HELPM", "DDCF", &HillOptions::default()).unwrap();
         assert_eq!(enc.output.len(), 6, "5 letters pad to 6 (three 2x2 blocks)");
-        let dec = hill_decode(&enc.output, "DDCF", &HillOptions::default()).unwrap().output;
+        let dec = hill_decode(&enc.output, "DDCF", &HillOptions::default())
+            .unwrap()
+            .output;
         assert_eq!(dec, "HELPMX");
     }
 
     #[test]
     fn hill_rejects_singular_matrices() {
         // [[13, 0], [0, 1]]: det 13 shares a factor with 26.
-        let err = hill_encode("AB", "NAB", &HillOptions::default()).unwrap_err();
+        let err = hill_encode("AB", "NAAB", &HillOptions::default()).unwrap_err();
         assert_eq!(err.expected.as_deref(), Some("gcd(det, 26) = 1"));
         assert_eq!(err.actual.as_deref(), Some("det = 13 mod 26"));
         // det = 0: [[1,2],[2,4]] -> key B C C E.

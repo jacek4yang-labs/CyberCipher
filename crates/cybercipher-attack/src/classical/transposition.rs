@@ -88,7 +88,7 @@ fn rail_pattern(len: usize, rails: usize, offset: usize) -> Vec<usize> {
 }
 
 fn validate_rails(rails: usize) -> Result<(), OperationError> {
-    if rails < 2 || rails > MAX_TRANSPOSITION_SHAPE {
+    if !(2..=MAX_TRANSPOSITION_SHAPE).contains(&rails) {
         return Err(OperationError::invalid_param(
             "rails",
             format!("rails must be in 2..={MAX_TRANSPOSITION_SHAPE}"),
@@ -228,7 +228,10 @@ pub fn columnar_encode(
     if let Some(pad) = options.padding {
         let remainder = letters.len() % n;
         if remainder != 0 {
-            letters.extend(std::iter::repeat((pad.to_ascii_uppercase() as u8, false)).take(n - remainder));
+            letters.extend(std::iter::repeat_n(
+                (pad.to_ascii_uppercase() as u8, false),
+                n - remainder,
+            ));
         }
     }
     let total = letters.len();
@@ -418,7 +421,10 @@ pub fn route_decode(text: &str, options: &RouteOptions) -> Result<TextResult, Op
     let capacity = rows * options.columns;
     if cipher.len() > capacity {
         return Err(OperationError::length(
-            format!("at most {capacity} letters for a {rows}x{} grid", options.columns),
+            format!(
+                "at most {capacity} letters for a {rows}x{} grid",
+                options.columns
+            ),
             format!("{} letters", cipher.len()),
             "ciphertext does not fit the requested grid",
         ));
@@ -438,7 +444,9 @@ mod tests {
     const OPT: RailFenceOptions = RailFenceOptions {
         rails: 3,
         offset: 0,
-        case: CaseOptions { preserve_case: true },
+        case: CaseOptions {
+            preserve_case: true,
+        },
     };
 
     #[test]
@@ -459,7 +467,10 @@ mod tests {
         // Cycle 1,2,1,0 repeating: rails r0=[D], r1=[A,C,E], r2=[B,F].
         let enc = rail_fence_encode("ABCDEF", &opt).unwrap();
         assert_eq!(enc.output, "DACEBF");
-        assert_eq!(rail_fence_decode(&enc.output, &opt).unwrap().output, "ABCDEF");
+        assert_eq!(
+            rail_fence_decode(&enc.output, &opt).unwrap().output,
+            "ABCDEF"
+        );
     }
 
     #[test]
@@ -471,7 +482,10 @@ mod tests {
         };
         let enc = rail_fence_encode("ABCDEFGH", &opt).unwrap();
         assert_eq!(enc.output, "ACEGBDFH");
-        assert_eq!(rail_fence_decode(&enc.output, &opt).unwrap().output, "ABCDEFGH");
+        assert_eq!(
+            rail_fence_decode(&enc.output, &opt).unwrap().output,
+            "ABCDEFGH"
+        );
     }
 
     #[test]
@@ -498,7 +512,9 @@ mod tests {
         let opt = ColumnarOptions {
             key: vec![3, 1, 4, 5, 2],
             padding: None,
-            case: CaseOptions { preserve_case: true },
+            case: CaseOptions {
+                preserve_case: true,
+            },
         };
         // 12 letters / 5 columns: rows ATTAC | KATDA | WN.
         // col0: A K W; col1: T A N; col2: T T; col3: A D; col4: C A.
@@ -515,7 +531,9 @@ mod tests {
         let opt = ColumnarOptions {
             key: vec![2, 1],
             padding: Some('X'),
-            case: CaseOptions { preserve_case: true },
+            case: CaseOptions {
+                preserve_case: true,
+            },
         };
         // Rows AB | CX: col0=[A,C], col1=[B,X]; read order 1→col1, 2→col0.
         let enc = columnar_encode("ABC", &opt).unwrap();
@@ -555,7 +573,9 @@ mod tests {
             columns: 3,
             rows: Some(3),
             filler: 'X',
-            case: CaseOptions { preserve_case: true },
+            case: CaseOptions {
+                preserve_case: true,
+            },
         };
         let enc = route_encode("ABCDEFGHI", &opt).unwrap();
         assert_eq!(enc.output, "ABCFIHGDE");
@@ -576,7 +596,9 @@ mod tests {
             columns: 4,
             rows: Some(2),
             filler: 'X',
-            case: CaseOptions { preserve_case: true },
+            case: CaseOptions {
+                preserve_case: true,
+            },
         };
         // Spiral order over 2x4: 0,1,2,3,7,6,5,4 → A B C D X X F E.
         let enc = route_encode("ABCDEF", &opt).unwrap();
@@ -595,7 +617,14 @@ mod tests {
         };
         assert!(route_decode("ABCDEFGHI", &opt).is_err());
         assert!(route_encode("A", &RouteOptions { columns: 0, ..opt }).is_err());
-        assert!(route_encode("A", &RouteOptions { rows: Some(0), ..opt }).is_err());
+        assert!(route_encode(
+            "A",
+            &RouteOptions {
+                rows: Some(0),
+                ..opt
+            }
+        )
+        .is_err());
     }
 
     #[test]

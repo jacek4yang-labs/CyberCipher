@@ -38,6 +38,7 @@ pub mod cracking;
 pub mod polyalphabetic;
 pub mod scoring;
 pub mod simple;
+pub mod square;
 pub mod transposition;
 
 pub use cracking::{
@@ -60,11 +61,11 @@ pub use simple::{
     rot47_encode, rot5_decode, rot5_encode, AffineCheck, CaseOptions,
 };
 pub use square::{
-    adfgx_decode, adfgx_encode, adfgvx_decode, adfgvx_encode, bifid_decode, bifid_encode,
+    adfgvx_decode, adfgvx_encode, adfgx_decode, adfgx_encode, bifid_decode, bifid_encode,
     foursquare_decode, foursquare_encode, hill_decode, hill_encode, playfair_decode,
-    playfair_encode, polybius_decode, polybius_encode, trifid_decode, trifid_encode,
-    Adfgv xOptions as AdfgxVxPlaceholder, AlphabetMode, BifidOptions, FoursquareOptions,
-    HillOptions, PlayfairOptions, PolybiusOptions, SquareResult, TrifidOptions,
+    playfair_encode, polybius_decode, polybius_encode, trifid_decode, trifid_encode, AdfgvxOptions,
+    AlphabetMode, BifidOptions, FoursquareOptions, HillOptions, PlayfairOptions, PolybiusOptions,
+    SquareResult, TrifidOptions,
 };
 pub use transposition::{
     columnar_decode, columnar_encode, rail_fence_decode, rail_fence_encode, route_decode,
