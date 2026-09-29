@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "phase": "M5/M6/M7",
-  "main_sha": "2a18db2",
+  "phase": "M6/M7/M8",
+  "main_sha": "c2dfb39",
   "active_branch": null,
   "active_pr": null,
   "current_task": null,
@@ -21,22 +21,25 @@
     "M4-LAT-01",
     "M4-LAT-02",
     "M5-AEAD-01",
-    "M5-MAC-KDF-01",
+    "M5-MAC-01",
+    "M5-MAC-02",
+    "M5-BLOCK-01",
+    "M5-KDF-ARGON2",
     "M6-XOR-01",
+    "M6-CLASSICAL-01",
     "M7-AUTO-01-XOR",
     "QA-COVERAGE",
-    "BENCH-01"
+    "QA-CONSISTENCY-01",
+    "BENCH-01",
+    "RECONCILE-01"
   ],
   "blocked": [],
-  "agent_lanes": {
-    "crypto-breadth": "agent/crypto/breadth \u2014 launching",
-    "classical": "agent/classical/m6 \u2014 launching"
-  },
+  "agent_lanes": {},
   "validation": {
     "cargo_fmt": "pass",
     "cargo_clippy": "pass",
     "cargo_test": "pass",
     "frontend": "pass"
   },
-  "notes": "Reconciled 2026-09-29: 20 PRs merged, main=2a18db2. Registry 71 ops + attack crate (155 tests). Packaging policy change: tar.gz under ~/Applications is canonical, AppImage optional."
+  "notes": "Reconciled session 2 end: 24 PRs merged, main=c2dfb39. Registry ~99 ops + attack crate (classical 20+ ciphers, XOR lab, RSA 13 attacks, PRNG suite, LLL/Coppersmith) + crypto crate (AEAD/KDF/MAC/streams/14 block ciphers). 366 tests. Next: M7-ASSIST-01 (AES Assist), M8-PKI-01, RELEASE-TAR-01, M6-CTF-ENC-01, M7-AUTO-02, M9-FILE-01, M7-SIG-01."
 }

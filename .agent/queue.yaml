@@ -1,80 +1,58 @@
 # CyberCipher durable work queue (authoritative order)
-# Reconciled 2026-09-29 against main=2a18db2 (20 PRs merged).
-# Completed-and-merged (do NOT relaunch): M0 bootstrap, M1 workbench,
-# M2 crypto baseline+CLI, M3 Auto Decode, M4 complete (BigInt, RSA engine+
-# analyzer+Lab, LCG/MT19937/Java/glibc/MSVC, LLL+Coppersmith+escalation),
-# M5 AEAD+KDF, M6 XOR lab, M7 XOR-in-AutoDecode, benches, compat matrices+vectors.
-
-- id: RECONCILE-01
-  title: state/doc reconciliation (this PR)
-  status: done
-  priority: P0
-
-- id: M5-BLOCK-01
-  title: Broad block ciphers (Serpent, Twofish, Blowfish, Camellia, ARIA, CAST5/6, IDEA, RC2/5/6, SEED, Threefish, GOST family) — orthogonal cipher+mode+padding composition
-  status: running
-  priority: P1
-  depends_on: []
-  owner: crypto
-  branch: agent/crypto/breadth
-
-- id: M6-CLASSICAL-01
-  title: Classical ciphers + cracking (Caesar/ROT/Atbash/Affine/Vigenere/Autokey/Beaufort/Gronsfeld/Porta, Rail Fence/Columnar/Route, Polybius/Playfair/Hill/Bacon/Bifid/Trifid/Four-square/ADFGVX, Morse/A1Z26/tap-code) + IOC/Kasiski/chi-square/n-gram scoring
-  status: running
-  priority: P1
-  depends_on: []
-  owner: classical
-  branch: agent/classical/m6
-
-- id: M6-CTF-ENC-01
-  title: CTF specialty encodings (社会主义核心价值观, 佛曰/新佛曰, 兽音, 熊曰, Brainfuck/Ook, AAEncode/JJEncode) + Base36/45/58/58Check/62/Ascii85/85/Z85/91/92
-  status: pending
-  priority: P1
-  depends_on: [M6-CLASSICAL-01]
-  owner: classical
+# Reconciled session-2 end: 24 PRs merged, main = c2dfb39.
+# COMPLETED AND MERGED (do NOT relaunch): bootstrap, workbench, crypto baseline,
+# Auto Decode, M4 (BigInt/RSA/PRNG/lattice), M5 (AEAD/KDF/blocks/MACs/streams),
+# M6 (XOR lab, classical ciphers), M7 XOR-in-AutoDecode, benches, compat
+# matrices, vectors, state guard.
 
 - id: M7-ASSIST-01
-  title: AES Assist (constrained param search, prune, shared scoring, Apply as Recipe) — generalize to SM4/DES/RC4
-  status: pending
+  title: AES Assist (constrained param search over key-interpretation/mode/IV/padding, prune, shared scoring, Apply as Recipe) — generalize to SM4/DES/RC4
+  status: ready
   priority: P1
   depends_on: []
   owner: analysis
+
+- id: RELEASE-TAR-01
+  title: Linux tar.gz release pipeline (canonical, ~/Applications layout, install/uninstall-desktop.sh, Ubuntu 22.04 baseline, CI artifact smoke test, README.txt, sha256)
+  status: ready
+  priority: P1
+  depends_on: []
+  owner: release
+
+- id: M8-PKI-01
+  title: RSA standard ops (keygen, PKCS#1 v1.5, OAEP, PSS sign/verify) + PEM/DER/PKCS#8/SPKI/JWK + ECDSA/Ed25519/X25519/ECDH + SM2 + ASN.1/JWT
+  status: ready
+  priority: P1
+  depends_on: []
+  owner: pki
+
+- id: M6-CTF-ENC-01
+  title: CTF specialty encodings (社会主义核心价值观, 佛曰/新佛曰, 兽音, 熊曰, Brainfuck/Ook, AAEncode/JJEncode) + Base36/45/58/58Check/62/Ascii85/85/Z85/91/92
+  status: ready
+  priority: P1
+  depends_on: []
+  owner: classical
+
+- id: M6-CLASSICAL-MISC-01
+  title: Classical misc encodings (Morse, A1Z26, Tap code, Bacon, Braille) — module missing from classical lane
+  status: ready
+  priority: P2
+  depends_on: []
+  owner: classical
 
 - id: M7-AUTO-02
   title: Auto Decode expansion (unicode escapes, HTML entities, quoted-printable, punycode, Base58/62/85/91)
   status: pending
   priority: P2
-  depends_on: []
+  depends_on: [M6-CTF-ENC-01]
   owner: analysis
 
-- id: M8-PKI-01
-  title: RSA standard ops (keygen, PKCS#1 v1.5, OAEP, PSS) + PEM/DER/PKCS#8/SPKI/JWK + ECDSA/Ed25519/X25519/ECDH + SM2 + ASN.1/JWT
-  status: pending
-  priority: P1
-  depends_on: []
-  owner: pki
-
-- id: M8-ECDSA-ATTACK-01
-  title: ECDSA attack helpers (nonce reuse, known/small k, duplicate-r detection)
-  status: pending
-  priority: P2
-  depends_on: [M8-PKI-01]
-  owner: pki
-
-- id: RELEASE-TAR-01
-  title: Linux tar.gz release pipeline (canonical): CyberCipher-vX.Y.Z-linux-x86_64.tar.gz, Ubuntu 22.04 baseline, install/uninstall-desktop.sh, CI artifact smoke test, README.txt
-  status: pending
-  priority: P1
-  depends_on: []
-  owner: release
-  notes: PACKAGING POLICY — tar.gz extracted under ~/Applications is canonical; AppImage optional later. Do not build AppImage-first.
-
-- id: QA-CONSISTENCY-01
-  title: Metadata consistency guard (script catching pending-vs-done / "PR in flight" after merge / stale main SHA)
+- id: M5-SEED-01
+  title: SEED cipher + remaining streams (HC-256/Rabbit/ZUC if trustworthy crates exist) + KMAC + bcrypt compat
   status: pending
   priority: P2
   depends_on: []
-  owner: qa
+  owner: crypto
 
 - id: M9-FILE-01
   title: File/structured-data breadth (zip/bzip2/xz/lz4/zstd/brotli/tar; CBOR/MsgPack/TLV/VarInt; magic/carve/PNG-chunk/EXIF/LSB)
@@ -90,9 +68,9 @@
   depends_on: []
   owner: analysis
 
-- id: M5-MAC-02
-  title: CMAC, GMAC, KMAC, Poly1305, Argon2id, bcrypt compat; streams Salsa20/XSalsa20/HC-256/Rabbit
+- id: M8-ECDSA-ATTACK-01
+  title: ECDSA attack helpers (nonce reuse, known/small k, duplicate-r detection)
   status: pending
   priority: P2
-  depends_on: [M5-BLOCK-01]
-  owner: crypto
+  depends_on: [M8-PKI-01]
+  owner: pki

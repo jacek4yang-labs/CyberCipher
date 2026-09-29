@@ -1,16 +1,17 @@
 # Handoff
 
 ## In flight
-- Worker A: broad block ciphers -> agent/crypto/breadth (worktree ../cc-crypto)
-- Worker B: classical ciphers + cracking -> agent/classical/m6 (worktree ../cc-classical)
-- Coordinator: reconcile PR (this branch), integration duty.
+- Nothing. All lanes merged; worktrees cleaned up.
 
-## Merged
-PRs #1-#20 (see state.json last_completed). main = 2a18db2. Packaging policy: tar.gz canonical.
+## Merged (PRs #1-#24)
+Bootstrap, workbench, crypto baseline+CLI, Auto Decode, M4 attack engine (RSA/PRNG/lattice + Labs), M5 AEAD/KDF/blocks/MACs/streams, M6 XOR lab + classical ciphers, M7 XOR-in-AutoDecode, benches, compat matrices + vectors, state guard, P0 reconcile.
 
-## Next concrete actions
-1. Merge reconcile PR.
-2. On worker completion: integrate -> PR; refill slots with C (AES Assist), D (PKI), E (tar release), F (QA consistency).
+## main = c2dfb39 — registry ~99 ops, 366+ tests.
+
+## Next concrete actions (priority order)
+1. Spawn next wave: AES Assist (M7-ASSIST-01), tar.gz release (RELEASE-TAR-01), PKI (M8-PKI-01), CTF encodings (M6-CTF-ENC-01).
+2. Update CAPABILITIES/COMPATIBILITY for classical + breadth ciphers after merge.
+3. Wire vectors/ fixtures into automated differential tests.
 
 ## Blocked
-- Subagent concurrency = 2. Background agents may die on infra errors — checkpoint worktrees, finish orphaned WIP as coordinator.
+- Subagent concurrency = 2. Infra failures seen: "Captcha instance timed out", "exceed quota limit" — always checkpoint worktrees; finish orphaned WIP as coordinator (done 3x).
