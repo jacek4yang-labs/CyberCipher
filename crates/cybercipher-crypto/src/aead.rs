@@ -17,6 +17,10 @@
 use aead::consts::{U10, U11, U12, U13, U16, U4, U7, U8, U9};
 use aead::generic_array::GenericArray;
 use aead::{AeadInPlace, KeyInit};
+// aes-gcm / ccm are on the cipher 0.4 generation and need `aes` 0.8 types;
+// `aes08` is that crate (renamed in Cargo.toml) while `aes` 0.9 serves the
+// block-cipher table in ciphers.rs.
+use aes08 as aes;
 use aes_gcm::{Aes128Gcm, Aes256Gcm};
 use chacha20poly1305::{ChaCha20Poly1305, XChaCha20Poly1305};
 use cybercipher_codec::decode_input;

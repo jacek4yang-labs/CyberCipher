@@ -12,17 +12,29 @@ cybercipher-codec.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 
-# RustCrypto block ciphers and modes
-cipher = { version = "0.4", features = ["alloc"] }
-aes = "0.8"
-des = "0.8"
-sm4 = "0.5"
-ecb = { version = "0.1", features = ["alloc"] }
-cbc = { version = "0.1", features = ["alloc"] }
-ctr = "0.9"
-cfb-mode = "0.8"
-ofb = "0.6"
-block-padding = "0.3"
+# RustCrypto block ciphers (cipher 0.5 family). Modes (ECB/CBC/CTR/CFB/OFB)
+# are wired natively in `ciphers.rs` over a shared `BlockEngine` trait, so
+# adding a cipher is a table row, not a new mode binding.
+cipher = { version = "0.5", features = ["alloc"] }
+aes = "0.9"
+# aes 0.8 is kept for the aead 0.5-generation crates (aes-gcm/ccm) that take
+# AES types as generic parameters.
+aes08 = { package = "aes", version = "0.8" }
+des = "0.9"
+sm4 = "0.6"
+serpent = "0.6"
+twofish = "0.8"
+blowfish = "0.10"
+camellia = "0.2"
+aria = "0.2"
+cast5 = "0.12"
+idea = "0.6"
+rc2 = "0.9"
+rc5 = "0.1"
+rc6 = "0.1"
+threefish = "0.6"
+magma = "0.10"
+kuznyechik = "0.9"
 
 # Digests and MAC
 digest = "0.10"
@@ -40,10 +52,18 @@ ccm = "0.5"
 chacha20poly1305 = "0.10"
 aes-gcm-siv = "0.10"
 
+# MACs outside the HMAC family
+cmac = "0.8"
+poly1305 = "0.9"
+
+# Stream ciphers
+salsa20 = "0.11"
+
 # Key derivation functions
 pbkdf2 = { version = "0.12", features = ["simple"] }
 hkdf = "0.12"
 scrypt = { version = "0.11", default-features = false }
+argon2 = "0.6"
 
 [dev-dependencies]
 cybercipher-engine.workspace = true
