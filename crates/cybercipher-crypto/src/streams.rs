@@ -9,6 +9,8 @@ use crate::helpers::{decode_material, input_bytes, p_enc, p_text};
 
 const STREAM_TAGS: &[&str] = &["crypto", "stream"];
 
+type StreamApply = fn(&[u8], &[u8], &[u8]) -> OpResult<Vec<u8>>;
+
 fn stream_spec(
     id: &'static str,
     name: &'static str,
@@ -19,12 +21,7 @@ fn stream_spec(
     vectors: &'static str,
 ) -> &'static OperationSpec {
     let params = vec![
-        p_text(
-            "key",
-            "Key",
-            "",
-            "32-byte key after decoding.",
-        ),
+        p_text("key", "Key", "", "32-byte key after decoding."),
         p_enc("key_encoding", "Key encoding", "hex", ""),
         p_text(
             "nonce",
@@ -93,7 +90,7 @@ fn xsalsa20_apply(key: &[u8], nonce: &[u8], data: &[u8]) -> OpResult<Vec<u8>> {
 fn stream_run(
     name: &'static str,
     nonce_len: usize,
-    apply: fn(&[u8], &[u8], &[u8]) -> OpResult<Vec<u8>>,
+    apply: StreamApply,
 ) -> impl Fn(&Value, &ParamMap, &ExecutionContext) -> OpResult<Value> + Send + Sync + 'static {
     move |v: &Value, map: &ParamMap, _: &ExecutionContext| -> OpResult<Value> {
         let bytes = input_bytes(v, name)?;

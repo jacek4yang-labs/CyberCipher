@@ -103,6 +103,7 @@ fn block_mode_params() -> Vec<ParamSpec> {
 }
 
 /// Leak a spec built from the shared block-mode parameter set.
+#[allow(clippy::too_many_arguments)]
 fn leak_cipher_spec(
     id: &'static str,
     name: &'static str,

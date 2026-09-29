@@ -90,11 +90,7 @@ fn all_modes_roundtrip(algo: &str, key: &str, iv_len: usize) {
     let tweak = "000102030405060708090a0b0c0d0e0f";
     let iv = &tweak[..iv_len * 2];
     for mode in ["ecb", "cbc", "ctr", "cfb", "ofb"] {
-        let mut params = vec![
-            ("key", key),
-            ("key_encoding", "hex"),
-            ("mode", mode),
-        ];
+        let mut params = vec![("key", key), ("key_encoding", "hex"), ("mode", mode)];
         // Threefish needs its tweak in every mode, including ECB.
         if mode != "ecb" || algo == "threefish" {
             params.push(("iv", iv));

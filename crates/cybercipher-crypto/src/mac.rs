@@ -15,6 +15,7 @@ use crate::helpers::{hex, p_enc, p_opts, p_text, p_text_opt};
 
 const MAC_TAGS: &[&str] = &["crypto", "mac"];
 
+#[allow(clippy::too_many_arguments)]
 fn mac_spec(
     id: &'static str,
     name: &'static str,
@@ -49,10 +50,12 @@ fn mac_spec(
 }
 
 fn key_len_error(what: &str, param: &str, expected: &str, actual: usize) -> OperationError {
-    OperationError::key(format!("{what} key must be {expected} bytes after decoding, got {actual} bytes"))
-        .with_parameter(param)
-        .with_expected(format!("{expected} bytes"))
-        .with_actual(format!("{actual} bytes"))
+    OperationError::key(format!(
+        "{what} key must be {expected} bytes after decoding, got {actual} bytes"
+    ))
+    .with_parameter(param)
+    .with_expected(format!("{expected} bytes"))
+    .with_actual(format!("{actual} bytes"))
 }
 
 // ------------------------------------------------------------ CMAC ----
@@ -119,13 +122,15 @@ fn cmac_run(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<Value> 
         .iter()
         .find(|c| c.label == choice_label)
         .ok_or_else(|| {
-            OperationError::invalid_param(
-                "cipher",
-                format!("unknown CMAC cipher `{choice_label}`"),
-            )
+            OperationError::invalid_param("cipher", format!("unknown CMAC cipher `{choice_label}`"))
         })?;
     if key.len() != choice.expected {
-        return Err(key_len_error("CMAC", "key", &choice.expected.to_string(), key.len()));
+        return Err(key_len_error(
+            "CMAC",
+            "key",
+            &choice.expected.to_string(),
+            key.len(),
+        ));
     }
     Ok(Value::Text(hex(&(choice.compute)(&key, bytes.as_ref())?)))
 }
@@ -222,7 +227,12 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
         },
     ];
     let cmac_params = vec![
-        p_text("key", "Key", "", "Key material; length must match the selected cipher."),
+        p_text(
+            "key",
+            "Key",
+            "",
+            "Key material; length must match the selected cipher.",
+        ),
         p_enc("key_encoding", "Key encoding", "hex", ""),
         p_opts(
             "cipher",
@@ -258,7 +268,12 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
             "96-bit (12-byte) IV; GMAC's keyed-IV parameter J0.",
         ),
         p_enc("iv_encoding", "IV encoding", "hex", ""),
-        p_text_opt("aad", "AAD", "", "Additional authenticated data (the GMAC message)."),
+        p_text_opt(
+            "aad",
+            "AAD",
+            "",
+            "Additional authenticated data (the GMAC message).",
+        ),
         p_enc("aad_encoding", "AAD encoding", "hex", ""),
     ];
     reg.add_simple(

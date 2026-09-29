@@ -264,7 +264,8 @@ fn make_threefish(key: &[u8], tweak: &[u8]) -> OpResult<Box<dyn BlockEngine>> {
     }
 }
 
-const BLOCK_THREEFISH: BlockCipherEntry = BlockCipherEntry {    id: "threefish",
+const BLOCK_THREEFISH: BlockCipherEntry = BlockCipherEntry {
+    id: "threefish",
     display: "Threefish",
     key_lengths: &[32, 64, 128],
     key_range: (32, 128),
@@ -888,7 +889,14 @@ fn cipher_run(
 
         let out = if encrypt {
             let padded = pad(bytes.as_ref(), block, padding)?;
-            mode_apply(entry, mode, &key, iv.as_deref().unwrap_or(&[]), padded, true)?
+            mode_apply(
+                entry,
+                mode,
+                &key,
+                iv.as_deref().unwrap_or(&[]),
+                padded,
+                true,
+            )?
         } else {
             let decrypted = mode_apply(
                 entry,
@@ -1002,8 +1010,14 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
                 ("Decrypts", "decrypt")
             };
             let id: &'static str = Box::leak(format!("{}-{suffix}", entry.id).into_boxed_str());
-            let name: &'static str =
-                Box::leak(format!("{} {}", entry.display, verb.strip_suffix('s').unwrap_or(verb)).into_boxed_str());
+            let name: &'static str = Box::leak(
+                format!(
+                    "{} {}",
+                    entry.display,
+                    verb.strip_suffix('s').unwrap_or(verb)
+                )
+                .into_boxed_str(),
+            );
             let description: &'static str = Box::leak(
                 format!(
                     "{verb} with {display}: {shape} Mode and padding are validated explicitly; the iv parameter carries the IV (or the mandatory 16-byte tweak for Threefish).",

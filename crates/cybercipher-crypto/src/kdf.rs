@@ -293,10 +293,15 @@ fn argon2id_run(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<Val
         .with_actual(format!("{m_cost} KiB")));
     }
 
-    let params = argon2::Params::new(m_cost as u32, t_cost as u32, p_cost as u32, Some(dk_len as usize))
-        .map_err(|e| {
-            OperationError::invalid_param("m_cost", format!("Argon2 rejected the parameters: {e}"))
-        })?;
+    let params = argon2::Params::new(
+        m_cost as u32,
+        t_cost as u32,
+        p_cost as u32,
+        Some(dk_len as usize),
+    )
+    .map_err(|e| {
+        OperationError::invalid_param("m_cost", format!("Argon2 rejected the parameters: {e}"))
+    })?;
     let argon = argon2::Argon2::new(argon2::Algorithm::Argon2id, argon2::Version::V0x13, params);
     let mut dk = vec![0u8; dk_len as usize];
     argon
