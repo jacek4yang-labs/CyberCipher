@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "phase": "M7/M8/Release",
-  "main_sha": "bbb340b",
+  "main_sha": "da3851d",
   "active_branch": null,
   "active_pr": null,
   "current_task": null,
@@ -21,28 +21,27 @@
     "M4-LAT-01",
     "M4-LAT-02",
     "M5-AEAD-01",
+    "M5-BLOCK-01",
     "M5-MAC-01",
     "M5-MAC-02",
-    "M5-BLOCK-01",
     "M5-KDF-ARGON2",
     "M6-XOR-01",
     "M6-CLASSICAL-01",
     "M7-AUTO-01-XOR",
+    "M7-ASSIST-01",
+    "RELEASE-TAR-01",
     "QA-COVERAGE",
     "QA-CONSISTENCY-01",
     "BENCH-01",
     "RECONCILE-01"
   ],
   "blocked": [],
-  "agent_lanes": {
-    "aes-assist": "agent/analysis/aes-assist (worktree cc-assist) \u2014 running",
-    "tar-release": "agent/release/linux-tar (worktree cc-release) \u2014 running"
-  },
+  "agent_lanes": {},
   "validation": {
     "cargo_fmt": "pass",
     "cargo_clippy": "pass",
     "cargo_test": "pass",
     "frontend": "pass"
   },
-  "notes": "Session 3 start: reconciled to main=bbb340b (25 PRs). Wave 1: AES Assist + tar.gz release lanes running. Next refill: PKI, CTF encodings."
+  "notes": "Session 3 end: 27 PRs merged, main=da3851d. New: tar.gz release pipeline (#26), Crypto Assist framework with AES Assist (#27), stream-mode padding bug fix in crypto crate. Registry ~99 ops, 374 tests. Next ready: M8-PKI-01, M6-CTF-ENC-01, M6-CLASSICAL-MISC-01, M7-AUTO-02."
 }

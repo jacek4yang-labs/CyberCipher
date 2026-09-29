@@ -1,23 +1,10 @@
 # CyberCipher durable work queue (authoritative order)
-# Reconciled session-2 end: 24 PRs merged, main = c2dfb39.
-# COMPLETED AND MERGED (do NOT relaunch): bootstrap, workbench, crypto baseline,
-# Auto Decode, M4 (BigInt/RSA/PRNG/lattice), M5 (AEAD/KDF/blocks/MACs/streams),
-# M6 (XOR lab, classical ciphers), M7 XOR-in-AutoDecode, benches, compat
-# matrices, vectors, state guard.
-
-- id: M7-ASSIST-01
-  title: AES Assist (constrained param search over key-interpretation/mode/IV/padding, prune, shared scoring, Apply as Recipe) — generalize to SM4/DES/RC4
-  status: ready
-  priority: P1
-  depends_on: []
-  owner: analysis
-
-- id: RELEASE-TAR-01
-  title: Linux tar.gz release pipeline (canonical, ~/Applications layout, install/uninstall-desktop.sh, Ubuntu 22.04 baseline, CI artifact smoke test, README.txt, sha256)
-  status: ready
-  priority: P1
-  depends_on: []
-  owner: release
+# Session 3 end: 27 PRs merged, main = da3851d.
+# COMPLETED AND MERGED: bootstrap, workbench, crypto baseline+CLI, Auto Decode,
+# M4 complete (BigInt/RSA/Labs/PRNG/lattice), M5 complete (AEAD/KDF/blocks/
+# MACs/streams/Argon2id), M6 (XOR lab, classical ciphers), M7 (XOR-in-Auto,
+# AES Assist), tar.gz release pipeline, compat matrices+vectors, state guard,
+# benches.
 
 - id: M8-PKI-01
   title: RSA standard ops (keygen, PKCS#1 v1.5, OAEP, PSS sign/verify) + PEM/DER/PKCS#8/SPKI/JWK + ECDSA/Ed25519/X25519/ECDH + SM2 + ASN.1/JWT
@@ -25,6 +12,7 @@
   priority: P1
   depends_on: []
   owner: pki
+  checkpoint_plan: [key-formats, rsa-encryption, rsa-signatures, ecc, sm2, x509-jwt]
 
 - id: M6-CTF-ENC-01
   title: CTF specialty encodings (社会主义核心价值观, 佛曰/新佛曰, 兽音, 熊曰, Brainfuck/Ook, AAEncode/JJEncode) + Base36/45/58/58Check/62/Ascii85/85/Z85/91/92
@@ -34,7 +22,7 @@
   owner: classical
 
 - id: M6-CLASSICAL-MISC-01
-  title: Classical misc encodings (Morse, A1Z26, Tap code, Bacon, Braille) — module missing from classical lane
+  title: Classical misc encodings (Morse, A1Z26, Tap code, Bacon, Braille)
   status: ready
   priority: P2
   depends_on: []
@@ -46,13 +34,6 @@
   priority: P2
   depends_on: [M6-CTF-ENC-01]
   owner: analysis
-
-- id: M5-SEED-01
-  title: SEED cipher + remaining streams (HC-256/Rabbit/ZUC if trustworthy crates exist) + KMAC + bcrypt compat
-  status: pending
-  priority: P2
-  depends_on: []
-  owner: crypto
 
 - id: M9-FILE-01
   title: File/structured-data breadth (zip/bzip2/xz/lz4/zstd/brotli/tar; CBOR/MsgPack/TLV/VarInt; magic/carve/PNG-chunk/EXIF/LSB)
@@ -67,6 +48,13 @@
   priority: P2
   depends_on: []
   owner: analysis
+
+- id: M5-SEED-01
+  title: SEED cipher + remaining streams (HC-256/Rabbit/ZUC if trustworthy crates) + KMAC + bcrypt compat
+  status: pending
+  priority: P2
+  depends_on: []
+  owner: crypto
 
 - id: M8-ECDSA-ATTACK-01
   title: ECDSA attack helpers (nonce reuse, known/small k, duplicate-r detection)
