@@ -15,7 +15,7 @@
 //!    large for a std-only crate), but it separates real words from
 //!    frequency-plausible gibberish far better than the unigram fit alone.
 //!
-//! The composite [`text_score`] is `0.72 * letter_fit + 0.28 * bigram_fit`
+//! The composite [`text_score`] is `0.50 * letter_fit + 0.50 * bigram_fit`
 //! plus a CTF flag-token bonus when one is present. Every component stays
 //! individually reportable so a UI can show *why* a candidate ranked where it
 //! did.
@@ -73,8 +73,12 @@ pub const COMMON_BIGRAMS: [&str; 20] = [
     "is", "it", "al", "ar",
 ];
 
-/// Qualitative confidence label for a composite text score. Mirrors the XOR
-/// lab's thresholds: `score >= 0.80` → High, `>= 0.60` → Medium, else Low.
+/// Qualitative confidence label for a composite text score. Thresholds are
+/// calibrated on the [`text_score`] scale (equal-weight letter fit + bigram
+/// coverage), *not* the XOR lab's byte-composite scale: genuine English prose
+/// typically lands at 0.45..0.65, partially-corrupted decryptions at
+/// 0.15..0.35, and random letters below 0.10. `score >= 0.50` → High,
+/// `>= 0.30` → Medium, else Low.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum TextConfidence {
@@ -86,9 +90,9 @@ pub enum TextConfidence {
 impl TextConfidence {
     /// Map a composite [`text_score`] to its qualitative label.
     pub fn from_score(score: f64) -> Self {
-        if score >= 0.80 {
+        if score >= 0.50 {
             TextConfidence::High
-        } else if score >= 0.60 {
+        } else if score >= 0.30 {
             TextConfidence::Medium
         } else {
             TextConfidence::Low
@@ -172,9 +176,14 @@ pub fn bigram_fit(text: &str) -> f64 {
 }
 
 /// Composite text score in `0.0..=1.45`:
-/// `0.72 * english_fit + 0.28 * bigram_fit + flag_bonus`. The flag bonus
-/// (reused from the XOR lab) adds a decisive, human-verifiable signal when a
-/// known flag-like token (`flag{`, `ctf{`, ...) appears in the candidate.
+/// `0.50 * english_fit + 0.50 * bigram_fit + flag_bonus`. The two signals are
+/// deliberately equal-weight: the unigram fit alone can be gamed by
+/// partially-corrupted decryptions whose letter *counts* happen to sit near
+/// the English table, while bigram coverage collapses when word structure is
+/// destroyed — measured on cracking fixtures, that weighting ranks true keys
+/// above noisy overfit longer keys. The flag bonus (reused from the XOR lab)
+/// adds a decisive, human-verifiable signal when a known flag-like token
+/// (`flag{`, `ctf{`, ...) appears in the candidate.
 pub fn text_score(text: &str) -> f64 {
     let fit = english_fit(text);
     let bigram = bigram_fit(text);
@@ -183,7 +192,7 @@ pub fn text_score(text: &str) -> f64 {
     } else {
         0.0
     };
-    0.72 * fit + 0.28 * bigram + flag
+    0.50 * fit + 0.50 * bigram + flag
 }
 
 /// Index of coincidence over the letters of `text`:
@@ -224,7 +233,7 @@ mod tests {
             .map(|i| (b'a' + ((i * 7) % 26) as u8) as char)
             .collect();
         let bad = text_score(&garbage);
-        assert!(good > 0.5, "prose score = {good}");
+        assert!(good > 0.4, "prose score = {good}");
         assert!(bad < good / 3.0, "garbage score = {bad} vs prose {good}");
     }
 
@@ -269,7 +278,9 @@ mod tests {
     #[test]
     fn confidence_labels_follow_thresholds() {
         assert_eq!(TextConfidence::from_score(0.95), TextConfidence::High);
-        assert_eq!(TextConfidence::from_score(0.70), TextConfidence::Medium);
+        assert_eq!(TextConfidence::from_score(0.50), TextConfidence::High);
+        assert_eq!(TextConfidence::from_score(0.40), TextConfidence::Medium);
+        assert_eq!(TextConfidence::from_score(0.30), TextConfidence::Medium);
         assert_eq!(TextConfidence::from_score(0.10), TextConfidence::Low);
     }
 }

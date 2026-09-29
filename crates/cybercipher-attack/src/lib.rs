@@ -16,7 +16,7 @@ pub mod rsa;
 pub mod xor;
 
 pub use classical::TextResult;
-
+#[cfg(test)]
 pub use lattice::{
     small_roots, CoppersmithBeta, CoppersmithParams, Lattice, LllConfig, LllResult, Poly,
     SmallRootsResult,

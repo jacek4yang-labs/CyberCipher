@@ -31,8 +31,8 @@ impl Default for CaseOptions {
 
 /// Map every ASCII letter through `f` (which operates on `A`..=`Z`), leaving
 /// other characters untouched. `preserve_case` re-applies the original case to
-/// the mapped letter.
-fn map_letters(
+/// the mapped letter. Shared with the other substitution modules.
+pub(crate) fn map_letters(
     text: &str,
     options: &CaseOptions,
     f: impl Fn(u8) -> u8,

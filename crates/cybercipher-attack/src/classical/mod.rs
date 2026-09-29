@@ -34,9 +34,21 @@
 // churn, so the oversized-Err lint is silenced per module.
 #![allow(clippy::result_large_err)]
 
+pub mod cracking;
+pub mod polyalphabetic;
 pub mod scoring;
 pub mod simple;
 
+pub use cracking::{
+    crack_caesar, crack_substitution_lite, crack_vigenere, ioc, kasiski, CaesarCandidate,
+    CaesarCrackOptions, CaesarCrackResult, KasiskiCandidate, KasiskiOptions, KasiskiResult,
+    ObservedBigram, SubstitutionHintResult, SubstitutionMapping, SubstitutionOptions,
+    VigenereCandidate, VigenereColumnEvidence, VigenereCrackOptions, VigenereCrackResult,
+};
+pub use polyalphabetic::{
+    autokey_decode, autokey_encode, beaufort_decode, beaufort_encode, gronsfeld_decode,
+    gronsfeld_encode, porta_decode, porta_encode, vigenere_decode, vigenere_encode,
+};
 pub use scoring::{
     bigram_fit, chi_square_english, english_fit, index_of_coincidence, letter_counts, text_score,
     TextConfidence, COMMON_BIGRAMS, ENGLISH_LETTER_FREQ_PCT, ENGLISH_LETTER_ORDER,
@@ -72,6 +84,18 @@ pub(crate) fn check_text(text: &str) -> Result<(), cybercipher_core::error::Oper
                 .with_expected(format!("at most {MAX_TEXT_BYTES} bytes (1 MiB)"))
                 .with_actual(format!("{} bytes", text.len())),
         );
+    }
+    Ok(())
+}
+
+/// Bounded key validation applied by keyed entry points.
+pub(crate) fn check_key(key: &str) -> Result<(), cybercipher_core::error::OperationError> {
+    use cybercipher_core::error::OperationError;
+    if key.len() > MAX_KEY_BYTES {
+        return Err(OperationError::key("key exceeds the accepted length")
+            .with_parameter("key")
+            .with_expected(format!("at most {MAX_KEY_BYTES} bytes"))
+            .with_actual(format!("{} bytes", key.len())));
     }
     Ok(())
 }
