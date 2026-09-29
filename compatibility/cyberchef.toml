@@ -1,25 +1,40 @@
-# CyberChef compatibility matrix — Milestone 1 scope.
+# CyberChef compatibility matrix.
 # Statuses: covered | superset | partial | missing | intentional-out-of-scope | same-capability
+#
+# Entries reflect implemented reality only — every entry below was checked
+# against the operation implementations and tests on `main` (commit 5d5ab8e,
+# 2026-09-28), not against names or plans. Capabilities that live on a feature
+# branch awaiting merge are marked "PR in flight".
+#
+# Registry snapshot used for this matrix:
+#   - 59 recipe-registry operations on main
+#   - +14 on branch agent/crypto/m5-aead (10 AEAD + 4 KDF ops), PR in flight
+#   - attack engine (RSA / PRNG) is exposed via CLI + GUI, not the recipe
+#     registry, and therefore has no upstream CyberChef op counterpart
+#     (see [superset]).
 
 [meta]
 upstream = "https://github.com/gchq/CyberChef"
 baseline_date = 2026-09-28
+upstream_op_count = "≈500 (src/core/operations, master)"
 notes = "CyberChef is an interoperability/UX reference, not an authority. Entries reflect implemented reality only."
+
+# ---------------------------------------------------------------- codecs ----
 
 [entries.From_Hex]
 ours = "from-hex"
 status = "covered"
-notes = "Strict + relaxed modes with offset diagnostics."
+notes = "Strict + relaxed modes with offset diagnostics (verified against decode_hex_strict)."
 
 [entries.To_Hex]
 ours = "to-hex"
 status = "covered"
-notes = "No per-group word separator yet; single separator parameter."
+notes = "Uppercase + single separator parameter; upstream also offers per-group word separators (To Hex/To Hex Content styles)."
 
 [entries.From_Base64]
 ours = "from-base64"
 status = "covered"
-notes = "Standard + URL-safe alphabets, strict + relaxed with padding repair."
+notes = "Standard + URL-safe alphabets, strict + relaxed with padding repair; RFC 4648 vectors tested."
 
 [entries.To_Base64]
 ours = "to-base64"
@@ -28,7 +43,7 @@ status = "covered"
 [entries.From_Base32]
 ours = "from-base32"
 status = "covered"
-notes = "RFC 4648 standard + extended-hex alphabets."
+notes = "RFC 4648 standard + extended-hex alphabets; RFC 4648 vectors tested."
 
 [entries.To_Base32]
 ours = "to-base32"
@@ -68,10 +83,20 @@ status = "covered"
 ours = "to-decimal"
 status = "covered"
 
+[entries.Text_Integer_Converter]
+ours = "to-integer / from-integer"
+status = "covered"
+notes = "Radix auto/2-36, byte order, signed handling; hex or decimal output."
+
 [entries.To_Hexdump]
 ours = "to-hexdump"
 status = "partial"
-notes = "Fixed 16-byte rows; CyberChef offers width/upper/hex-cell options."
+notes = "Fixed 16-byte rows (verified); CyberChef offers width/upper/hex-cell options."
+
+[entries.From_Hexdump]
+ours = "—"
+status = "missing"
+notes = "Upstream parses hexdumps back to bytes; we have no hexdump parser."
 
 [entries.Reverse]
 ours = "reverse"
@@ -81,26 +106,33 @@ notes = "Bytes and character modes (lines mode pending)."
 [entries.Split]
 ours = "split"
 status = "partial"
-notes = "Literal delimiters only; CyberChef also supports regex + joined output."
+notes = "Literal delimiters with escape sequences only; CyberChef also supports regex + joined output."
 
 [entries.Join]
 ours = "join"
 status = "covered"
 
+# ------------------------------------------------------------ byte ops ----
+
 [entries.XOR]
 ours = "xor"
 status = "partial"
-notes = "Standard/rolling/incrementing schemes; CyberChef differential schemes pending."
+notes = "Standard/rolling/incrementing schemes; CyberChef also has input-differential/output-differential/cascade schemes."
 
-[entries.Bitwise_AND]
+[entries.XOR_Brute_Force]
+ours = "—"
+status = "missing"
+notes = "Upstream-only. High-value CTF gap; see docs/COMPATIBILITY.md gap report."
+
+[entries.And]
 ours = "bitwise-and"
 status = "covered"
 
-[entries.Bitwise_OR]
+[entries.Or]
 ours = "bitwise-or"
 status = "covered"
 
-[entries.Bitwise_NOT]
+[entries.Not]
 ours = "bitwise-not"
 status = "covered"
 
@@ -117,20 +149,272 @@ status = "covered"
 ours = "swap-endianness"
 status = "covered"
 
+# ------------------------------------------------------------- inspect ----
+
 [entries.Entropy]
 ours = "entropy"
 status = "partial"
-notes = "Shannon entropy + printable ratio + top bytes; no conditional/chunked entropy charts."
+notes = "Shannon entropy + printable ratio + unique bytes + top-16 bytes (JSON); no conditional/chunked entropy charts."
 
 [entries.Strings]
 ours = "strings"
+status = "partial"
+notes = "ASCII printable (0x20-0x7E) with min length; upstream also handles UTF-16 LE/BE strings."
+
+[entries.Magic]
+ours = "auto_decode engine + Auto Analyze page"
+status = "partial"
+notes = "Syntax/magic-gated candidates with evidence and beam bounds; fewer wrapper ops than CyberChef Magic."
+
+# ---------------------------------------------------------- compression ----
+
+[entries.Gunzip]
+ours = "from-gzip"
+status = "covered"
+notes = "Multi-member gzip aware (RFC 1952)."
+
+[entries.Gzip]
+ours = "to-gzip"
+status = "covered"
+notes = "No compression-level parameter yet."
+
+[entries.Zlib_Inflate]
+ours = "from-zlib"
 status = "covered"
 
-[entries.Encode_text]
-ours = "encode-text"
+[entries.Zlib_Deflate]
+ours = "—"
+status = "missing"
+notes = "We decompress zlib but cannot emit zlib-wrapped streams; to-gzip only."
+
+[entries.Raw_Inflate]
+ours = "from-raw-deflate"
 status = "covered"
 
-[entries.Decode_text]
-ours = "decode-text"
+[entries.Raw_Deflate]
+ours = "—"
+status = "missing"
+notes = "No raw-DEFLATE compressor (raw inflate only)."
+
+[entries.Bzip2_Decompress]
+ours = "—"
+status = "missing"
+
+[entries.LZMA_Decompress]
+ours = "—"
+status = "missing"
+
+# -------------------------------------------------------------- crypto ----
+# All cipher ops: explicit key-length + IV validation, key/key_encoding params.
+
+[entries.AES_Encrypt]
+ours = "aes-encrypt"
+status = "partial"
+notes = """Modes ECB/CBC/CTR/CFB/OFB; padding PKCS7/Zero/ISO7816/None; keys 16/24/32 bytes.
+No GCM inside the op — upstream folds GCM into AES; ours ships AEAD as separate
+aead-aes-gcm-encrypt/decrypt ops (PR in flight). No CTS/XTS in either."""
+
+[entries.AES_Decrypt]
+ours = "aes-decrypt"
+status = "partial"
+notes = "Same mode/padding surface as aes-encrypt; decrypt validates the selected padding scheme."
+
+[entries.Triple_DES_Encrypt]
+ours = "des-encrypt (16/24-byte key)"
+status = "partial"
+notes = "ECB/CBC only; upstream DES/3DES ops add CFB/OFB/CTR. NoPadding equivalence via padding=none."
+
+[entries.Triple_DES_Decrypt]
+ours = "des-decrypt (16/24-byte key)"
+status = "partial"
+notes = "Same gap as Triple_DES_Encrypt."
+
+[entries.DESEncrypt]
+ours = "des-encrypt (8-byte key)"
+status = "partial"
+notes = "ECB/CBC only; legacy, labeled Broken in the registry."
+
+[entries.DESDecrypt]
+ours = "des-decrypt (8-byte key)"
+status = "partial"
+
+[entries.RC4]
+ours = "rc4"
 status = "covered"
-notes = "UTF-8 strict/lossy with byte-offset diagnostics."
+notes = "1-256 byte keys; drop parameter (0-8192) subsumes upstream's separate RC4 Drop op."
+
+[entries.RC4Drop]
+ours = "rc4 (drop parameter)"
+status = "covered"
+
+[entries.SM4_Encrypt]
+ours = "sm4-encrypt"
+status = "covered"
+notes = "ECB/CBC/CTR/CFB/OFB — matches the upstream mode list; padding=none ↔ upstream /NoPadding variants."
+
+[entries.SM4_Decrypt]
+ours = "sm4-decrypt"
+status = "covered"
+
+[entries.TEAEncrypt]
+ours = "tea-encrypt"
+status = "partial"
+notes = """Classic big-endian 64-bit block, 32 cycles (ECB-style over the input).
+Upstream TEA ops additionally offer CBC/CFB/OFB/CTR block modes, and upstream
+word-order conventions differ — cross-tool ciphertext interop is unverified."""
+
+[entries.TEADecrypt]
+ours = "tea-decrypt"
+status = "partial"
+notes = "See TEAEncrypt."
+
+[entries.XTEAEncrypt]
+ours = "xtea-encrypt"
+status = "partial"
+notes = "See TEAEncrypt; upstream adds block modes beyond ECB."
+
+[entries.XTEADecrypt]
+ours = "xtea-decrypt"
+status = "partial"
+
+[entries.XXTEAEncrypt]
+ours = "xxtea-encrypt"
+status = "partial"
+notes = "See TEAEncrypt; upstream adds block modes beyond ECB."
+
+[entries.XXTEADecrypt]
+ours = "xxtea-decrypt"
+status = "partial"
+
+[entries.MD5]
+ours = "md5"
+status = "covered"
+
+[entries.SHA1]
+ours = "sha1"
+status = "covered"
+
+[entries.SHA2]
+ours = "sha224 / sha256 / sha384 / sha512"
+status = "covered"
+notes = "Separate ops per width vs upstream's single op with a size parameter — same capability."
+
+[entries.SHA3]
+ours = "sha3 (variant parameter)"
+status = "covered"
+notes = "SHA3-224/256/384/512 variants."
+
+[entries.Keccak]
+ours = "sha3"
+status = "partial"
+notes = "Keccak-256/512 are implemented internally but not yet exposed as variant options; upstream Keccak op exposes 224/256/384/512."
+
+[entries.Shake]
+ours = "sha3 (shake128/shake256 variants)"
+status = "covered"
+notes = "Output-length parameter for XOF variants."
+
+[entries.HMAC]
+ours = "hmac"
+status = "partial"
+notes = "MD5/SHA-1/SHA-224/256/384/512/SHA3-256/SM3 variants; upstream adds further hashes plus CMAC/GMAC ops, which we lack."
+
+# ----------------------------------------------------------------- AEAD ----
+# Implemented on branch agent/crypto/m5-aead (merged copy: feat/aead-kdf) with
+# official test vectors (RFC 8439, McGrew/Viega GCM, RFC 3610 CCM, XChaCha
+# draft-irtf-cfrg, RFC 8452) + negative tests; PR in flight to main.
+
+[entries.AES_GCM_Encrypt]
+ours = "aead-aes-gcm-encrypt"
+status = "partial (PR in flight)"
+notes = "Upstream exposes GCM inside the AES op instead; capability equivalent once merged."
+
+[entries.AES_GCM_Decrypt]
+ours = "aead-aes-gcm-decrypt"
+status = "partial (PR in flight)"
+
+[entries.AES_CCM]
+ours = "aead-aes-ccm-encrypt / aead-aes-ccm-decrypt"
+status = "partial (PR in flight)"
+notes = "No upstream counterpart (CyberChef AES has no CCM) — superset once merged."
+
+[entries.ChaCha20_Poly1305]
+ours = "aead-chacha20poly1305-encrypt / aead-chacha20poly1305-decrypt"
+status = "partial (PR in flight)"
+notes = "RFC 8439 vectors; no upstream counterpart."
+
+[entries.XChaCha20_Poly1305]
+ours = "aead-xchacha20poly1305-encrypt / aead-xchacha20poly1305-decrypt"
+status = "partial (PR in flight)"
+notes = "draft-irtf-cfrg-xchacha vectors; no upstream counterpart."
+
+[entries.AES_GCM_SIV]
+ours = "aead-aes-gcm-siv-encrypt / aead-aes-gcm-siv-decrypt"
+status = "partial (PR in flight)"
+notes = "RFC 8452 vectors; no upstream counterpart."
+
+# ------------------------------------------------------------------ KDF ----
+
+[entries.Derive_PBKDF2_Key]
+ours = "pbkdf2"
+status = "partial (PR in flight)"
+notes = "Implemented + tested on the AEAD/KDF branch."
+
+[entries.Derive_HKDF_Key]
+ours = "hkdf"
+status = "partial (PR in flight)"
+
+[entries.Scrypt]
+ours = "scrypt"
+status = "partial (PR in flight)"
+
+# ------------------------------------------------------------------ RSA ----
+
+[entries.RSAEncrypt]
+ours = "—"
+status = "missing"
+notes = """The attack engine decrypts/verifies when private material (d, p+q or
+phi) is present, but there are no key-handling ops: no PEM/DER parsing, no
+encryption op, no signing, no key generation. See gap report."""
+
+[entries.RSADecrypt]
+ours = "rsa attack engine (decrypt path)"
+status = "missing"
+notes = "Only reachable with private material; not a general RSA decrypt op."
+
+[entries.RSASign]
+ours = "—"
+status = "missing"
+
+[entries.RSAVerify]
+ours = "—"
+status = "missing"
+
+[entries.GenerateRSAKeyPair]
+ours = "—"
+status = "missing"
+
+# -------------------------------------------------------------- superset ----
+# Capabilities we have that CyberChef does not. Upstream ships PRNG
+# generators (PseudoRandomIntegerGenerator / PseudoRandomNumberGenerator)
+# but no recovery/attack tooling.
+
+[superset.rsa_attack_engine]
+ours = "cybercipher-attack::rsa (CLI `rsa`, GUI RSA Attack Lab)"
+notes = "Analyzer + 12 attacks: known-pq, known-d, known-phi, dp-leak, common-modulus, hastad, shared-prime, low-e, wiener, fermat, pollard-rho, pollard-pm1. Each attack declares preconditions, runs under explicit resource bounds, and returns typed outcomes with diagnostics (40 integration tests)."
+
+[superset.lcg_recovery]
+ours = "cybercipher-attack::prng::lcg (CLI `prng`)"
+notes = "Parameter recovery with known modulus (≥3 outputs), blind a/b/m recovery (≥6 outputs), seed walk-back, forward/backward prediction; graceful failure on degenerate/non-invertible inputs."
+
+[superset.mt19937_recovery]
+ours = "cybercipher-attack::prng::mt19937 (CLI `prng`)"
+notes = "State cloning via untempering, init_genrand/init_by_array seeding, CPython random.seed/getrandbits-compatible reconstruction; reference vectors tested."
+
+[superset.runtime_prng_recovery]
+ours = "cybercipher-attack::prng (Java Random / glibc rand / MSVC rand)"
+notes = "Partial (PR in flight): Java 48-bit truncated-LCG state recovery from two outputs, glibc TYPE_3 additive-feedback rand, MSVC rand inversion — branch feat/runtime-prngs."
+
+[superset.evp_bytestokey]
+ours = "evp-bytestokey"
+notes = "Partial (PR in flight) on the AEAD/KDF branch; upstream has no standalone EVP_BytesToKey op."

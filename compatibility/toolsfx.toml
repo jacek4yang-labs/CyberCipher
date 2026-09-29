@@ -1,0 +1,172 @@
+# ToolsFx compatibility matrix.
+# Statuses: covered | superset | partial | missing | intentional-out-of-scope | same-capability
+#
+# ToolsFx (https://github.com/Leon406/ToolsFx) is a Kotlin/Swing CTF toolbox
+# built on BouncyCastle. It is the closest "CTF crypto workbench" analogue to
+# CyberCipher and is therefore tracked as an interop/UX baseline.
+#
+# HONESTY POLICY: entries below are mapped from the upstream README feature
+# list (fetched 2026-09-28) rather than from running the tool. Where the
+# README does not name a feature precisely, the entry is marked
+# "verify feature list" instead of guessing.
+
+[meta]
+upstream = "https://github.com/Leon406/ToolsFx"
+baseline_date = 2026-09-28
+source = "upstream README feature list"
+notes = "ToolsFx maps BouncyCastle surface; CyberCipher maps a CTF-oriented Rust core. Entries reflect implemented reality on main (5d5ab8e) + branches noted as 'PR in flight'."
+
+# ---------------------------------------------------------- symmetric ----
+
+[entries.aes]
+ours = "aes-encrypt / aes-decrypt"
+status = "partial"
+notes = """Ours: ECB/CBC/CTR/CFB/OFB + PKCS7/Zero/ISO7816/None.
+ToolsFx (BouncyCastle) additionally offers CTS, CCM/EAX/GCM/OCB AEAD modes,
+ISO10126, X9.23, TBC paddings. GCM/CCM ship in ours as separate aead-* ops
+(PR in flight); EAX/OCB/CTS/XTS are absent."""
+
+[entries.des_3des]
+ours = "des-encrypt / des-decrypt"
+status = "partial"
+notes = "Ours: ECB/CBC. ToolsFx exposes the full BC mode set (CFB/OFB/CTR + AEAD) and more paddings."
+
+[entries.sm4]
+ours = "sm4-encrypt / sm4-decrypt"
+status = "partial"
+notes = "Ours: ECB/CBC/CTR/CFB/OFB. ToolsFx adds GCM/CCM/EAX/OCB via BC; SM4 AEAD modes are not implemented here (the AEAD PR covers AES/ChaCha20 only)."
+
+[entries.tea_family]
+ours = "tea/xtea/xxtea encrypt/decrypt"
+status = "covered"
+notes = "Same three algorithms, classic 32-cycle TEA / XTEA / XXTEA; ECB-style block processing only. Verify ToolsFx modes before claiming full interop."
+
+[entries.rc4]
+ours = "rc4 (drop parameter)"
+status = "covered"
+notes = "Ours covers RC4 + RC4-drop[n] (0-8192) in one op."
+
+[entries.chacha_poly1305]
+ours = "aead-chacha20poly1305-encrypt/decrypt"
+status = "partial (PR in flight)"
+notes = "RFC 8439 vectors on the AEAD branch. Salsa20/XSalsa20, HC128/256, VMPC, Grain, Zuc128: not implemented."
+
+[entries.broad_block_ciphers]
+ours = "—"
+status = "missing"
+notes = """Serpent / Twofish / Camellia / ARIA / CAST5-CAST6 / IDEA / RC2 / RC5 /
+RC6 / Blowfish / SEED / Threefish / GOST28147 / Shacal-2 / Noekeon — ToolsFx
+gets all of these from BouncyCastle. We implement AES/DES/3DES/SM4/TEA family
+only. High-value gap; see docs/COMPATIBILITY.md gap report."""
+
+# --------------------------------------------------------- asymmetric ----
+
+[entries.rsa]
+ours = "rsa attack engine (decrypt/verify paths)"
+status = "missing"
+notes = "ToolsFx does RSA encrypt/sign with pkcs1/pkcs8 keys 512-4096 bit; ours is attack-oriented (see [superset].rsa_attack_engine) with no key parsing/encryption/signature ops."
+
+[entries.sm2]
+ours = "—"
+status = "missing"
+notes = "SM2 signatures/encryption absent; ToolsFx covers SM2 via BC."
+
+[entries.dsa_ecdsa_eddsa]
+ours = "—"
+status = "missing"
+
+# ------------------------------------------------------------ hashes ----
+
+[entries.md_sha_serial]
+ours = "md5 / sha1 / sha224/256/384/512 / sha3 / sm3 / shake"
+status = "covered"
+notes = "Ours adds Keccak-256/512 internally (not yet exposed) — see cyberchef.toml Keccak entry."
+
+[entries.ripemd_whirlpool_tiger]
+ours = "—"
+status = "missing"
+
+[entries.hmac]
+ours = "hmac"
+status = "partial"
+notes = "Ours: 8 hash variants incl. SM3 and SHA3-256. ToolsFx mirrors its full hash family + adds CMAC/GMAC/Poly1305 MACs, which we lack."
+
+# ---------------------------------------------------------- encodings ----
+
+[entries.base_family]
+ours = "from/to-base64 (std+urlsafe), from/to-base32, hex, binary, octal, decimal"
+status = "partial"
+notes = "Base16/36/45/58/58check/62/85/91/92/100, uuEncode/xxEncode, punycode, quoted-printable, custom alphabets: not implemented."
+
+[entries.url_unicode]
+ours = "from/to-url, encode-text/decode-text"
+status = "partial"
+notes = "URL covered; Unicode escape forms and UTF-16/Latin-1/GBK text decodes are not (ours is UTF-8 only)."
+
+[entries.classical_ctf]
+ours = "—"
+status = "missing"
+notes = """Caesar, ROT5/13/18/47, Atbash, affine, Vigenere, autokey, Beaufort,
+Porta, Gronsfeld, Hill, Playfair, Bifid/Trifid/FourSquare, ADFGX/VX,
+rail-fence (normal/w-type), morse, Polybius, bacon, QWE keyboard, Braille,
+01248, BubbleBabble, one-time-pad, and more — all upstream-only today."""
+
+[entries.chinese_ctf_encodings]
+ours = "—"
+status = "missing"
+notes = "Buddha Says (与佛论禅/佛曰), 新佛曰, 兽音译者, 熊曰, socialist core values, 汉字编码-style bases — upstream-only. High-value for the CN CTF scene this project targets; needs a spec/implementation owner."
+
+[entries.brainfuck_ook]
+ours = "—"
+status = "missing"
+notes = "brainfuck / Ook! / Trollscript interpreters are upstream-only."
+
+[entries.jsfuck]
+ours = "—"
+status = "missing"
+notes = "verify feature list — the README names aaencode/jjencode; JSFuck itself may ship under a different label. We have none of the three."
+
+[entries.aaencode_jjencode]
+ours = "—"
+status = "missing"
+
+[entries.auto_decode]
+ours = "auto_decode engine + Auto Analyze page"
+status = "partial"
+notes = "ToolsFx has its own 'auto decode (crack)'; ours is bounded/explainable (evidence + beam limits) with a narrower wrapper-op vocabulary. Not directly comparable; interop not measured."
+
+# --------------------------------------------------------- utilities ----
+
+[entries.big_integer_calculator]
+ours = "cybercipher-attack::math (modpow/egcd/inverse/iroot/CRT/BigInt ops via CLI)"
+status = "partial"
+notes = "Library/CLI surface, not an interactive calculator UI; no GUI big-number pad yet."
+
+[entries.hash_crack_dictionary]
+ours = "—"
+status = "missing"
+notes = "Dictionary hash mapping is upstream-only and likely stays intentional-out-of-scope for the core (could be a CLI-sidecar later)."
+
+[entries.qr_ocr]
+ours = "—"
+status = "missing"
+notes = "QR/OCR helpers absent. Verify ToolsFx scope (ZXing-based) before prioritizing."
+
+[entries.timestamp_uuid_net_tools]
+ours = "—"
+status = "missing"
+notes = "Timestamp/UUID/port-scan/ping utilities are outside the crypto-workbench scope; intentional-out-of-scope for now."
+
+# ------------------------------------------------------------- superset ----
+
+[superset.rsa_attack_engine]
+ours = "cybercipher-attack::rsa"
+notes = "12 attacks + analyzer with typed preconditions/outcomes; ToolsFx only offers 'RSA crack (nec, pqec)'-style helpers — ours is a strict superset there."
+
+[superset.prng_recovery]
+ours = "cybercipher-attack::prng"
+notes = "LCG (known/blind m, seed walk-back) + MT19937 (untemper, state cloning, CPython-compat getrandbits) + Java/glibc/MSVC runtime PRNGs (partial, PR in flight). No ToolsFx equivalent."
+
+[superset.provenance_and_vuln_labels]
+ours = "registry metadata (provenance, Security::Broken labels, test-vector references)"
+notes = "Per-operation standard citations and security labeling; ToolsFx has no equivalent machine-readable metadata."
