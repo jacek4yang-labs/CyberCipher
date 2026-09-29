@@ -9,7 +9,9 @@
 //! relaxed modes are explicit, documented, and produce diagnostics rather
 //! than silently guessing.
 
+mod basefamilies;
 mod byteops;
+mod classical_misc;
 mod compression;
 mod encoding;
 mod helpers;
@@ -25,6 +27,8 @@ pub fn register_all(reg: &mut OperationRegistry) {
     compression::register(reg);
     integer::register(reg);
     encoding::register(reg);
+    basefamilies::register(reg);
+    classical_misc::register(reg);
     byteops::register(reg);
     inspect::register(reg);
 }
