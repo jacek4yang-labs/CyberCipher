@@ -38,6 +38,7 @@ pub mod cracking;
 pub mod polyalphabetic;
 pub mod scoring;
 pub mod simple;
+pub mod transposition;
 
 pub use cracking::{
     crack_caesar, crack_substitution_lite, crack_vigenere, ioc, kasiski, CaesarCandidate,
@@ -57,6 +58,17 @@ pub use simple::{
     affine_check, affine_decode, affine_encode, atbash_decode, atbash_encode, caesar_decode,
     caesar_encode, rot13_decode, rot13_encode, rot18_decode, rot18_encode, rot47_decode,
     rot47_encode, rot5_decode, rot5_encode, AffineCheck, CaseOptions,
+};
+pub use square::{
+    adfgx_decode, adfgx_encode, adfgvx_decode, adfgvx_encode, bifid_decode, bifid_encode,
+    foursquare_decode, foursquare_encode, hill_decode, hill_encode, playfair_decode,
+    playfair_encode, polybius_decode, polybius_encode, trifid_decode, trifid_encode,
+    Adfgv xOptions as AdfgxVxPlaceholder, AlphabetMode, BifidOptions, FoursquareOptions,
+    HillOptions, PlayfairOptions, PolybiusOptions, SquareResult, TrifidOptions,
+};
+pub use transposition::{
+    columnar_decode, columnar_encode, rail_fence_decode, rail_fence_encode, route_decode,
+    route_encode, ColumnarOptions, RailFenceOptions, RouteOptions,
 };
 
 // ------------------------------------------------------------ bounds ----
