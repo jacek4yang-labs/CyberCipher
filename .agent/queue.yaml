@@ -1,64 +1,68 @@
 # CyberCipher durable work queue (authoritative order)
-# Session 3 end: 27 PRs merged, main = da3851d.
-# COMPLETED AND MERGED: bootstrap, workbench, crypto baseline+CLI, Auto Decode,
-# M4 complete (BigInt/RSA/Labs/PRNG/lattice), M5 complete (AEAD/KDF/blocks/
-# MACs/streams/Argon2id), M6 (XOR lab, classical ciphers), M7 (XOR-in-Auto,
-# AES Assist), tar.gz release pipeline, compat matrices+vectors, state guard,
-# benches.
+# Session 4 end: 32 PRs merged, main = cc3239c.
+# COMPLETED AND MERGED: all M0-M7 foundations, M8-PKI-A/B/C (RSA key formats +
+# OAEP/PSS ops), tar.gz release, base families, classical misc, Auto Decode,
+# XOR lab, AES Assist, compat matrices, state guard, benches.
 
-- id: M8-PKI-01
-  title: RSA standard ops (keygen, PKCS#1 v1.5, OAEP, PSS sign/verify) + PEM/DER/PKCS#8/SPKI/JWK + ECDSA/Ed25519/X25519/ECDH + SM2 + ASN.1/JWT
+- id: M8-PKI-D
+  title: ECC — ECDSA/ECDH/Ed25519/X25519 keygen, parse, sign/verify, derive
   status: ready
   priority: P1
   depends_on: []
   owner: pki
-  checkpoint_plan: [key-formats, rsa-encryption, rsa-signatures, ecc, sm2, x509-jwt]
 
-- id: M6-CTF-ENC-01
-  title: CTF specialty encodings (社会主义核心价值观, 佛曰/新佛曰, 兽音, 熊曰, Brainfuck/Ook, AAEncode/JJEncode) + Base36/45/58/58Check/62/Ascii85/85/Z85/91/92
+- id: M8-PKI-E
+  title: SM2 — keygen, sign/verify, encrypt/decrypt, ID/ZA handling
   status: ready
   priority: P1
   depends_on: []
-  owner: classical
+  owner: pki
 
-- id: M6-CLASSICAL-MISC-01
-  title: Classical misc encodings (Morse, A1Z26, Tap code, Bacon, Braille)
+- id: M8-PKI-F
+  title: X.509/ASN.1/JWT — PEM object ID, cert inspection, CSR, JWK/JWKS, JWT decode/JWS verify
+  status: ready
+  priority: P1
+  depends_on: [M8-PKI-A]
+  owner: pki
+
+- id: M7-AUTO-02
+  title: Auto Decode expansion — unicode escapes, HTML entities, quoted-printable, punycode, Base58/62/85/91 candidates
   status: ready
   priority: P2
   depends_on: []
-  owner: classical
-
-- id: M7-AUTO-02
-  title: Auto Decode expansion (unicode escapes, HTML entities, quoted-printable, punycode, Base58/62/85/91)
-  status: pending
-  priority: P2
-  depends_on: [M6-CTF-ENC-01]
   owner: analysis
 
 - id: M9-FILE-01
-  title: File/structured-data breadth (zip/bzip2/xz/lz4/zstd/brotli/tar; CBOR/MsgPack/TLV/VarInt; magic/carve/PNG-chunk/EXIF/LSB)
+  title: File/structured-data breadth — zip/bzip2/xz/lz4/zstd/brotli/tar; CBOR/MsgPack/TLV/VarInt; magic/carve/PNG/EXIF/LSB
   status: pending
   priority: P2
   depends_on: []
   owner: file
 
 - id: M7-SIG-01
-  title: Crypto signature scanner (TEA delta, AES S-box, SM4 FK/CK, SHA/MD5 constants, ChaCha constants)
+  title: Crypto signature scanner — TEA delta, AES S-box, SM4 FK/CK, SHA/MD5 constants, ChaCha constants
   status: pending
   priority: P2
   depends_on: []
   owner: analysis
 
 - id: M5-SEED-01
-  title: SEED cipher + remaining streams (HC-256/Rabbit/ZUC if trustworthy crates) + KMAC + bcrypt compat
+  title: SEED cipher + HC-256/Rabbit/ZUC + KMAC + bcrypt compat (trustworthy crates only)
   status: pending
   priority: P2
   depends_on: []
   owner: crypto
 
 - id: M8-ECDSA-ATTACK-01
-  title: ECDSA attack helpers (nonce reuse, known/small k, duplicate-r detection)
+  title: ECDSA attack helpers — nonce reuse, known/small k, duplicate-r detection
   status: pending
   priority: P2
-  depends_on: [M8-PKI-01]
+  depends_on: [M8-PKI-D]
   owner: pki
+
+- id: GUI-ASSIST-01
+  title: GUI Crypto Assist panel consuming cybercipher_attack::assist (RSA Lab pattern)
+  status: pending
+  priority: P2
+  depends_on: []
+  owner: gui
