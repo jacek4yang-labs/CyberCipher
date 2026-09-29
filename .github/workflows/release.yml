@@ -1,0 +1,77 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  Package:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Tauri system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: ui/package-lock.json
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+      - name: Package Linux tar.gz
+        run: ./scripts/package-linux.sh
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-x86_64-tar
+          path: |
+            CyberCipher-v*-linux-x86_64.tar.gz
+            CyberCipher-v*-linux-x86_64.tar.gz.sha256
+          if-no-files-found: error
+
+  Smoke:
+    needs: Package
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: linux-x86_64-tar
+          path: .
+      - name: Extract and verify layout
+        run: |
+          mkdir -p /tmp/cc-install
+          tar -xzf CyberCipher-v*-linux-x86_64.tar.gz -C /tmp/cc-install
+          test -x /tmp/cc-install/CyberCipher/CyberCipher
+          test -x /tmp/cc-install/CyberCipher/cybercipher
+          test -x /tmp/cc-install/CyberCipher/install-desktop.sh
+          test -x /tmp/cc-install/CyberCipher/uninstall-desktop.sh
+          test -f /tmp/cc-install/CyberCipher/README.txt
+          test -f /tmp/cc-install/CyberCipher/LICENSE-MIT
+          test -f /tmp/cc-install/CyberCipher/LICENSE-APACHE
+      - name: CLI help
+        run: /tmp/cc-install/CyberCipher/cybercipher --help
+      - name: CLI known-answer test (sha256 of "abc")
+        run: |
+          KAT="$(/tmp/cc-install/CyberCipher/cybercipher run --op sha256 -- "abc")"
+          EXPECTED="ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+          test "$KAT" = "$EXPECTED" || { echo "KAT mismatch: $KAT" >&2; exit 1; }
+      - name: GUI binary linkage record
+        run: |
+          ldd /tmp/cc-install/CyberCipher/CyberCipher | tee ldd-gui.txt
+      - name: Upload linkage record
+        uses: actions/upload-artifact@v4
+        with:
+          name: gui-ldd-record
+          path: ldd-gui.txt

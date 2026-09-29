@@ -68,6 +68,24 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
   `cybercipher run --op from-base64 <input>`, `cybercipher auto <input>`,
   `cybercipher recipe <file> <input>`.
 
+## Linux installation
+
+The canonical Linux release is a tarball extracted under `~/Applications`
+(no sudo, no package manager, no build tools at runtime):
+
+```bash
+mkdir -p ~/Applications
+tar -xzf CyberCipher-vX.Y.Z-linux-x86_64.tar.gz -C ~/Applications
+~/Applications/CyberCipher/CyberCipher      # GUI
+~/Applications/CyberCipher/cybercipher --help  # CLI
+```
+
+Optional desktop integration: run `~/Applications/CyberCipher/install-desktop.sh`.
+User data lives in XDG directories (`~/.config/cybercipher`, `~/.cache/cybercipher`,
+`~/.local/share/cybercipher`), so upgrading is a simple folder replacement.
+See [docs/RELEASING.md](docs/RELEASING.md) for the release process and the
+honestly-documented dynamic runtime libraries (WebKitGTK/GTK3).
+
 ## Development
 
 Prerequisites: Rust 1.85+, Node 20+, and Tauri 2 system dependencies
