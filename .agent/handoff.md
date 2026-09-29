@@ -1,18 +1,16 @@
 # Handoff
 
 ## In flight
-- Nothing. All lanes integrated and merged; worktrees cleaned up.
+- Worker A: broad block ciphers -> agent/crypto/breadth (worktree ../cc-crypto)
+- Worker B: classical ciphers + cracking -> agent/classical/m6 (worktree ../cc-classical)
+- Coordinator: reconcile PR (this branch), integration duty.
 
-## Merged (PRs #1-#19)
-bootstrap; crypto baseline+CLI; Auto Decode; RSA attack engine; PRNG recovery; prng CLI; RSA Lab GUI; agent state; AEAD/KDF; runtime PRNGs (Java/glibc/MSVC); runtime-PRNG CLI; criterion benches; M4-complete docs; Auto Decode XOR exploration; lattice LLL+Coppersmith; RSA analyzer Coppersmith escalation; XOR Lab; QA compatibility matrices+vectors.
+## Merged
+PRs #1-#20 (see state.json last_completed). main = 2a18db2. Packaging policy: tar.gz canonical.
 
-## Next concrete actions (in priority order)
-1. M5 block-cipher breadth: Serpent, Twofish, Blowfish, Camellia, ARIA, CAST5/6, IDEA, RC2/5/6, SEED, Threefish, GOST family (RustCrypto crates; lane-ready).
-2. M5 MACs: CMAC, GMAC, Poly1305, KMAC; Argon2id; bcrypt compat.
-3. M6 classical ciphers + cracking (Caesar..ADFGVX, IOC/Kasiski/chi-square/n-grams).
-4. M7 Crypto Assist (AES Assist first) + Auto Decode wrappers (Unicode escapes, quoted-printable).
-5. M8 PKI: RSA standard schemes, ECDSA/Ed25519/X25519, SM2, PEM/DER/ASN.1, JWT.
-6. Wire vectors/ fixtures into automated differential tests.
+## Next concrete actions
+1. Merge reconcile PR.
+2. On worker completion: integrate -> PR; refill slots with C (AES Assist), D (PKI), E (tar release), F (QA consistency).
 
 ## Blocked
-- Subagent concurrency limit = 2; background agents can die on infra errors ("Captcha instance timed out", "exceed quota limit") — always checkpoint worktrees and finish orphaned WIP as coordinator (done twice this session).
+- Subagent concurrency = 2. Background agents may die on infra errors — checkpoint worktrees, finish orphaned WIP as coordinator.

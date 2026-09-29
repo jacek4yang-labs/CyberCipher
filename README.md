@@ -89,7 +89,7 @@ cd ui && npm install && npm run typecheck && npm run build
 npm --prefix ui run tauri dev
 ```
 
-Linux packaging target is an AppImage; see [docs/ROADMAP.md](docs/ROADMAP.md).
+Linux distribution is a `tar.gz` release extracted under `~/Applications/` (canonical; AppImage may follow later); see [docs/ROADMAP.md](docs/ROADMAP.md).
 
 ## Security model
 

@@ -1,170 +1,98 @@
 # CyberCipher durable work queue (authoritative order)
+# Reconciled 2026-09-29 against main=2a18db2 (20 PRs merged).
+# Completed-and-merged (do NOT relaunch): M0 bootstrap, M1 workbench,
+# M2 crypto baseline+CLI, M3 Auto Decode, M4 complete (BigInt, RSA engine+
+# analyzer+Lab, LCG/MT19937/Java/glibc/MSVC, LLL+Coppersmith+escalation),
+# M5 AEAD+KDF, M6 XOR lab, M7 XOR-in-AutoDecode, benches, compat matrices+vectors.
 
-- id: M4-CORE-01
-  title: BigInt plumbing (to/from integer ops, bytes<->int, endianness)
-  status: running
+- id: RECONCILE-01
+  title: state/doc reconciliation (this PR)
+  status: done
   priority: P0
-  depends_on: []
-  owner: coordinator
-  branch: feat/rsa-attack-lab
-  pr: null
-  acceptance:
-    - core Value::Integer used end-to-end without precision loss
-    - to-integer/from-integer recipe ops with tests
-    - params carry big ints as strings (never JS numbers)
-
-- id: M4-RSA-01
-  title: RSA math foundation (gcd/xgcd/modinv/modpow/iroot/CRT/Miller-Rabin)
-  status: running
-  priority: P0
-  depends_on: [M4-CORE-01]
-  owner: attack
-  branch: feat/rsa-attack-lab
-  pr: null
-  acceptance:
-    - cybercipher-attack crate with tested primitives
-    - property + known-answer tests
-
-- id: M4-RSA-02
-  title: RSA attack primitives (known p/q, d, phi, dp, Wiener, Fermat, low-e, common modulus, Hastad, shared prime, rho, p-1)
-  status: running
-  priority: P0
-  depends_on: [M4-RSA-01]
-  owner: attack
-  branch: feat/rsa-attack-lab
-  pr: null
-  acceptance:
-    - every attack: precondition validation + typed result + diagnostics
-    - positive and negative tests per attack
-
-- id: M4-RSA-03
-  title: RSA analyzer (applicable attacks from known params, analyze & solve)
-  status: running
-  priority: P0
-  depends_on: [M4-RSA-02]
-  owner: attack
-  branch: feat/rsa-attack-lab
-  pr: null
-  acceptance:
-    - analyzer ranks applicable attacks with cost classes
-    - solve loop recovers plaintext on synthetic instances
-    - CLI `rsa analyze` (file or stdin JSON)
-
-- id: M4-RSA-04
-  title: RSA Lab GUI
-  status: pending
-  priority: P1
-  depends_on: [M4-RSA-03]
-  owner: gui
-  acceptance:
-    - dedicated Lab page (n/e/c/p/q/d/phi/dp/dq/qinv fields)
-    - analyze / analyze-and-solve, structured diagnostics
-
-- id: M4-PRNG-01
-  title: LCG recovery (known/unknown m, a, b; prediction; reverse step)
-  status: pending
-  priority: P1
-  depends_on: [M4-RSA-01]
-  owner: attack
-  acceptance:
-    - positive/negative tests, bounded execution
-
-- id: M4-PRNG-02
-  title: MT19937 (temper/untemper, 624-output cloning, prediction, CPython compat)
-  status: pending
-  priority: P1
-  depends_on: []
-  owner: attack
-  acceptance:
-    - state cloning from 624 outputs, prediction verified
-
-- id: M4-LAT-01
-  title: Lattice core (integer matrix, LLL, bounds, diagnostics)
-  status: pending
-  priority: P1
-  depends_on: [M4-RSA-01]
-  owner: attack
-
-- id: M4-LAT-02
-  title: Coppersmith univariate small roots
-  status: pending
-  priority: P1
-  depends_on: [M4-LAT-01]
-  owner: attack
-
-- id: M5-AEAD-01
-  title: AEAD modes (AES-GCM, GCM-SIV, SIV, CCM, ChaCha20-Poly1305, XChaCha20-Poly1305)
-  status: pending
-  priority: P1
-  depends_on: []
-  owner: crypto
 
 - id: M5-BLOCK-01
-  title: Broad block ciphers (Serpent, Twofish, Blowfish, Camellia, ARIA, CAST, IDEA, RC2/5/6, SEED, Threefish, GOST family)
-  status: pending
-  priority: P2
-  depends_on: []
-  owner: crypto
-
-- id: M5-MAC-KDF-01
-  title: CMAC/GMAC/Poly1305/KMAC, PBKDF2/HKDF/scrypt/Argon2id/EVP_BytesToKey
-  status: pending
+  title: Broad block ciphers (Serpent, Twofish, Blowfish, Camellia, ARIA, CAST5/6, IDEA, RC2/5/6, SEED, Threefish, GOST family) — orthogonal cipher+mode+padding composition
+  status: running
   priority: P1
   depends_on: []
   owner: crypto
-
-- id: M6-XOR-01
-  title: XOR lab (single-byte crack, keylen estimation, crib dragging, MTP)
-  status: pending
-  priority: P1
-  depends_on: []
-  owner: analysis
+  branch: agent/crypto/breadth
 
 - id: M6-CLASSICAL-01
-  title: Classical ciphers + cracking (Caesar..transposition, IOC/Kasiski/chi-square)
-  status: pending
-  priority: P2
-  depends_on: [M6-XOR-01]
-  owner: analysis
+  title: Classical ciphers + cracking (Caesar/ROT/Atbash/Affine/Vigenere/Autokey/Beaufort/Gronsfeld/Porta, Rail Fence/Columnar/Route, Polybius/Playfair/Hill/Bacon/Bifid/Trifid/Four-square/ADFGVX, Morse/A1Z26/tap-code) + IOC/Kasiski/chi-square/n-gram scoring
+  status: running
+  priority: P1
+  depends_on: []
+  owner: classical
+  branch: agent/classical/m6
 
-- id: M7-AUTO-01
-  title: Auto Decode extensions (XOR candidates, unicode escapes, quoted printable, more wrappers)
+- id: M6-CTF-ENC-01
+  title: CTF specialty encodings (社会主义核心价值观, 佛曰/新佛曰, 兽音, 熊曰, Brainfuck/Ook, AAEncode/JJEncode) + Base36/45/58/58Check/62/Ascii85/85/Z85/91/92
   status: pending
-  priority: P2
-  depends_on: [M6-XOR-01]
-  owner: analysis
+  priority: P1
+  depends_on: [M6-CLASSICAL-01]
+  owner: classical
 
 - id: M7-ASSIST-01
-  title: AES Assist (constrained param search, apply as recipe)
+  title: AES Assist (constrained param search, prune, shared scoring, Apply as Recipe) — generalize to SM4/DES/RC4
   status: pending
-  priority: P2
+  priority: P1
   depends_on: []
   owner: analysis
 
-- id: M7-SIG-01
-  title: Crypto signature scanner (TEA delta, AES S-box, SM4/SHA/MD5 constants)
+- id: M7-AUTO-02
+  title: Auto Decode expansion (unicode escapes, HTML entities, quoted-printable, punycode, Base58/62/85/91)
   status: pending
   priority: P2
   depends_on: []
   owner: analysis
 
 - id: M8-PKI-01
-  title: Public-key ecosystem (RSA schemes, ECDSA, Ed25519, SM2, PEM/DER/ASN.1, JWT)
+  title: RSA standard ops (keygen, PKCS#1 v1.5, OAEP, PSS) + PEM/DER/PKCS#8/SPKI/JWK + ECDSA/Ed25519/X25519/ECDH + SM2 + ASN.1/JWT
+  status: pending
+  priority: P1
+  depends_on: []
+  owner: pki
+
+- id: M8-ECDSA-ATTACK-01
+  title: ECDSA attack helpers (nonce reuse, known/small k, duplicate-r detection)
   status: pending
   priority: P2
-  depends_on: [M4-RSA-03]
-  owner: crypto
+  depends_on: [M8-PKI-01]
+  owner: pki
 
-- id: M9-FILE-01
-  title: Blob store + streaming + file/forensics helpers
+- id: RELEASE-TAR-01
+  title: Linux tar.gz release pipeline (canonical): CyberCipher-vX.Y.Z-linux-x86_64.tar.gz, Ubuntu 22.04 baseline, install/uninstall-desktop.sh, CI artifact smoke test, README.txt
+  status: pending
+  priority: P1
+  depends_on: []
+  owner: release
+  notes: PACKAGING POLICY — tar.gz extracted under ~/Applications is canonical; AppImage optional later. Do not build AppImage-first.
+
+- id: QA-CONSISTENCY-01
+  title: Metadata consistency guard (script catching pending-vs-done / "PR in flight" after merge / stale main SHA)
   status: pending
   priority: P2
   depends_on: []
-  owner: platform
+  owner: qa
 
-- id: M10-CLOSE-01
-  title: Compatibility closure + benchmarks + AppImage release
+- id: M9-FILE-01
+  title: File/structured-data breadth (zip/bzip2/xz/lz4/zstd/brotli/tar; CBOR/MsgPack/TLV/VarInt; magic/carve/PNG-chunk/EXIF/LSB)
   status: pending
-  priority: P3
-  depends_on: [M5-BLOCK-01, M6-CLASSICAL-01, M8-PKI-01]
-  owner: platform
+  priority: P2
+  depends_on: []
+  owner: file
+
+- id: M7-SIG-01
+  title: Crypto signature scanner (TEA delta, AES S-box, SM4 FK/CK, SHA/MD5 constants, ChaCha constants)
+  status: pending
+  priority: P2
+  depends_on: []
+  owner: analysis
+
+- id: M5-MAC-02
+  title: CMAC, GMAC, KMAC, Poly1305, Argon2id, bcrypt compat; streams Salsa20/XSalsa20/HC-256/Rabbit
+  status: pending
+  priority: P2
+  depends_on: [M5-BLOCK-01]
+  owner: crypto

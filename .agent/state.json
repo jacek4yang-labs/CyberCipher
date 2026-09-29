@@ -1,11 +1,23 @@
 {
   "schema": 1,
-  "phase": "M6/M7",
-  "main_sha": "3754499",
+  "phase": "M5/M6/M7",
+  "main_sha": "2a18db2",
   "active_branch": null,
   "active_pr": null,
   "current_task": null,
   "last_completed": [
+    "M0-BOOTSTRAP",
+    "M1-WORKBENCH",
+    "M2-CRYPTO-BASELINE",
+    "M3-AUTO-DECODE",
+    "M4-CORE-01",
+    "M4-RSA-01",
+    "M4-RSA-02",
+    "M4-RSA-03",
+    "M4-RSA-04",
+    "M4-PRNG-01",
+    "M4-PRNG-02",
+    "M4-PRNG-03",
     "M4-LAT-01",
     "M4-LAT-02",
     "M5-AEAD-01",
@@ -16,12 +28,15 @@
     "BENCH-01"
   ],
   "blocked": [],
-  "agent_lanes": {},
+  "agent_lanes": {
+    "crypto-breadth": "agent/crypto/breadth \u2014 launching",
+    "classical": "agent/classical/m6 \u2014 launching"
+  },
   "validation": {
     "cargo_fmt": "pass",
     "cargo_clippy": "pass",
     "cargo_test": "pass",
     "frontend": "pass"
   },
-  "notes": "19 PRs merged. main = 3754499. Registry 71 ops; attack crate 155 tests (RSA 13-stage analyzer, PRNG incl. Java/glibc/MSVC, lattice LLL+Coppersmith, XOR lab); compatibility matrices x3 + vectors/ collected. Next: M5 block-cipher breadth (Serpent/Twofish/Camellia/...), M6 classical ciphers, M7 Crypto Assist + Auto Decode wrappers, M8 PKI."
+  "notes": "Reconciled 2026-09-29: 20 PRs merged, main=2a18db2. Registry 71 ops + attack crate (155 tests). Packaging policy change: tar.gz under ~/Applications is canonical, AppImage optional."
 }

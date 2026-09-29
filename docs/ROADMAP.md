@@ -31,9 +31,9 @@ with tests, docs, and honest capability status.
   HKDF, scrypt, EVP_BytesToKey) landed. Remaining: Serpent, Twofish,
   Blowfish, Camellia, ARIA, CAST5/6, IDEA, RC2/5/6, Threefish, SEED, GOST
   family; CMAC/GMAC/KMAC/Poly1305; Argon2id/bcrypt.
-- **Milestone 6 — classical / XOR cracking.** XOR lab lane in flight
-  (single-byte crack, key-length IOC estimation, repeating-key crack, crib
-  dragging, MTP helper). Caesar→ADFGVX classical set pending.
+- **Milestone 6 — classical / XOR cracking.** ✅ XOR lab (single-byte crack,
+  key-length IOC estimation, repeating-key crack, crib dragging, MTP helper —
+  PR #18). Caesar→ADFGVX classical set queued (M6 lane).
 - **Milestone 7 — Crypto Assist.** AES Assist parameter-space search with
   explainable ranking and "apply as recipe"; generalize to SM4/DES/3DES/RC4.
 - **Milestone 8 — public-key ecosystem.** RSA standard schemes, ECDSA/Ed25519,
@@ -44,6 +44,6 @@ with tests, docs, and honest capability status.
 - **Milestone 10 — compatibility closure.** Drive CyberChef/ToolsFx relevant
   gaps to zero and auto-ctf crypto baseline to matched/exceeded, then 1.0.
 
-Infrastructure spread across milestones: Linux AppImage + signed updates,
+Infrastructure spread across milestones: Linux tar.gz release (canonical, see packaging policy) + signed updates,
 property/fuzz testing, Criterion benchmarks, external-tool adapters (YAFU,
 hashcat, John) as explicit optional sidecars.

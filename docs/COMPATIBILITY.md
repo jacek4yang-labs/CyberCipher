@@ -44,8 +44,8 @@ plans. Work that exists on a reviewed feature branch is marked
 | Keccak | sha3 | partial (implemented internally, not yet exposed as variants) |
 | SM3 | sm3 | covered |
 | HMAC | hmac | partial (8 variants; no CMAC/GMAC) |
-| AEAD (GCM, CCM, ChaCha20-Poly1305, XChaCha20-Poly1305, GCM-SIV) | aead-* ops | partial (PR in flight — implemented + RFC-vector-tested on `agent/crypto/m5-aead`) |
-| KDFs (PBKDF2, HKDF, scrypt, EVP_BytesToKey) | pbkdf2/hkdf/scrypt/evp-bytestokey | partial (PR in flight, same branch) |
+| AEAD (GCM, CCM, ChaCha20-Poly1305, XChaCha20-Poly1305, GCM-SIV) | aead-* ops | covered (PR #9 merged; RFC-vector-tested) |
+| KDFs (PBKDF2, HKDF, scrypt, EVP_BytesToKey) | pbkdf2/hkdf/scrypt/evp-bytestokey | covered (PR #9 merged) |
 | RSA ops (encrypt/decrypt/sign/verify/keygen) | — | missing (M8) |
 | PRNG/RSA attack tooling | attack engine (CLI + GUI labs) | superset — no upstream counterpart |
 
@@ -54,7 +54,7 @@ plans. Work that exists on a reviewed feature branch is marked
 | ToolsFx capability | Ours | Status |
 |---|---|---|
 | Symmetric core (AES/DES/SM4/TEA family/RC4) | same ops | covered/partial — ToolsFx exposes more modes (CTS, EAX/OCB, more paddings) via BouncyCastle |
-| ChaCha20-Poly1305 | aead-chacha20poly1305 | partial (PR in flight); Salsa20/HC/VMPC/Grain/Zuc missing |
+| ChaCha20-Poly1305 | aead-chacha20poly1305 | covered (PR #9 merged); Salsa20/HC-256/Rabbit/ZUC missing (M5 lane queued) |
 | Broad block ciphers (Serpent/Twofish/Camellia/ARIA/CAST/IDEA/RC2/5/6/Blowfish/SEED/Threefish/GOST) | — | missing (M5) |
 | RSA / SM2 / DSA / ECDSA / EdDSA | attack engine only | missing as key ops (M8) |
 | Hash family + HMAC/CMAC/GMAC/Poly1305 | md/sha/sm3/hmac | partial (CMAC/GMAC missing) |
@@ -71,11 +71,11 @@ Where the upstream README does not name a feature precisely, the matrix says
 |---|---|---|
 | RSA attacks (known p/q, d, phi; dp-leak; Wiener; Fermat; low-e; common modulus; Hastad; shared prime; Pollard rho/p-1) | 12-attack engine + analyzer | covered |
 | RSA dp-dq joint leak, Rabin, yafu-style large factorization | — | missing |
-| Lattice (LLL, Coppersmith small roots) | — | partial (in flight, M4/M5) |
+| Lattice (LLL, Coppersmith small roots) | — | covered (PR #15 merged: exact integer LLL + Coppersmith small roots) |
 | PRNG: LCG recovery (known m, blind 6-output, seed) | lcg module | covered |
 | PRNG: MT19937 recovery + CPython compat | mt19937 module | covered |
-| PRNG: Java/glibc/MSVC runtime PRNGs | prng module | partial (PR in flight — `feat/runtime-prngs`); superset vs baseline |
-| Classical / XOR solvers | — | missing (M6) |
+| PRNG: Java/glibc/MSVC runtime PRNGs | prng module | covered (PR #10 merged); superset vs baseline |
+| Classical / XOR solvers | — | partial (XOR lab covered, PR #18 merged; classical ciphers missing — M6 lane queued) |
 | Encoding auto-chain | auto_decode | partial (explainable, narrower vocabulary) |
 | NTLM (MD4/NT/NetNTLMv2), ECC/ETH addresses | — | missing |
 | Explainability, typed outcomes, resource bounds | engine-wide | superset |
