@@ -15,7 +15,9 @@ use base64ct::Encoding as _;
 use der::Decode as _;
 use num_bigint_dig::BigUint;
 
-use crate::error::{invalid_armor, invalid_der, unsupported_key_type, wrong_object_type, PkiError, PkiResult};
+use crate::error::{
+    invalid_armor, invalid_der, unsupported_key_type, wrong_object_type, PkiError, PkiResult,
+};
 use crate::keys::{
     biguint_from_hex, to_hex, InspectKey, KeyFormat, KeyInspection, RsaKeypair,
     RsaPublicKeyMaterial,
@@ -26,11 +28,12 @@ const RSA_ENCRYPTION_OID: spki::ObjectIdentifier =
     spki::ObjectIdentifier::new_unwrap("1.2.840.113549.1.1.1");
 
 /// A parsed key: private (full CRT set) or public (n, e), together with the
-/// container format it was parsed from.
+/// container format it was parsed from. The private variant is boxed: the
+/// keypair is ~700 bytes of big integers while the public variant is tiny.
 #[derive(Debug, Clone)]
 pub enum ParsedKey {
     Private {
-        keypair: RsaKeypair,
+        keypair: Box<RsaKeypair>,
         format: KeyFormat,
     },
     Public {
@@ -64,14 +67,19 @@ struct PemBlock {
 fn split_armor(input: &str) -> PkiResult<PemBlock> {
     let trimmed = input.trim();
     if trimmed.is_empty() {
-        return Err(invalid_armor("empty PEM input").with_expected("PEM with BEGIN/END armor lines"));
+        return Err(
+            invalid_armor("empty PEM input").with_expected("PEM with BEGIN/END armor lines")
+        );
     }
     let mut lines = trimmed.lines();
     let begin = lines.next().unwrap_or_default();
-    let rest = begin.trim_start().strip_prefix("-----BEGIN ").ok_or_else(|| {
-        invalid_armor("missing '-----BEGIN ...-----' armor header")
-            .with_actual(crate::keys::preview(begin, 48))
-    })?;
+    let rest = begin
+        .trim_start()
+        .strip_prefix("-----BEGIN ")
+        .ok_or_else(|| {
+            invalid_armor("missing '-----BEGIN ...-----' armor header")
+                .with_actual(crate::keys::preview(begin, 48))
+        })?;
     let Some(label) = rest.strip_suffix("-----") else {
         return Err(invalid_armor("BEGIN header is not terminated by '-----'")
             .with_actual(crate::keys::preview(begin, 48)));
@@ -81,7 +89,8 @@ fn split_armor(input: &str) -> PkiResult<PemBlock> {
             .bytes()
             .all(|b| b.is_ascii_alphanumeric() || b == b' ' || b == b'-')
     {
-        return Err(invalid_armor("malformed PEM object label").with_actual(crate::keys::preview(label, 48)));
+        return Err(invalid_armor("malformed PEM object label")
+            .with_actual(crate::keys::preview(label, 48)));
     }
 
     let end_marker = format!("-----END {label}-----");
@@ -102,7 +111,9 @@ fn split_armor(input: &str) -> PkiResult<PemBlock> {
         base64.push_str(line);
     }
     if !saw_end {
-        return Err(invalid_armor(format!("missing '-----END {label}-----' terminator")));
+        return Err(invalid_armor(format!(
+            "missing '-----END {label}-----' terminator"
+        )));
     }
 
     // RFC 1421-style encrypted PEM (legacy "RSA PRIVATE KEY" + Proc-Type).
@@ -114,8 +125,9 @@ fn split_armor(input: &str) -> PkiResult<PemBlock> {
         return Err(encrypted_pem_error(label));
     }
 
-    let der = base64ct::Base64::decode_vec(&base64)
-        .map_err(|e| invalid_armor("invalid base64 payload in PEM body").with_details(e.to_string()))?;
+    let der = base64ct::Base64::decode_vec(&base64).map_err(|e| {
+        invalid_armor("invalid base64 payload in PEM body").with_details(e.to_string())
+    })?;
     Ok(PemBlock {
         label: label.to_string(),
         der,
@@ -141,21 +153,52 @@ fn parse_pem_tagged(pem: &str) -> PkiResult<(ParsedKey, KeyFormat)> {
     let block = split_armor(pem)?;
     match block.label.as_str() {
         "ENCRYPTED PRIVATE KEY" => Err(encrypted_pem_error(&block.label)),
-        "PUBLIC KEY" => parse_spki_public_der(&block.der)
-            .map(|m| (ParsedKey::Public { material: m, format: KeyFormat::Spki }, KeyFormat::Spki)),
-        "PRIVATE KEY" => parse_pkcs8_private_der(&block.der)
-            .map(|k| (ParsedKey::Private { keypair: k, format: KeyFormat::Pkcs8 }, KeyFormat::Pkcs8)),
-        "RSA PRIVATE KEY" => parse_pkcs1_private_der(&block.der)
-            .map(|k| (ParsedKey::Private { keypair: k, format: KeyFormat::Pkcs1 }, KeyFormat::Pkcs1)),
-        "RSA PUBLIC KEY" => parse_pkcs1_public_der(&block.der)
-            .map(|m| (ParsedKey::Public { material: m, format: KeyFormat::Pkcs1 }, KeyFormat::Pkcs1)),
-        "CERTIFICATE" | "CERTIFICATE REQUEST" | "NEW CERTIFICATE REQUEST" | "X509 CRL"
+        "PUBLIC KEY" => parse_spki_public_der(&block.der).map(|m| {
+            (
+                ParsedKey::Public {
+                    material: m,
+                    format: KeyFormat::Spki,
+                },
+                KeyFormat::Spki,
+            )
+        }),
+        "PRIVATE KEY" => parse_pkcs8_private_der(&block.der).map(|k| {
+            (
+                ParsedKey::Private {
+                    keypair: Box::new(k),
+                    format: KeyFormat::Pkcs8,
+                },
+                KeyFormat::Pkcs8,
+            )
+        }),
+        "RSA PRIVATE KEY" => parse_pkcs1_private_der(&block.der).map(|k| {
+            (
+                ParsedKey::Private {
+                    keypair: Box::new(k),
+                    format: KeyFormat::Pkcs1,
+                },
+                KeyFormat::Pkcs1,
+            )
+        }),
+        "RSA PUBLIC KEY" => parse_pkcs1_public_der(&block.der).map(|m| {
+            (
+                ParsedKey::Public {
+                    material: m,
+                    format: KeyFormat::Pkcs1,
+                },
+                KeyFormat::Pkcs1,
+            )
+        }),
+        "CERTIFICATE"
+        | "CERTIFICATE REQUEST"
+        | "NEW CERTIFICATE REQUEST"
+        | "X509 CRL"
         | "ATTRIBUTE CERTIFICATE" => Err(wrong_object_type(&block.label)),
-        other => Err(PkiError::unsupported(format!(
-            "unsupported PEM object type: '{other}'"
-        ))
-        .with_expected("PUBLIC KEY, PRIVATE KEY, RSA PUBLIC KEY, or RSA PRIVATE KEY")
-        .with_actual(other)),
+        other => Err(
+            PkiError::unsupported(format!("unsupported PEM object type: '{other}'"))
+                .with_expected("PUBLIC KEY, PRIVATE KEY, RSA PUBLIC KEY, or RSA PRIVATE KEY")
+                .with_actual(other),
+        ),
     }
 }
 
@@ -192,8 +235,8 @@ pub fn parse_pkcs1_private_der(der: &[u8]) -> PkiResult<RsaKeypair> {
 /// (1.2.840.113549.1.1.1) is accepted; other algorithms produce a typed
 /// "unsupported key type" error.
 pub fn parse_pkcs8_private_der(der: &[u8]) -> PkiResult<RsaKeypair> {
-    let pki =
-        pkcs8::PrivateKeyInfo::from_der(der).map_err(|e| invalid_der("PKCS#8 PrivateKeyInfo", e))?;
+    let pki = pkcs8::PrivateKeyInfo::from_der(der)
+        .map_err(|e| invalid_der("PKCS#8 PrivateKeyInfo", e))?;
     if pki.algorithm.oid != RSA_ENCRYPTION_OID {
         return Err(unsupported_key_type(
             "PKCS#8 private key is not rsaEncryption",
@@ -274,7 +317,8 @@ impl RsaPublicKeyMaterial {
             .to_pkcs1_der()
             .map(|doc| doc.as_bytes().to_vec())
             .map_err(|e| {
-                PkiError::internal("PKCS#1 RSAPublicKey DER encoding failed").with_details(e.to_string())
+                PkiError::internal("PKCS#1 RSAPublicKey DER encoding failed")
+                    .with_details(e.to_string())
             })
     }
 
@@ -294,7 +338,8 @@ impl RsaPublicKeyMaterial {
             .to_pkcs1_pem(rsa::pkcs8::LineEnding::LF)
             .map(|s| s.to_string())
             .map_err(|e| {
-                PkiError::internal("PKCS#1 RSAPublicKey PEM encoding failed").with_details(e.to_string())
+                PkiError::internal("PKCS#1 RSAPublicKey PEM encoding failed")
+                    .with_details(e.to_string())
             })
     }
 

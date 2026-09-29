@@ -12,6 +12,15 @@
 pub mod jwk;
 pub mod pem;
 
+pub use jwk::{
+    jwk_to_json, jwk_to_keypair, jwk_to_public_material, jwks_to_json, keypair_to_jwk, parse_jwk,
+    parse_jwks, public_material_to_jwk, RsaJwk,
+};
+pub use pem::{
+    inspect_der, inspect_pem, parse_pem, parse_pkcs1_private_der, parse_pkcs1_public_der,
+    parse_pkcs8_private_der, parse_spki_public_der, ParsedKey,
+};
+
 use num_bigint_dig::BigUint;
 use rand::rngs::OsRng;
 use rsa::traits::{PrivateKeyParts, PublicKeyParts};
@@ -50,13 +59,16 @@ pub(crate) fn to_hex(bytes: &[u8]) -> String {
 /// `BigUint`. Empty, odd-length, or non-hex input is a typed error.
 pub(crate) fn biguint_from_hex(hex: &str) -> PkiResult<BigUint> {
     let s = hex.trim();
-    let s = s.strip_prefix("0x").or_else(|| s.strip_prefix("0X")).unwrap_or(s);
+    let s = s
+        .strip_prefix("0x")
+        .or_else(|| s.strip_prefix("0X"))
+        .unwrap_or(s);
     if s.is_empty() {
         return Err(PkiError::decode("empty hex value")
             .with_expected("non-empty hex string")
             .with_actual(preview(hex, 24)));
     }
-    if s.len() % 2 != 0 {
+    if !s.len().is_multiple_of(2) {
         return Err(PkiError::decode("odd-length hex value")
             .with_expected("even-length hex string")
             .with_actual(preview(hex, 24)));
@@ -67,7 +79,7 @@ pub(crate) fn biguint_from_hex(hex: &str) -> PkiResult<BigUint> {
             .with_actual(preview(hex, 24)));
     }
     let mut bytes = Vec::with_capacity(s.len() / 2);
-    for pair in s.as_bytes().chunks_exact(2) {
+    for pair in s.as_bytes().as_chunks::<2>().0 {
         let hi = (pair[0] as char).to_digit(16).unwrap_or(0) as u8;
         let lo = (pair[1] as char).to_digit(16).unwrap_or(0) as u8;
         bytes.push((hi << 4) | lo);
@@ -222,7 +234,9 @@ impl RsaKeypair {
             d.clone(),
             vec![p.clone(), q.clone()],
         )
-        .map_err(|e| err("RSA key failed consistency validation".to_string()).with_details(e.to_string()))?;
+        .map_err(|e| {
+            err("RSA key failed consistency validation".to_string()).with_details(e.to_string())
+        })?;
         let (dp, dq, qinv) = derive_crt(&d, &p, &q);
         Ok(Self {
             key,
@@ -287,7 +301,7 @@ impl RsaKeypair {
 
     /// Modulus size in bits.
     pub fn bits(&self) -> usize {
-        self.n.bits() as usize
+        self.n.bits()
     }
 
     /// Hex-string material for transport/serialization.
@@ -410,7 +424,10 @@ pub fn generate_rsa_keypair(bits: usize, exponent_hex: &str) -> PkiResult<RsaKey
 }
 
 /// Map a DER-encoding `Result` that already produced bytes into a typed error.
-fn encode_err(result: Result<Vec<u8>, impl std::fmt::Display>, context: &str) -> PkiResult<Vec<u8>> {
+fn encode_err(
+    result: Result<Vec<u8>, impl std::fmt::Display>,
+    context: &str,
+) -> PkiResult<Vec<u8>> {
     result.map_err(|e| {
         PkiError::internal(format!("{context} DER encoding failed")).with_details(e.to_string())
     })
@@ -459,11 +476,13 @@ fn validate_exponent(e: &BigUint, bits: usize, parameter: &str) -> PkiResult<()>
     }
     let lsb = e.to_bytes_le().first().copied().unwrap_or(0);
     if lsb & 1 == 0 {
-        return Err(PkiError::invalid_param(parameter, "RSA public exponent must be odd")
-            .with_expected("odd integer")
-            .with_actual(actual));
+        return Err(
+            PkiError::invalid_param(parameter, "RSA public exponent must be odd")
+                .with_expected("odd integer")
+                .with_actual(actual),
+        );
     }
-    if e.bits() as usize >= bits {
+    if e.bits() >= bits {
         return Err(PkiError::invalid_param(
             parameter,
             "RSA public exponent must be smaller than the modulus",

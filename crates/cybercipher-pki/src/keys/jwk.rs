@@ -236,8 +236,11 @@ fn b64url_decode(parameter: &str, s: &str) -> PkiResult<Vec<u8>> {
 }
 
 fn hex_to_bytes(hex: &str) -> Option<Vec<u8>> {
-    let hex = hex.strip_prefix("0x").or_else(|| hex.strip_prefix("0X")).unwrap_or(hex);
-    if hex.len() % 2 != 0 || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
+    let hex = hex
+        .strip_prefix("0x")
+        .or_else(|| hex.strip_prefix("0X"))
+        .unwrap_or(hex);
+    if !hex.len().is_multiple_of(2) || !hex.bytes().all(|b| b.is_ascii_hexdigit()) {
         return None;
     }
     (0..hex.len() / 2)
