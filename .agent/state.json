@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "phase": "M6/M7/M8",
-  "main_sha": "c2dfb39",
+  "phase": "M7/M8/Release",
+  "main_sha": "bbb340b",
   "active_branch": null,
   "active_pr": null,
   "current_task": null,
@@ -34,12 +34,15 @@
     "RECONCILE-01"
   ],
   "blocked": [],
-  "agent_lanes": {},
+  "agent_lanes": {
+    "aes-assist": "agent/analysis/aes-assist (worktree cc-assist) \u2014 running",
+    "tar-release": "agent/release/linux-tar (worktree cc-release) \u2014 running"
+  },
   "validation": {
     "cargo_fmt": "pass",
     "cargo_clippy": "pass",
     "cargo_test": "pass",
     "frontend": "pass"
   },
-  "notes": "Reconciled session 2 end: 24 PRs merged, main=c2dfb39. Registry ~99 ops + attack crate (classical 20+ ciphers, XOR lab, RSA 13 attacks, PRNG suite, LLL/Coppersmith) + crypto crate (AEAD/KDF/MAC/streams/14 block ciphers). 366 tests. Next: M7-ASSIST-01 (AES Assist), M8-PKI-01, RELEASE-TAR-01, M6-CTF-ENC-01, M7-AUTO-02, M9-FILE-01, M7-SIG-01."
+  "notes": "Session 3 start: reconciled to main=bbb340b (25 PRs). Wave 1: AES Assist + tar.gz release lanes running. Next refill: PKI, CTF encodings."
 }
