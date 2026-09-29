@@ -3,22 +3,19 @@
 ## In flight
 - Nothing. All lanes merged; worktrees cleaned up.
 
-## Merged (PRs #1-#27)
-Bootstrap, workbench, crypto baseline+CLI, Auto Decode, M4 attack engine complete
-(RSA 13-stage analyzer + Labs, PRNG suite, LLL/Coppersmith), M5 complete (AEAD,
-KDFs, 14 block ciphers, MACs, streams, Argon2id), M6 (XOR lab, classical 20+
-ciphers), M7 (XOR-in-AutoDecode, AES Assist framework), tar.gz release pipeline
-(#26), compat matrices + vectors, state guard, benches.
+## main = cc3239c — 32 PRs, ~125 registry ops, 413 tests.
 
-## main = da3851d — registry ~99 ops, 374 tests, CI all green.
+## Session 4 merged
+#29 state semantics (ancestor check), #30 PKI foundation (keygen/PEM/DER/JWK),
+#31 base families + classical misc, #32 RSA ops (OAEP/PSS).
 
-## Next concrete actions (priority order)
-1. Spawn next wave: PKI (M8-PKI-01), CTF encodings (M6-CTF-ENC-01).
-2. Refill: classical misc (Morse/A1Z26/...), Auto Decode expansion, file breadth.
-3. GUI Crypto Assist panel consuming cybercipher_attack::assist (RSA Lab pattern).
-4. Update CAPABILITIES/COMPATIBILITY for AES Assist + tar pipeline.
+## Next ready (priority order)
+1. M8-PKI-D (ECC), M8-PKI-E (SM2), M8-PKI-F (X.509/JWT) — three independent lanes.
+2. M7-AUTO-02 (Auto Decode vocab: unicode/qp/base58-91), M6-CTF specialty encodings.
+3. GUI wiring: PKI lab + Crypto Assist panel.
+4. M9-FILE-01, M7-SIG-01, M5-SEED-01.
 
 ## Blocked
 - Subagent concurrency = 2. Infra failures: "Captcha instance timed out",
   "exceed quota limit" — checkpoint worktrees and finish orphaned WIP as
-  coordinator (done 4x across sessions).
+  coordinator (done 5x across sessions).
