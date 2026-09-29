@@ -200,10 +200,10 @@ fn mtp_break_recovers_key_and_plaintexts() {
         "the river flows past the mill and the bridge at the edge of town ",
     ];
     let mut ciphertexts = Vec::new();
-    for msg_idx in 0..8 {
+    for (msg_idx, sentence) in sentences.iter().enumerate() {
         let mut pt = String::with_capacity(600);
         while pt.len() < 600 {
-            pt.push_str(sentences[msg_idx]);
+            pt.push_str(sentence);
         }
         pt.truncate(600);
         ciphertexts.push(

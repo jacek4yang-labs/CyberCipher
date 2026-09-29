@@ -267,7 +267,7 @@ mod tests {
 
     #[test]
     fn frequency_table_sums_to_roughly_100_percent() {
-        let sum: f64 = ENGLISH_LETTER_FREQ_PCT.sum();
+        let sum: f64 = ENGLISH_LETTER_FREQ_PCT.iter().sum();
         assert!((sum - 100.0).abs() < 0.1, "sum = {sum}");
     }
 
