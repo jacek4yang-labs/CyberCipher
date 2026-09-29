@@ -13,6 +13,8 @@ mod ciphers;
 mod hashes;
 mod helpers;
 mod kdf;
+mod mac;
+mod streams;
 mod tea;
 
 use cybercipher_core::OperationRegistry;
@@ -23,5 +25,7 @@ pub fn register_all(reg: &mut OperationRegistry) {
     ciphers::register(reg);
     hashes::register(reg);
     kdf::register(reg);
+    mac::register(reg);
+    streams::register(reg);
     tea::register(reg);
 }

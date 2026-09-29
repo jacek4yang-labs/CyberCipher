@@ -1,57 +1,540 @@
-//! Symmetric cipher operations: AES, DES/3DES, SM4 (block modes with
-//! orthogonal padding policy), and RC4.
+//! Symmetric block cipher operations: AES, DES/3DES, SM4, Serpent, Twofish,
+//! Blowfish, Camellia, ARIA, CAST5, IDEA, RC2, RC5, RC6, Threefish, Magma and
+//! Kuznyechik (block modes with orthogonal padding policy), plus native RC4.
 //!
 //! Design rules:
 //! - Key/IV decoding is explicit (encoding selector + strict length checks
 //!   with expected/actual diagnostics). No silent re-interpretation.
 //! - Padding is a separate policy parameter; decryption validates padding
 //!   and reports structured errors instead of returning garbage silently.
+//! - Every block cipher plugs into ONE shared engine abstraction
+//!   ([`BlockEngine`]); the mode wiring (ECB/CBC/CTR/CFB-128/OFB) is written
+//!   once against that trait, so adding a cipher is a table row — not a new
+//!   set of mode bindings (charter §21: orthogonal Cipher x Mode x Padding).
 //! - RustCrypto crates provide the primitives; this module owns mode wiring
 //!   and validation.
 
-use cipher::{
-    generic_array::GenericArray, BlockCipher, BlockDecrypt, BlockDecryptMut, BlockEncrypt,
-    BlockEncryptMut, KeyInit, KeyIvInit, StreamCipher,
-};
+use cipher::{Block, BlockCipherDecrypt, BlockCipherEncrypt, BlockSizeUser, KeyInit};
 use cybercipher_codec::decode_input;
 use cybercipher_core::prelude::*;
+use cybercipher_core::Security;
+use rc5::RC5;
+use rc6::RC6;
+
+type Rc5 = RC5<u32, cipher::consts::U12, cipher::consts::U16>;
+type Rc6 = RC6<u32, cipher::consts::U20, cipher::consts::U16>;
 
 use crate::helpers::decode_material;
 
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum Algo {
-    Aes,
-    Des,
-    Tdes,
-    Sm4,
+// ------------------------------------------------------ engine layer ----
+
+/// A keyed block-cipher instance exposing raw block operations.
+///
+/// This is CyberCipher's own vtable: it deliberately does not depend on a
+/// specific `cipher` crate trait version, so cipher crates from any
+/// RustCrypto generation can sit behind it and share the mode plumbing.
+trait BlockEngine: Send + Sync {
+    fn block_size(&self) -> usize;
+    fn encrypt_block(&self, block: &mut [u8]);
+    fn decrypt_block(&self, block: &mut [u8]);
 }
 
-impl Algo {
-    fn name(self) -> &'static str {
-        match self {
-            Algo::Aes => "AES",
-            Algo::Des => "DES",
-            Algo::Tdes => "3DES",
-            Algo::Sm4 => "SM4",
+/// Adapter that lifts any RustCrypto block cipher (encrypt + decrypt +
+/// compile-time block size) into a [`BlockEngine`].
+struct Engine<C> {
+    cipher: C,
+}
+
+impl<C> BlockEngine for Engine<C>
+where
+    C: BlockCipherEncrypt + BlockCipherDecrypt + BlockSizeUser + Send + Sync + 'static,
+{
+    fn block_size(&self) -> usize {
+        C::block_size()
+    }
+
+    fn encrypt_block(&self, block: &mut [u8]) {
+        let arr: &mut Block<C> = block
+            .try_into()
+            .expect("chunk length equals the cipher block size");
+        self.cipher.encrypt_block(arr);
+    }
+
+    fn decrypt_block(&self, block: &mut [u8]) {
+        let arr: &mut Block<C> = block
+            .try_into()
+            .expect("chunk length equals the cipher block size");
+        self.cipher.decrypt_block(arr);
+    }
+}
+
+/// Build an engine from a cipher type via `KeyInit`.
+fn keyed<C>(key: &[u8]) -> OpResult<Box<dyn BlockEngine>>
+where
+    C: BlockCipherEncrypt + BlockCipherDecrypt + BlockSizeUser + KeyInit + Send + Sync + 'static,
+{
+    let cipher = C::new_from_slice(key)
+        .map_err(|_| OperationError::internal("cipher key rejected by the primitive"))?;
+    Ok(Box::new(Engine { cipher }))
+}
+
+// -------------------------------------------------- cipher registry ----
+
+/// How wide a cipher's blocks are.
+#[derive(Debug, Clone, Copy)]
+enum BlockWidth {
+    /// Fixed block size in bytes (all ciphers here except Threefish).
+    Fixed(usize),
+    /// Threefish-256/512/1024: the block width equals the key length.
+    SameAsKey,
+}
+
+/// Static description of one block cipher. Adding a cipher to CyberCipher
+/// means adding one of these rows plus a factory; nothing else changes.
+struct BlockCipherEntry {
+    /// Op-id prefix (`<id>-encrypt` / `<id>-decrypt`).
+    id: &'static str,
+    /// Human name used in specs, errors, and aliases.
+    display: &'static str,
+    /// Exact key lengths in bytes; empty means the `key_range` applies.
+    key_lengths: &'static [usize],
+    /// Inclusive (min, max) key length in bytes for variable-key ciphers.
+    key_range: (usize, usize),
+    /// Block width of the primitive.
+    width: BlockWidth,
+    /// Security classification shown in the spec.
+    security: Security,
+    /// Ciphers such as Threefish require a 16-byte tweak even in ECB mode.
+    tweak_required: bool,
+    /// Provenance: (standard, implementation, test vectors).
+    provenance: (&'static str, &'static str, &'static str),
+    /// Key/block summary sentence used in op descriptions.
+    shape: &'static str,
+    /// Build a keyed engine from (key, tweak). `tweak` is empty unless
+    /// `tweak_required` is set.
+    #[allow(clippy::type_complexity)]
+    factory: fn(&[u8], &[u8]) -> OpResult<Box<dyn BlockEngine>>,
+}
+
+impl BlockCipherEntry {
+    fn key_len_ok(&self, len: usize) -> bool {
+        if self.key_lengths.is_empty() {
+            (self.key_range.0..=self.key_range.1).contains(&len)
+        } else {
+            self.key_lengths.contains(&len)
         }
     }
 
-    fn valid_key_lengths(self) -> &'static [usize] {
-        match self {
-            Algo::Aes => &[16, 24, 32],
-            Algo::Des => &[8],
-            Algo::Tdes => &[16, 24],
-            Algo::Sm4 => &[16],
+    fn key_len_desc(&self) -> String {
+        if self.key_lengths.is_empty() {
+            format!("{}-{}", self.key_range.0, self.key_range.1)
+        } else {
+            self.key_lengths
+                .iter()
+                .map(|l| l.to_string())
+                .collect::<Vec<_>>()
+                .join(" / ")
         }
     }
 
-    fn block_size(self) -> usize {
-        match self {
-            Algo::Aes | Algo::Sm4 => 16,
-            Algo::Des | Algo::Tdes => 8,
+    /// Runtime block size for a validated key length.
+    fn block_size(&self, key_len: usize) -> usize {
+        match self.width {
+            BlockWidth::Fixed(size) => size,
+            BlockWidth::SameAsKey => key_len,
+        }
+    }
+
+    /// Bytes required from the `iv` parameter (the Threefish tweak is
+    /// always 16 bytes wide, regardless of the block size).
+    fn iv_len(&self) -> usize {
+        if self.tweak_required {
+            16
+        } else {
+            match self.width {
+                BlockWidth::Fixed(size) => size,
+                BlockWidth::SameAsKey => 16,
+            }
+        }
+    }
+
+    /// Resolve the concrete engine for (key, tweak), validating lengths.
+    fn engine(&self, key: &[u8], tweak: &[u8]) -> OpResult<Box<dyn BlockEngine>> {
+        if !self.key_len_ok(key.len()) {
+            return Err(key_error(self, key.len()));
+        }
+        (self.factory)(key, tweak)
+    }
+}
+
+fn key_error(entry: &BlockCipherEntry, actual: usize) -> OperationError {
+    OperationError::key(format!(
+        "{} key must be {} bytes after decoding, got {} bytes",
+        entry.display,
+        entry.key_len_desc(),
+        actual
+    ))
+    .with_parameter("key")
+    .with_expected(entry.key_len_desc())
+    .with_actual(format!("{actual} bytes"))
+}
+
+fn iv_error(entry: &BlockCipherEntry, actual: usize, expected: usize) -> OperationError {
+    let what = if entry.tweak_required {
+        if expected == 16 {
+            "tweak"
+        } else {
+            "IV (first 16 bytes are the tweak)"
+        }
+    } else {
+        "IV"
+    };
+    OperationError::key(format!(
+        "{} {} must be {expected} bytes after decoding, got {actual} bytes",
+        entry.display, what
+    ))
+    .with_parameter("iv")
+    .with_expected(format!("{expected} bytes"))
+    .with_actual(format!("{actual} bytes"))
+}
+
+// Cipher factories. Each is a few lines: pick the concrete RustCrypto type
+// from the (validated) key length and hand it to the shared engine adapter.
+
+fn make_aes(key: &[u8], _tweak: &[u8]) -> OpResult<Box<dyn BlockEngine>> {
+    match key.len() {
+        16 => keyed::<aes::Aes128>(key),
+        24 => keyed::<aes::Aes192>(key),
+        _ => keyed::<aes::Aes256>(key),
+    }
+}
+
+fn make_des(key: &[u8], _tweak: &[u8]) -> OpResult<Box<dyn BlockEngine>> {
+    match key.len() {
+        8 => keyed::<des::Des>(key),
+        16 => keyed::<des::TdesEde2>(key),
+        _ => keyed::<des::TdesEde3>(key),
+    }
+}
+
+fn make_camellia(key: &[u8], _tweak: &[u8]) -> OpResult<Box<dyn BlockEngine>> {
+    match key.len() {
+        16 => keyed::<camellia::Camellia128>(key),
+        24 => keyed::<camellia::Camellia192>(key),
+        _ => keyed::<camellia::Camellia256>(key),
+    }
+}
+
+fn make_aria(key: &[u8], _tweak: &[u8]) -> OpResult<Box<dyn BlockEngine>> {
+    match key.len() {
+        16 => keyed::<aria::Aria128>(key),
+        24 => keyed::<aria::Aria192>(key),
+        _ => keyed::<aria::Aria256>(key),
+    }
+}
+
+fn make_threefish(key: &[u8], tweak: &[u8]) -> OpResult<Box<dyn BlockEngine>> {
+    if tweak.len() != 16 {
+        return Err(iv_error(
+            &BLOCK_THREEFISH,
+            tweak.len(),
+            BLOCK_THREEFISH.iv_len(),
+        ));
+    }
+    let tweak: [u8; 16] = tweak.try_into().expect("checked 16 bytes");
+    match key.len() {
+        32 => {
+            let key: [u8; 32] = key.try_into().expect("checked 32 bytes");
+            Ok(Box::new(Engine {
+                cipher: threefish::Threefish256::new_with_tweak(&key, &tweak),
+            }))
+        }
+        64 => {
+            let key: [u8; 64] = key.try_into().expect("checked 64 bytes");
+            Ok(Box::new(Engine {
+                cipher: threefish::Threefish512::new_with_tweak(&key, &tweak),
+            }))
+        }
+        _ => {
+            let key: [u8; 128] = key.try_into().expect("checked 128 bytes");
+            Ok(Box::new(Engine {
+                cipher: threefish::Threefish1024::new_with_tweak(&key, &tweak),
+            }))
         }
     }
 }
+
+const BLOCK_THREEFISH: BlockCipherEntry = BlockCipherEntry {
+    id: "threefish",
+    display: "Threefish",
+    key_lengths: &[32, 64, 128],
+    key_range: (32, 128),
+    width: BlockWidth::SameAsKey,
+    security: Security::Modern,
+    tweak_required: true,
+    provenance: (
+        "Threefish (Skein hash core; Schneier et al.)",
+        "RustCrypto `threefish` crate",
+        "Crypto++ Threefish test vectors",
+    ),
+    shape: "32/64/128-byte keys; the iv parameter carries the mandatory 16-byte tweak.",
+    factory: make_threefish,
+};
+
+/// The registry: every block cipher exposed by CyberCipher's
+/// `<algo>-encrypt` / `<algo>-decrypt` operations.
+const BLOCK_CIPHERS: &[BlockCipherEntry] = &[
+    BlockCipherEntry {
+        id: "aes",
+        display: "AES",
+        key_lengths: &[16, 24, 32],
+        key_range: (16, 32),
+        width: BlockWidth::Fixed(16),
+        security: Security::Modern,
+        tweak_required: false,
+        provenance: (
+            "NIST FIPS 197 + SP 800-38 family",
+            "RustCrypto `aes` crate",
+            "NIST SP 800-38A / FIPS 197 known-answer tests",
+        ),
+        shape: "16/24/32-byte keys, 16-byte block.",
+        factory: make_aes,
+    },
+    BlockCipherEntry {
+        id: "des",
+        display: "DES / 3DES",
+        key_lengths: &[8, 16, 24],
+        key_range: (8, 24),
+        width: BlockWidth::Fixed(8),
+        security: Security::Broken,
+        tweak_required: false,
+        provenance: (
+            "FIPS 46-3 (withdrawn); NIST SP 800-67 for 3DES",
+            "RustCrypto `des` crate",
+            "Classic DES known-answer tests",
+        ),
+        shape: "8-byte key for DES or 16/24-byte key for 3DES, 8-byte block.",
+        factory: make_des,
+    },
+    BlockCipherEntry {
+        id: "sm4",
+        display: "SM4",
+        key_lengths: &[16],
+        key_range: (16, 16),
+        width: BlockWidth::Fixed(16),
+        security: Security::Modern,
+        tweak_required: false,
+        provenance: (
+            "GB/T 32907-2016",
+            "RustCrypto `sm4` crate",
+            "GB/T 32907 standard example",
+        ),
+        shape: "16-byte key, 16-byte block.",
+        factory: |key, _| keyed::<sm4::Sm4>(key),
+    },
+    BlockCipherEntry {
+        id: "serpent",
+        display: "Serpent",
+        key_lengths: &[16, 24, 32],
+        key_range: (16, 32),
+        width: BlockWidth::Fixed(16),
+        security: Security::Modern,
+        tweak_required: false,
+        provenance: (
+            "Serpent AES submission; ISO/IEC 18033-3; NESSIE",
+            "RustCrypto `serpent` crate",
+            "NESSIE Serpent verified test vectors",
+        ),
+        shape: "16/24/32-byte keys, 16-byte block.",
+        factory: |key, _| keyed::<serpent::Serpent>(key),
+    },
+    BlockCipherEntry {
+        id: "twofish",
+        display: "Twofish",
+        key_lengths: &[16, 24, 32],
+        key_range: (16, 32),
+        width: BlockWidth::Fixed(16),
+        security: Security::Modern,
+        tweak_required: false,
+        provenance: (
+            "Twofish AES submission (Schneier et al.)",
+            "RustCrypto `twofish` crate",
+            "Twofish submission test vectors",
+        ),
+        shape: "16/24/32-byte keys, 16-byte block.",
+        factory: |key, _| keyed::<twofish::Twofish>(key),
+    },
+    BlockCipherEntry {
+        id: "blowfish",
+        display: "Blowfish",
+        key_lengths: &[],
+        key_range: (4, 56),
+        width: BlockWidth::Fixed(8),
+        security: Security::Legacy,
+        tweak_required: false,
+        provenance: (
+            "Original Blowfish (Schneier, 1993)",
+            "RustCrypto `blowfish` crate",
+            "Eric Young's Blowfish test vectors",
+        ),
+        shape: "variable 4-56 byte keys, 8-byte block.",
+        factory: |key, _| keyed::<blowfish::Blowfish>(key),
+    },
+    BlockCipherEntry {
+        id: "camellia",
+        display: "Camellia",
+        key_lengths: &[16, 24, 32],
+        key_range: (16, 32),
+        width: BlockWidth::Fixed(16),
+        security: Security::Modern,
+        tweak_required: false,
+        provenance: (
+            "RFC 3713; ISO/IEC 18033-3; CRYPTREC",
+            "RustCrypto `camellia` crate",
+            "RFC 3713 test vectors / NESSIE",
+        ),
+        shape: "16/24/32-byte keys, 16-byte block.",
+        factory: make_camellia,
+    },
+    BlockCipherEntry {
+        id: "aria",
+        display: "ARIA",
+        key_lengths: &[16, 24, 32],
+        key_range: (16, 32),
+        width: BlockWidth::Fixed(16),
+        security: Security::Modern,
+        tweak_required: false,
+        provenance: (
+            "KS X 1213; RFC 5794 (Korean standard)",
+            "RustCrypto `aria` crate",
+            "RFC 5794 Appendix A test vectors",
+        ),
+        shape: "16/24/32-byte keys, 16-byte block.",
+        factory: make_aria,
+    },
+    BlockCipherEntry {
+        id: "cast5",
+        display: "CAST5",
+        key_lengths: &[],
+        key_range: (5, 16),
+        width: BlockWidth::Fixed(8),
+        security: Security::Modern,
+        tweak_required: false,
+        provenance: (
+            "RFC 2144",
+            "RustCrypto `cast5` crate",
+            "RFC 2144 Appendix B test vectors",
+        ),
+        shape: "5-16 byte keys, 8-byte block.",
+        factory: |key, _| keyed::<cast5::Cast5>(key),
+    },
+    BlockCipherEntry {
+        id: "idea",
+        display: "IDEA",
+        key_lengths: &[16],
+        key_range: (16, 16),
+        width: BlockWidth::Fixed(8),
+        security: Security::Legacy,
+        tweak_required: false,
+        provenance: (
+            "Original IDEA (Lai & Massey, 1991); PGP legacy",
+            "RustCrypto `idea` crate",
+            "NESSIE IDEA verified test vectors",
+        ),
+        shape: "16-byte key, 8-byte block.",
+        factory: |key, _| keyed::<idea::Idea>(key),
+    },
+    BlockCipherEntry {
+        id: "rc2",
+        display: "RC2",
+        key_lengths: &[],
+        key_range: (1, 16),
+        width: BlockWidth::Fixed(8),
+        security: Security::Legacy,
+        tweak_required: false,
+        provenance: (
+            "RFC 2268",
+            "RustCrypto `rc2` crate",
+            "RFC 2268 section 5 test vectors",
+        ),
+        shape: "1-16 byte keys (effective key length equals the key bits), 8-byte block.",
+        factory: |key, _| keyed::<rc2::Rc2>(key),
+    },
+    BlockCipherEntry {
+        id: "rc5",
+        display: "RC5",
+        key_lengths: &[16],
+        key_range: (16, 16),
+        width: BlockWidth::Fixed(8),
+        security: Security::Modern,
+        tweak_required: false,
+        provenance: (
+            "Original RC5-32/12/16 (Rivest)",
+            "RustCrypto `rc5` crate",
+            "draft-krovetz-rc6-rc5-vectors (IETF)",
+        ),
+        shape: "16-byte key, 8-byte block.",
+        factory: |key, _| keyed::<Rc5>(key),
+    },
+    BlockCipherEntry {
+        id: "rc6",
+        display: "RC6",
+        key_lengths: &[16],
+        key_range: (16, 16),
+        width: BlockWidth::Fixed(16),
+        security: Security::Modern,
+        tweak_required: false,
+        provenance: (
+            "Original RC6-32/20/16 (Rivest et al., AES finalist)",
+            "RustCrypto `rc6` crate",
+            "draft-krovetz-rc6-rc5-vectors (IETF)",
+        ),
+        shape: "16-byte key, 16-byte block.",
+        factory: |key, _| keyed::<Rc6>(key),
+    },
+    BLOCK_THREEFISH,
+    BlockCipherEntry {
+        id: "magma",
+        display: "Magma",
+        key_lengths: &[32],
+        key_range: (32, 32),
+        width: BlockWidth::Fixed(8),
+        security: Security::Legacy,
+        tweak_required: false,
+        provenance: (
+            "GOST R 34.12-2015 (Magma, 64-bit block)",
+            "RustCrypto `magma` crate",
+            "GOST R 34.12-2015 test vectors",
+        ),
+        shape: "32-byte key, 8-byte block.",
+        factory: |key, _| keyed::<magma::Magma>(key),
+    },
+    BlockCipherEntry {
+        id: "kuznyechik",
+        display: "Kuznyechik",
+        key_lengths: &[32],
+        key_range: (32, 32),
+        width: BlockWidth::Fixed(16),
+        security: Security::Legacy,
+        tweak_required: false,
+        provenance: (
+            "GOST R 34.12-2015 (Kuznyechik, 128-bit block)",
+            "RustCrypto `kuznyechik` crate",
+            "GOST R 34.12-2015 test vectors",
+        ),
+        shape: "32-byte key, 16-byte block.",
+        factory: |key, _| keyed::<kuznyechik::Kuznyechik>(key),
+    },
+];
+
+fn resolve_entry(op_id: &str) -> OpResult<&'static BlockCipherEntry> {
+    BLOCK_CIPHERS
+        .iter()
+        .find(|e| op_id.starts_with(e.id))
+        .ok_or_else(|| OperationError::internal("unknown cipher op"))
+}
+
+// ------------------------------------------------------- modes ----
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Mode {
@@ -79,6 +562,16 @@ impl Mode {
 
     fn uses_iv(self) -> bool {
         !matches!(self, Mode::Ecb)
+    }
+
+    fn as_str(self) -> &'static str {
+        match self {
+            Mode::Ecb => "ecb",
+            Mode::Cbc => "cbc",
+            Mode::Ctr => "ctr",
+            Mode::Cfb => "cfb",
+            Mode::Ofb => "ofb",
+        }
     }
 }
 
@@ -202,304 +695,191 @@ fn padding_error(block: usize, last: u8, why: &str) -> OperationError {
         )
 }
 
-fn key_error(algo: Algo, actual: usize) -> OperationError {
-    let lengths: Vec<String> = algo
-        .valid_key_lengths()
-        .iter()
-        .map(|l| l.to_string())
-        .collect();
-    OperationError::key(format!(
-        "{} key must be {} bytes after decoding, got {} bytes",
-        algo.name(),
-        lengths.join(" / "),
-        actual
-    ))
-    .with_parameter("key")
-    .with_expected(lengths.join(" / "))
-    .with_actual(format!("{actual} bytes"))
-}
+// The five mode wirings, implemented ONCE over `dyn BlockEngine` and shared
+// by every cipher in the registry.
 
-fn iv_error(algo: Algo, actual: usize, expected: usize) -> OperationError {
-    OperationError::key(format!(
-        "{} IV must be {expected} bytes after decoding, got {actual} bytes",
-        algo.name()
-    ))
-    .with_parameter("iv")
-    .with_expected(format!("{expected} bytes"))
-    .with_actual(format!("{actual} bytes"))
-}
-
-// ------------------------------------------------------------- modes ----
-
-use aes::Aes128;
-use aes::Aes192;
-use aes::Aes256;
-use des::Des;
-use des::TdesEde2;
-use des::TdesEde3;
-use sm4::Sm4;
-
-fn encrypt_padded<C>(key: &[u8], data: &[u8]) -> OpResult<Vec<u8>>
-where
-    C: BlockCipher + BlockEncrypt + KeyInit,
-{
-    if !data.len().is_multiple_of(C::block_size()) {
-        return Err(OperationError::internal("pre-padded data misaligned"));
+fn ecb_apply(engine: &dyn BlockEngine, data: &mut [u8], encrypt: bool) {
+    let bs = engine.block_size();
+    for chunk in data.chunks_mut(bs) {
+        if encrypt {
+            engine.encrypt_block(chunk);
+        } else {
+            engine.decrypt_block(chunk);
+        }
     }
-    let enc = ecb::Encryptor::<C>::new(key.into());
-    Ok(enc.encrypt_padded_vec_mut::<block_padding::NoPadding>(data))
 }
 
-fn decrypt_padded<C>(key: &[u8], data: &[u8]) -> OpResult<Vec<u8>>
-where
-    C: BlockCipher + BlockDecrypt + KeyInit,
-{
-    let dec = ecb::Decryptor::<C>::new(key.into());
-    dec.decrypt_padded_vec_mut::<block_padding::NoPadding>(data)
-        .map_err(|e| OperationError::internal(format!("block decrypt failed: {e}")))
-}
-
-fn cbc_encrypt<C>(key: &[u8], iv: &[u8], data: &[u8]) -> OpResult<Vec<u8>>
-where
-    C: BlockCipher + BlockEncrypt + KeyInit,
-{
-    if !data.len().is_multiple_of(C::block_size()) {
-        return Err(OperationError::internal("pre-padded data misaligned"));
+fn cbc_encrypt(engine: &dyn BlockEngine, iv: &[u8], data: &mut [u8]) {
+    let bs = engine.block_size();
+    let mut prev = iv[..bs].to_vec();
+    for chunk in data.chunks_mut(bs) {
+        for (b, p) in chunk.iter_mut().zip(&prev) {
+            *b ^= p;
+        }
+        engine.encrypt_block(chunk);
+        prev.copy_from_slice(chunk);
     }
-    let enc = cbc::Encryptor::<C>::new(key.into(), iv.into());
-    Ok(enc.encrypt_padded_vec_mut::<block_padding::NoPadding>(data))
 }
 
-fn cbc_decrypt<C>(key: &[u8], iv: &[u8], data: &[u8]) -> OpResult<Vec<u8>>
-where
-    C: BlockCipher + BlockDecrypt + KeyInit,
-{
-    let dec = cbc::Decryptor::<C>::new(key.into(), iv.into());
-    dec.decrypt_padded_vec_mut::<block_padding::NoPadding>(data)
-        .map_err(|e| OperationError::internal(format!("block decrypt failed: {e}")))
+fn cbc_decrypt(engine: &dyn BlockEngine, iv: &[u8], data: &mut [u8]) {
+    let bs = engine.block_size();
+    let mut prev = iv[..bs].to_vec();
+    for chunk in data.chunks_mut(bs) {
+        let cur = chunk.to_vec();
+        engine.decrypt_block(chunk);
+        for (b, p) in chunk.iter_mut().zip(&prev) {
+            *b ^= p;
+        }
+        prev = cur;
+    }
 }
 
-fn stream<C>(key: &[u8], iv: &[u8], data: &[u8]) -> OpResult<Vec<u8>>
-where
-    C: StreamCipher + KeyIvInit,
-{
-    let mut buf = data.to_vec();
-    let mut cipher = C::new(key.into(), iv.into());
-    cipher.apply_keystream(&mut buf);
-    Ok(buf)
+/// CTR with a block-size big-endian counter (identical to Ctr128BE for
+/// 16-byte blocks; the whole block is the counter).
+fn ctr_apply(engine: &dyn BlockEngine, iv: &[u8], data: &mut [u8]) {
+    let bs = engine.block_size();
+    let mut counter = iv[..bs].to_vec();
+    for chunk in data.chunks_mut(bs) {
+        let mut ks = counter.clone();
+        engine.encrypt_block(&mut ks);
+        for (b, k) in chunk.iter_mut().zip(&ks) {
+            *b ^= k;
+        }
+        for byte in counter.iter_mut().rev() {
+            let (next, overflow) = byte.overflowing_add(1);
+            *byte = next;
+            if !overflow {
+                break;
+            }
+        }
+    }
+}
+
+/// OFB with block-size feedback: keystream block 0 = E(IV).
+fn ofb_apply(engine: &dyn BlockEngine, iv: &[u8], data: &mut [u8]) {
+    let bs = engine.block_size();
+    let mut ks = iv[..bs].to_vec();
+    for chunk in data.chunks_mut(bs) {
+        engine.encrypt_block(&mut ks);
+        for (b, k) in chunk.iter_mut().zip(&ks) {
+            *b ^= k;
+        }
+    }
 }
 
 /// CFB-128 with partial final block, matching the classic construction:
 /// C_i = P_i XOR E(C_{i-1}); the IV advances with full ciphertext blocks.
 /// Implemented directly because RustCrypto exposes CFB only through the
 /// padded block-mode API, which cannot express a partial final block.
-fn cfb_encrypt<C>(key: &[u8], iv: &[u8], data: &[u8]) -> OpResult<Vec<u8>>
-where
-    C: BlockCipher + BlockEncrypt + KeyInit,
-{
-    let bs = C::block_size();
-    let cipher = C::new(GenericArray::from_slice(key));
-    let mut prev = GenericArray::<u8, C::BlockSize>::clone_from_slice(&iv[..bs]);
+fn cfb_encrypt(engine: &dyn BlockEngine, iv: &[u8], data: &[u8]) -> Vec<u8> {
+    let bs = engine.block_size();
+    let mut prev = iv[..bs].to_vec();
     let mut out = Vec::with_capacity(data.len());
     for chunk in data.chunks(bs) {
-        cipher.encrypt_block(&mut prev);
+        engine.encrypt_block(&mut prev);
         let ciphered: Vec<u8> = chunk.iter().zip(prev.iter()).map(|(a, b)| a ^ b).collect();
         if chunk.len() == bs {
-            prev = GenericArray::clone_from_slice(&ciphered);
+            prev.copy_from_slice(&ciphered);
         }
         out.extend_from_slice(&ciphered);
     }
-    Ok(out)
+    out
 }
 
-fn cfb_decrypt<C>(key: &[u8], iv: &[u8], data: &[u8]) -> OpResult<Vec<u8>>
-where
-    C: BlockCipher + BlockEncrypt + KeyInit,
-{
-    let bs = C::block_size();
-    let cipher = C::new(GenericArray::from_slice(key));
-    let mut prev = GenericArray::<u8, C::BlockSize>::clone_from_slice(&iv[..bs]);
+fn cfb_decrypt(engine: &dyn BlockEngine, iv: &[u8], data: &[u8]) -> Vec<u8> {
+    let bs = engine.block_size();
+    let mut prev = iv[..bs].to_vec();
     let mut out = Vec::with_capacity(data.len());
     for chunk in data.chunks(bs) {
-        cipher.encrypt_block(&mut prev);
+        engine.encrypt_block(&mut prev);
         let plain: Vec<u8> = chunk.iter().zip(prev.iter()).map(|(a, b)| a ^ b).collect();
         if chunk.len() == bs {
-            prev = GenericArray::clone_from_slice(chunk);
+            prev.copy_from_slice(chunk);
         }
         out.extend_from_slice(&plain);
     }
-    Ok(out)
+    out
 }
 
-fn block_encrypt(algo: Algo, mode: Mode, key: &[u8], iv: &[u8], data: &[u8]) -> OpResult<Vec<u8>> {
-    match (algo, mode) {
-        (Algo::Aes, Mode::Ecb) => match key.len() {
-            16 => encrypt_padded::<Aes128>(key, data),
-            24 => encrypt_padded::<Aes192>(key, data),
-            32 => encrypt_padded::<Aes256>(key, data),
-            n => Err(key_error(Algo::Aes, n)),
-        },
-        (Algo::Aes, Mode::Cbc) => match key.len() {
-            16 => cbc_encrypt::<Aes128>(key, iv, data),
-            24 => cbc_encrypt::<Aes192>(key, iv, data),
-            32 => cbc_encrypt::<Aes256>(key, iv, data),
-            n => Err(key_error(Algo::Aes, n)),
-        },
-        (Algo::Aes, Mode::Ctr) => match key.len() {
-            16 => stream::<ctr::Ctr128BE<Aes128>>(key, iv, data),
-            24 => stream::<ctr::Ctr128BE<Aes192>>(key, iv, data),
-            32 => stream::<ctr::Ctr128BE<Aes256>>(key, iv, data),
-            n => Err(key_error(Algo::Aes, n)),
-        },
-        (Algo::Aes, Mode::Cfb) => match key.len() {
-            16 => cfb_encrypt::<Aes128>(key, iv, data),
-            24 => cfb_encrypt::<Aes192>(key, iv, data),
-            32 => cfb_encrypt::<Aes256>(key, iv, data),
-            n => Err(key_error(Algo::Aes, n)),
-        },
-        (Algo::Aes, Mode::Ofb) => match key.len() {
-            16 => stream::<ofb::Ofb<Aes128>>(key, iv, data),
-            24 => stream::<ofb::Ofb<Aes192>>(key, iv, data),
-            32 => stream::<ofb::Ofb<Aes256>>(key, iv, data),
-            n => Err(key_error(Algo::Aes, n)),
-        },
-        (Algo::Sm4, Mode::Ecb) => encrypt_padded::<Sm4>(key, data),
-        (Algo::Sm4, Mode::Cbc) => cbc_encrypt::<Sm4>(key, iv, data),
-        (Algo::Sm4, Mode::Ctr) => stream::<ctr::Ctr128BE<Sm4>>(key, iv, data),
-        (Algo::Sm4, Mode::Cfb) => cfb_encrypt::<Sm4>(key, iv, data),
-        (Algo::Sm4, Mode::Ofb) => stream::<ofb::Ofb<Sm4>>(key, iv, data),
-        (Algo::Des, Mode::Ecb) => encrypt_padded::<Des>(key, data),
-        (Algo::Des, Mode::Cbc) => cbc_encrypt::<Des>(key, iv, data),
-        (Algo::Tdes, Mode::Ecb) => match key.len() {
-            16 => encrypt_padded::<TdesEde2>(key, data),
-            24 => encrypt_padded::<TdesEde3>(key, data),
-            n => Err(key_error(Algo::Tdes, n)),
-        },
-        (Algo::Tdes, Mode::Cbc) => match key.len() {
-            16 => cbc_encrypt::<TdesEde2>(key, iv, data),
-            24 => cbc_encrypt::<TdesEde3>(key, iv, data),
-            n => Err(key_error(Algo::Tdes, n)),
-        },
-        _ => Err(OperationError::unsupported(format!(
-            "{} does not support {:?} mode",
-            algo.name(),
-            mode
-        ))),
+fn mode_apply(
+    entry: &'static BlockCipherEntry,
+    mode: Mode,
+    key: &[u8],
+    iv: &[u8],
+    mut data: Vec<u8>,
+    encrypt: bool,
+) -> OpResult<Vec<u8>> {
+    // For tweak ciphers (Threefish) the iv parameter carries the mandatory
+    // 16-byte tweak: as-is in ECB mode, or as the leading 16 bytes of the
+    // block-size mode IV in IV modes.
+    let tweak: &[u8] = if entry.tweak_required { &iv[..16] } else { &[] };
+    let engine = entry.engine(key, tweak)?;
+    if !data.len().is_multiple_of(engine.block_size()) {
+        return Err(OperationError::internal("pre-padded data misaligned"));
     }
-}
-
-fn block_decrypt(algo: Algo, mode: Mode, key: &[u8], iv: &[u8], data: &[u8]) -> OpResult<Vec<u8>> {
-    match (algo, mode) {
-        (Algo::Aes, Mode::Ecb) => match key.len() {
-            16 => decrypt_padded::<Aes128>(key, data),
-            24 => decrypt_padded::<Aes192>(key, data),
-            32 => decrypt_padded::<Aes256>(key, data),
-            n => Err(key_error(Algo::Aes, n)),
-        },
-        (Algo::Aes, Mode::Cbc) => match key.len() {
-            16 => cbc_decrypt::<Aes128>(key, iv, data),
-            24 => cbc_decrypt::<Aes192>(key, iv, data),
-            32 => cbc_decrypt::<Aes256>(key, iv, data),
-            n => Err(key_error(Algo::Aes, n)),
-        },
-        (Algo::Aes, Mode::Ctr) => match key.len() {
-            16 => stream::<ctr::Ctr128BE<Aes128>>(key, iv, data),
-            24 => stream::<ctr::Ctr128BE<Aes192>>(key, iv, data),
-            32 => stream::<ctr::Ctr128BE<Aes256>>(key, iv, data),
-            n => Err(key_error(Algo::Aes, n)),
-        },
-        (Algo::Aes, Mode::Cfb) => match key.len() {
-            16 => cfb_decrypt::<Aes128>(key, iv, data),
-            24 => cfb_decrypt::<Aes192>(key, iv, data),
-            32 => cfb_decrypt::<Aes256>(key, iv, data),
-            n => Err(key_error(Algo::Aes, n)),
-        },
-        (Algo::Aes, Mode::Ofb) => match key.len() {
-            16 => stream::<ofb::Ofb<Aes128>>(key, iv, data),
-            24 => stream::<ofb::Ofb<Aes192>>(key, iv, data),
-            32 => stream::<ofb::Ofb<Aes256>>(key, iv, data),
-            n => Err(key_error(Algo::Aes, n)),
-        },
-        (Algo::Sm4, Mode::Ecb) => decrypt_padded::<Sm4>(key, data),
-        (Algo::Sm4, Mode::Cbc) => cbc_decrypt::<Sm4>(key, iv, data),
-        (Algo::Sm4, Mode::Ctr) => stream::<ctr::Ctr128BE<Sm4>>(key, iv, data),
-        (Algo::Sm4, Mode::Cfb) => cfb_decrypt::<Sm4>(key, iv, data),
-        (Algo::Sm4, Mode::Ofb) => stream::<ofb::Ofb<Sm4>>(key, iv, data),
-        (Algo::Des, Mode::Ecb) => decrypt_padded::<Des>(key, data),
-        (Algo::Des, Mode::Cbc) => cbc_decrypt::<Des>(key, iv, data),
-        (Algo::Tdes, Mode::Ecb) => match key.len() {
-            16 => decrypt_padded::<TdesEde2>(key, data),
-            24 => decrypt_padded::<TdesEde3>(key, data),
-            n => Err(key_error(Algo::Tdes, n)),
-        },
-        (Algo::Tdes, Mode::Cbc) => match key.len() {
-            16 => cbc_decrypt::<TdesEde2>(key, iv, data),
-            24 => cbc_decrypt::<TdesEde3>(key, iv, data),
-            n => Err(key_error(Algo::Tdes, n)),
-        },
-        _ => Err(OperationError::unsupported(format!(
-            "{} does not support {:?} mode",
-            algo.name(),
-            mode
-        ))),
+    match mode {
+        Mode::Ecb => ecb_apply(engine.as_ref(), &mut data, encrypt),
+        Mode::Cbc => {
+            if encrypt {
+                cbc_encrypt(engine.as_ref(), iv, &mut data);
+            } else {
+                cbc_decrypt(engine.as_ref(), iv, &mut data);
+            }
+        }
+        Mode::Ctr => ctr_apply(engine.as_ref(), iv, &mut data),
+        Mode::Ofb => ofb_apply(engine.as_ref(), iv, &mut data),
+        Mode::Cfb => {
+            return Ok(if encrypt {
+                cfb_encrypt(engine.as_ref(), iv, &data)
+            } else {
+                cfb_decrypt(engine.as_ref(), iv, &data)
+            });
+        }
     }
+    Ok(data)
 }
 
 // ------------------------------------------------------- op plumbing ----
 
-fn resolved_algo(op_id: &str, key: &[u8]) -> OpResult<Algo> {
-    let algo = if op_id.starts_with("aes") {
-        Algo::Aes
-    } else if op_id.starts_with("sm4") {
-        Algo::Sm4
-    } else if op_id.starts_with("des") {
-        match key.len() {
-            8 => Algo::Des,
-            16 | 24 => Algo::Tdes,
-            n => return Err(key_error(Algo::Tdes, n)),
-        }
-    } else {
-        return Err(OperationError::internal("unknown cipher op"));
-    };
-    Ok(algo)
-}
-
-fn cipher_op(
+fn cipher_run(
     op_id: &'static str,
     name: &'static str,
-    description: &'static str,
     encrypt: bool,
-    cost_note: &'static str,
-    tags: &'static [&'static str],
-) -> (
-    &'static OperationSpec,
-    impl Fn(&Value, &ParamMap, &ExecutionContext) -> OpResult<Value> + Send + Sync + 'static,
-) {
-    let spec = crate::helpers::cipher_spec(op_id, name, description, cost_note, tags);
-    let run = move |v: &Value, map: &ParamMap, _: &ExecutionContext| -> OpResult<Value> {
+) -> impl Fn(&Value, &ParamMap, &ExecutionContext) -> OpResult<Value> + Send + Sync + 'static {
+    move |v: &Value, map: &ParamMap, _: &ExecutionContext| -> OpResult<Value> {
         let bytes = crate::helpers::input_bytes(v, name)?;
         let key = decode_material(map, "key", "key_encoding", "key")?;
-        let algo = resolved_algo(op_id, &key)?;
-        if !algo.valid_key_lengths().contains(&key.len()) {
-            return Err(key_error(algo, key.len()));
+        let entry = resolve_entry(op_id)?;
+        if !entry.key_len_ok(key.len()) {
+            return Err(key_error(entry, key.len()));
         }
         let mode = Mode::parse(map.str_or("mode", "cbc"))?;
-        let iv: Option<Vec<u8>> = if mode.uses_iv() {
+        let block = entry.block_size(key.len());
+        // Tweak ciphers: exactly the 16-byte tweak in ECB mode; a full
+        // block-size IV (whose leading 16 bytes are the tweak) otherwise.
+        let iv_len = if entry.tweak_required && mode.uses_iv() {
+            block
+        } else {
+            entry.iv_len()
+        };
+        let iv_needed = mode.uses_iv() || entry.tweak_required;
+        let iv: Option<Vec<u8>> = if iv_needed {
             let raw = map.str_or("iv", "");
             if raw.is_empty() {
                 return Err(OperationError::key(format!(
-                    "{}-{mode:?} requires a {}-byte IV",
-                    algo.name(),
-                    algo.block_size()
+                    "{} requires a {iv_len}-byte {} for {} mode",
+                    entry.display,
+                    if entry.tweak_required { "tweak" } else { "IV" },
+                    mode.as_str()
                 ))
                 .with_parameter("iv")
-                .with_expected(format!("{} bytes", algo.block_size()))
+                .with_expected(format!("{iv_len} bytes"))
                 .with_actual("empty"));
             }
             let decoded = decode_input(map.str_or("iv_encoding", "hex"), raw)
                 .map_err(|e| e.with_parameter("iv"))?;
-            if decoded.len() != algo.block_size() {
-                return Err(iv_error(algo, decoded.len(), algo.block_size()));
+            if decoded.len() != iv_len {
+                return Err(iv_error(entry, decoded.len(), iv_len));
             }
             Some(decoded)
         } else {
@@ -508,21 +888,28 @@ fn cipher_op(
         let padding = Padding::parse(map.str_or("padding", "pkcs7"))?;
 
         let out = if encrypt {
-            let padded = pad(bytes.as_ref(), algo.block_size(), padding)?;
-            block_encrypt(algo, mode, &key, iv.as_deref().unwrap_or(&[]), &padded)?
-        } else {
-            let decrypted = block_decrypt(
-                algo,
+            let padded = pad(bytes.as_ref(), block, padding)?;
+            mode_apply(
+                entry,
                 mode,
                 &key,
                 iv.as_deref().unwrap_or(&[]),
-                bytes.as_ref(),
+                padded,
+                true,
+            )?
+        } else {
+            let decrypted = mode_apply(
+                entry,
+                mode,
+                &key,
+                iv.as_deref().unwrap_or(&[]),
+                bytes.as_ref().to_vec(),
+                false,
             )?;
-            unpad(&decrypted, algo.block_size(), padding)?
+            unpad(&decrypted, block, padding)?
         };
         Ok(Value::Bytes(out))
-    };
-    (spec, run)
+    }
 }
 
 /// Native RC4 (KSA + PRGA per Rivest's spec) with optional keystream drop.
@@ -553,59 +940,103 @@ fn rc4_apply(key: &[u8], data: &[u8], drop: usize) -> Vec<u8> {
 pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
     let tags: &'static [&'static str] = &["crypto", "ctf"];
 
-    let (spec, run) = cipher_op(
-        "aes-encrypt", "AES Encrypt",
-        "Encrypts with AES. Cipher, mode, and padding are validated explicitly; keys must decode to 16/24/32 bytes.",
-        true,
-        "NIST FIPS 197 + SP 800-38 family", tags,
+    // The three legacy ops keep their hand-written specs (names, aliases and
+    // provenance are part of the public surface), but run through the same
+    // table + shared mode plumbing as every other cipher.
+    reg.add_simple(
+        crate::helpers::cipher_spec(
+            "aes-encrypt", "AES Encrypt",
+            "Encrypts with AES. Cipher, mode, and padding are validated explicitly; keys must decode to 16/24/32 bytes.",
+            "NIST FIPS 197 + SP 800-38 family", tags,
+        ),
+        cipher_run("aes-encrypt", "AES Encrypt", true),
     );
-    reg.add_simple(spec, run);
+    reg.add_simple(
+        crate::helpers::cipher_spec(
+            "aes-decrypt",
+            "AES Decrypt",
+            "Decrypts with AES and validates the selected padding scheme.",
+            "NIST FIPS 197 + SP 800-38 family",
+            tags,
+        ),
+        cipher_run("aes-decrypt", "AES Decrypt", false),
+    );
+    reg.add_simple(
+        crate::helpers::cipher_spec(
+            "des-encrypt", "DES / 3DES Encrypt",
+            "Encrypts with DES (8-byte key) or 3DES (16/24-byte key). ECB/CBC modes. Legacy — labeled Broken.",
+            "FIPS 46-3 (withdrawn); NIST SP 800-67 for 3DES", tags,
+        ),
+        cipher_run("des-encrypt", "DES / 3DES Encrypt", true),
+    );
+    reg.add_simple(
+        crate::helpers::cipher_spec(
+            "des-decrypt", "DES / 3DES Decrypt",
+            "Decrypts with DES (8-byte key) or 3DES (16/24-byte key). ECB/CBC modes. Legacy — labeled Broken.",
+            "FIPS 46-3 (withdrawn); NIST SP 800-67 for 3DES", tags,
+        ),
+        cipher_run("des-decrypt", "DES / 3DES Decrypt", false),
+    );
+    reg.add_simple(
+        crate::helpers::cipher_spec(
+            "sm4-encrypt",
+            "SM4 Encrypt",
+            "Encrypts with SM4 (GB/T 32907). 16-byte key, 16-byte block.",
+            "GB/T 32907-2016",
+            tags,
+        ),
+        cipher_run("sm4-encrypt", "SM4 Encrypt", true),
+    );
+    reg.add_simple(
+        crate::helpers::cipher_spec(
+            "sm4-decrypt",
+            "SM4 Decrypt",
+            "Decrypts with SM4 (GB/T 32907). 16-byte key, 16-byte block.",
+            "GB/T 32907-2016",
+            tags,
+        ),
+        cipher_run("sm4-decrypt", "SM4 Decrypt", false),
+    );
 
-    let (spec, run) = cipher_op(
-        "aes-decrypt",
-        "AES Decrypt",
-        "Decrypts with AES and validates the selected padding scheme.",
-        false,
-        "NIST FIPS 197 + SP 800-38 family",
-        tags,
-    );
-    reg.add_simple(spec, run);
-
-    let (spec, run) = cipher_op(
-        "des-encrypt", "DES / 3DES Encrypt",
-        "Encrypts with DES (8-byte key) or 3DES (16/24-byte key). ECB/CBC modes. Legacy — labeled Broken.",
-        true,
-        "FIPS 46-3 (withdrawn); NIST SP 800-67 for 3DES", tags,
-    );
-    reg.add_simple(spec, run);
-
-    let (spec, run) = cipher_op(
-        "des-decrypt", "DES / 3DES Decrypt",
-        "Decrypts with DES (8-byte key) or 3DES (16/24-byte key). ECB/CBC modes. Legacy — labeled Broken.",
-        false,
-        "FIPS 46-3 (withdrawn); NIST SP 800-67 for 3DES", tags,
-    );
-    reg.add_simple(spec, run);
-
-    let (spec, run) = cipher_op(
-        "sm4-encrypt",
-        "SM4 Encrypt",
-        "Encrypts with SM4 (GB/T 32907). 16-byte key, 16-byte block.",
-        true,
-        "GB/T 32907-2016",
-        tags,
-    );
-    reg.add_simple(spec, run);
-
-    let (spec, run) = cipher_op(
-        "sm4-decrypt",
-        "SM4 Decrypt",
-        "Decrypts with SM4 (GB/T 32907). 16-byte key, 16-byte block.",
-        false,
-        "GB/T 32907-2016",
-        tags,
-    );
-    reg.add_simple(spec, run);
+    // Table-driven registration for the breadth ciphers.
+    for entry in BLOCK_CIPHERS {
+        if matches!(entry.id, "aes" | "des" | "sm4") {
+            continue; // registered above with bespoke specs
+        }
+        for encrypt in [true, false] {
+            let (verb, suffix) = if encrypt {
+                ("Encrypts", "encrypt")
+            } else {
+                ("Decrypts", "decrypt")
+            };
+            let id: &'static str = Box::leak(format!("{}-{suffix}", entry.id).into_boxed_str());
+            let name: &'static str = Box::leak(
+                format!(
+                    "{} {}",
+                    entry.display,
+                    verb.strip_suffix('s').unwrap_or(verb)
+                )
+                .into_boxed_str(),
+            );
+            let description: &'static str = Box::leak(
+                format!(
+                    "{verb} with {display}: {shape} Mode and padding are validated explicitly; the iv parameter carries the IV (or the mandatory 16-byte tweak for Threefish).",
+                    display = entry.display,
+                    shape = entry.shape,
+                )
+                .into_boxed_str(),
+            );
+            let spec = crate::helpers::block_cipher_spec(
+                id,
+                name,
+                description,
+                entry.provenance.0,
+                entry.security,
+                tags,
+            );
+            reg.add_simple(spec, cipher_run(id, name, encrypt));
+        }
+    }
 
     // RC4 stream cipher (single op: encryption == decryption).
     let rc4_spec = crate::helpers::rc4_spec(tags);
