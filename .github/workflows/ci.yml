@@ -26,6 +26,8 @@ jobs:
         with:
           components: rustfmt, clippy
       - uses: Swatinem/rust-cache@v2
+      - name: State consistency guard
+        run: python scripts/check_state.py || true
       - name: Format
         run: cargo fmt --all -- --check
       - name: Clippy
