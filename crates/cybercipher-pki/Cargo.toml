@@ -1,0 +1,32 @@
+[package]
+name = "cybercipher-pki"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Public-key infrastructure operations (RSA key formats, inspection, JWK) for CyberCipher"
+
+[dependencies]
+cybercipher-core.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+
+# RSA key generation and raw crypto (OAEP sanity checks). The `pem` feature
+# enables the pkcs1/pkcs8 encode/decode trait impls on the rsa key types.
+rsa = { version = "0.9", features = ["sha2", "pem"] }
+
+# ASN.1 layer. Kept version-aligned with rsa 0.9 (pkcs1 0.7 / pkcs8 0.10 /
+# spki 0.7 on der 0.7) so the parsed structures interoperate directly.
+pkcs1 = { version = "0.7", features = ["alloc", "pem"] }
+pkcs8 = { version = "0.10", features = ["alloc", "pem"] }
+spki = { version = "0.7", features = ["alloc", "pem"] }
+der = { version = "0.7", features = ["alloc"] }
+
+# rsa 0.9 is built on num-bigint-dig 0.8 (NOT the workspace `num-bigint`
+# 0.4 — different crate). Declared explicitly so we can name `BigUint` for
+# component extraction and CRT-parameter arithmetic.
+num-bigint-dig = "0.8"
+
+sha2 = "0.10"
+rand = "0.8"
+base64ct = "1"

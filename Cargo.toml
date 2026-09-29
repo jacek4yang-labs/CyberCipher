@@ -6,6 +6,7 @@ members = [
     "crates/cybercipher-engine",
     "crates/cybercipher-crypto",
     "crates/cybercipher-attack",
+    "crates/cybercipher-pki",
     "apps/cybercipher-gui",
     "apps/cybercipher-cli",
 ]
@@ -36,6 +37,7 @@ cybercipher-codec = { path = "crates/cybercipher-codec" }
 cybercipher-engine = { path = "crates/cybercipher-engine" }
 cybercipher-crypto = { path = "crates/cybercipher-crypto" }
 cybercipher-attack = { path = "crates/cybercipher-attack" }
+cybercipher-pki = { path = "crates/cybercipher-pki" }
 
 [profile.release]
 opt-level = 3
