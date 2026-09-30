@@ -69,15 +69,15 @@ pub fn decode(bytes: &[u8], limits: &DecodeLimits) -> Result<RgbaImage, MediaErr
     // Cap 2: header dimensions against the pixel cap, before allocation.
     let mut header = image::ImageReader::new(Cursor::new(bytes));
     header.set_format(format);
-    let (width, height) = header
-        .into_dimensions()
-        .map_err(map_image_error)?;
+    let (width, height) = header.into_dimensions().map_err(map_image_error)?;
     if width == 0 || height == 0 {
-        return Err(MediaError::corrupt(format!("zero dimension {width}x{height}")));
+        return Err(MediaError::corrupt(format!(
+            "zero dimension {width}x{height}"
+        )));
     }
-    let pixels = (width as u64).checked_mul(height as u64).ok_or_else(|| {
-        MediaError::too_large("pixel count", limits.max_pixels, u64::MAX)
-    })?;
+    let pixels = (width as u64)
+        .checked_mul(height as u64)
+        .ok_or_else(|| MediaError::too_large("pixel count", limits.max_pixels, u64::MAX))?;
     if pixels > limits.max_pixels {
         return Err(MediaError::too_large(
             "pixel count",
@@ -95,10 +95,7 @@ pub fn decode(bytes: &[u8], limits: &DecodeLimits) -> Result<RgbaImage, MediaErr
     let mut argb = Vec::with_capacity(rgba.pixels().len());
     for p in rgba.pixels() {
         argb.push(
-            ((p[3] as u32) << 24)
-                | ((p[0] as u32) << 16)
-                | ((p[1] as u32) << 8)
-                | (p[2] as u32),
+            ((p[3] as u32) << 24) | ((p[0] as u32) << 16) | ((p[1] as u32) << 8) | (p[2] as u32),
         );
     }
 
@@ -123,11 +120,7 @@ pub fn decode(bytes: &[u8], limits: &DecodeLimits) -> Result<RgbaImage, MediaErr
 /// image's `png` feature). Returns `None` for non-indexed PNGs.
 fn decode_png_indexed(bytes: &[u8]) -> Result<Option<(IndexedData, bool)>, MediaError> {
     let decoder = png::Decoder::new(Cursor::new(bytes));
-    let mut reader = decoder
-        .read_info()
-        .map_err(map_png_error)?
-        .try_into()
-        .map_err(|_| MediaError::corrupt("png reader unavailable"))?;
+    let mut reader = decoder.read_info().map_err(map_png_error)?;
     let info = reader.info().clone();
     if info.color_type != png::ColorType::Indexed {
         return Ok(None);
@@ -138,10 +131,8 @@ fn decode_png_indexed(bytes: &[u8]) -> Result<Option<(IndexedData, bool)>, Media
     let width = info.width as usize;
     let height = info.height as usize;
     let bit_depth = info.bit_depth as usize;
-    let mut buf = vec![0u8; reader.output_buffer_size()];
-    reader
-        .next_frame(&mut buf)
-        .map_err(map_png_error)?;
+    let mut buf = vec![0u8; reader.output_buffer_size().unwrap_or_default()];
+    reader.next_frame(&mut buf).map_err(map_png_error)?;
 
     // Palette: RGB triples, with per-entry alpha from tRNS when present
     // (entries beyond tRNS are fully opaque, per the PNG specification).
@@ -160,7 +151,9 @@ fn decode_png_indexed(bytes: &[u8]) -> Result<Option<(IndexedData, bool)>, Media
     // Indices: one palette index per pixel. Sub-byte bit depths (1/2/4) are
     // packed MSB-first within each row; the `png` crate has already
     // de-interlaced the frame for us.
-    let line_bytes = reader.output_line_size(info.width);
+    let line_bytes = reader
+        .output_line_size(info.width)
+        .ok_or_else(|| MediaError::corrupt("png row size overflow"))?;
     let mut indices = Vec::with_capacity(width * height);
     for row in 0..height {
         let line = &buf[row * line_bytes..(row + 1) * line_bytes];
@@ -178,18 +171,12 @@ fn decode_png_indexed(bytes: &[u8]) -> Result<Option<(IndexedData, bool)>, Media
     }
 
     let has_trns = !trns.is_empty();
-    Ok(Some((
-        IndexedData {
-            palette,
-            indices,
-        },
-        has_trns,
-    )))
+    Ok(Some((IndexedData { palette, indices }, has_trns)))
 }
 
 fn map_image_error(err: image::ImageError) -> MediaError {
     match err {
-        image::ImageError::Io(e) => MediaError::Io {
+        image::ImageError::IoError(e) => MediaError::Io {
             detail: e.to_string(),
         },
         image::ImageError::Unsupported(u) => MediaError::UnsupportedFormat {

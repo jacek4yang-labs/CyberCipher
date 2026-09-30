@@ -39,7 +39,12 @@ pub struct RgbaImage {
 
 impl RgbaImage {
     /// Wraps an existing pixel buffer, validating dimensions.
-    pub fn new(width: u32, height: u32, argb: Vec<u32>, has_alpha: bool) -> Result<Self, MediaError> {
+    pub fn new(
+        width: u32,
+        height: u32,
+        argb: Vec<u32>,
+        has_alpha: bool,
+    ) -> Result<Self, MediaError> {
         RgbaImage::build(width, height, argb, has_alpha, None)
     }
 
@@ -93,9 +98,10 @@ impl RgbaImage {
         })
     }
 
-    /// Builds an image from a freshly computed pixel array. The caller
-    /// guarantees the length; misuse is a programming error.
-    pub(crate) fn opaque(width: u32, height: u32, argb: Vec<u32>) -> Self {
+    /// Builds an image from a freshly computed pixel array (the transform /
+    /// combine output path: always opaque, no palette). The caller guarantees
+    /// the length; misuse is a programming error caught by debug asserts.
+    pub fn opaque(width: u32, height: u32, argb: Vec<u32>) -> Self {
         debug_assert_eq!(argb.len(), width as usize * height as usize);
         RgbaImage {
             width,
@@ -115,7 +121,8 @@ impl RgbaImage {
         if x >= self.width || y >= self.height {
             return None;
         }
-        self.argb.get(y as usize * self.width as usize + x as usize)
+        self.argb
+            .get(y as usize * self.width as usize + x as usize)
             .copied()
     }
 
@@ -133,20 +140,19 @@ impl RgbaImage {
             )));
         }
         let area = clamped.area() as usize;
-        let row_span = |indices: &Vec<u32>, y: u32| -> &[u32] {
-            let start = y as usize * self.width as usize + clamped.x as usize;
-            &indices[start..start + clamped.width as usize]
-        };
         let mut out = Vec::with_capacity(area);
         for y in clamped.y..clamped.max_y() {
-            out.extend_from_slice(row_span(&self.argb, y));
+            let start = y as usize * self.width as usize + clamped.x as usize;
+            out.extend_from_slice(&self.argb[start..start + clamped.width as usize]);
         }
         match &self.indexed {
             None => RgbaImage::new(clamped.width, clamped.height, out, self.has_alpha),
             Some(indexed) => {
                 let mut indices = Vec::with_capacity(area);
                 for y in clamped.y..clamped.max_y() {
-                    indices.extend_from_slice(row_span(&indexed.indices, y));
+                    let start = y as usize * self.width as usize + clamped.x as usize;
+                    indices
+                        .extend_from_slice(&indexed.indices[start..start + clamped.width as usize]);
                 }
                 RgbaImage::with_indexed(
                     clamped.width,

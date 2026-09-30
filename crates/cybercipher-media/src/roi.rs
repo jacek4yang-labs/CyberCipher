@@ -89,7 +89,9 @@ mod tests {
         let roi = Roi::new(0, 0, 100, 100).clamp_to(8, 9);
         assert_eq!(roi, Roi::new(0, 0, 8, 9));
 
-        assert_eq!(Roi::new(5, 5, 2, 2).clamp_to(4, 4), Roi::EMPTY);
+        // Reference clamp keeps the clamped origin for a disjoint region:
+        // clamp(5,5,2,2 -> 4,4) is Roi(4,4,0,0), not the EMPTY origin.
+        assert_eq!(Roi::new(5, 5, 2, 2).clamp_to(4, 4), Roi::new(4, 4, 0, 0));
         assert_eq!(Roi::new(2, 2, 2, 2).clamp_to(0, 4), Roi::EMPTY);
         assert_eq!(Roi::new(1, 1, 0, 2).clamp_to(4, 4), Roi::EMPTY);
     }

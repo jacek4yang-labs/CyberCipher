@@ -57,7 +57,10 @@ impl fmt::Display for MediaError {
                 what,
                 limit,
                 actual,
-            } => write!(f, "{what} exceeds the configured limit ({actual} > {limit})"),
+            } => write!(
+                f,
+                "{what} exceeds the configured limit ({actual} > {limit})"
+            ),
             MediaError::UnsupportedFormat { detail } => {
                 write!(f, "unsupported image format: {detail}")
             }
