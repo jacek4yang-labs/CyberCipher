@@ -100,7 +100,7 @@ fn brainfuck_registry_roundtrip() {
         &[("input", ParamValue::Str(String::new()))],
     )
     .unwrap();
-    assert_eq!(text_of(out.unwrap()), "registry round trip!");
+    assert_eq!(text_of(out), "registry round trip!");
 }
 
 #[test]
@@ -109,7 +109,7 @@ fn brainfuck_hello_world_via_registry() {
     let program = "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++\
                    ..+++.>>.<-.<.+++.------.--------.>>+.>++.";
     let out = run_text(&r, "run-brainfuck", program).unwrap();
-    assert_eq!(text_of(out.unwrap()), "Hello World!\n");
+    assert_eq!(text_of(out), "Hello World!\n");
 }
 
 #[test]
@@ -124,7 +124,7 @@ fn ook_registry_roundtrip() {
     let r = reg();
     let ook = text_of(run_text(&r, "to-ook", "Ook round trip\n").unwrap());
     let out = run_text(&r, "from-ook", &ook).unwrap();
-    assert_eq!(text_of(out.unwrap()), "Ook round trip\n");
+    assert_eq!(text_of(out), "Ook round trip\n");
 }
 
 // -------------------------------------------------------- buddha ----
@@ -134,7 +134,7 @@ fn buddha_registry_roundtrip() {
     let r = reg();
     for text in ["与佛论禅", "Buddha says: 佛曰 123"] {
         let enc = run_text(&r, "to-buddha", text).unwrap();
-        let dec = run_text(&r, "from-buddha", &text_of(enc.unwrap())).unwrap();
+        let dec = run_text(&r, "from-buddha", &text_of(enc)).unwrap();
         assert_eq!(text_of(dec), *text);
     }
 }
@@ -181,7 +181,7 @@ fn buddha_pbe_registry_roundtrip() {
 fn beast_registry_roundtrip() {
     let r = reg();
     let enc = run_text(&r, "to-beast", "兽音译者 beast").unwrap();
-    let dec = run_text(&r, "from-beast", &text_of(enc.unwrap())).unwrap();
+    let dec = run_text(&r, "from-beast", &text_of(enc)).unwrap();
     assert_eq!(text_of(dec), "兽音译者 beast");
 }
 
@@ -227,7 +227,7 @@ fn bear_reference_vector_via_registry() {
 fn core_values_registry_roundtrip() {
     let r = reg();
     let enc = run_text(&r, "to-core-values", "core values 42").unwrap();
-    let dec = run_text(&r, "from-core-values", &text_of(enc.unwrap())).unwrap();
+    let dec = run_text(&r, "from-core-values", &text_of(enc)).unwrap();
     assert_eq!(text_of(dec), "core values 42");
 }
 
