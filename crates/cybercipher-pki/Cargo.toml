@@ -50,3 +50,12 @@ ecdsa = { version = "0.16", features = ["alloc", "der", "digest", "signing", "ve
 ed25519-dalek = { version = "2", default-features = false, features = ["fast", "rand_core", "zeroize", "alloc", "pkcs8", "pem"] }
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 signature = "2"
+
+# --- SM2 (GB/T 32918) + SM3 (GB/T 32905), Chinese national-standard crypto ---
+# RustCrypto's sm2 crate provides the SM2 curve (sm2p256v1), the SM2 digital
+# signature algorithm (`dsa` module) and SM2 public-key encryption (`pke`
+# module). sm3 is the companion 256-bit hash (also used for the ZA digest and
+# the C3 integrity hash inside SM2 ciphertexts). Both are version-aligned with
+# the elliptic-curve 0.13 / pkcs8 0.10 stack above.
+sm2 = { version = "0.13", features = ["alloc", "pem", "pkcs8", "std"] }
+sm3 = "0.4"
