@@ -1,0 +1,11 @@
+[package]
+name = "cybercipher-media"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Shared image representation and bounded decode/encode for CyberCipher"
+
+[dependencies]
+image.workspace = true
+png.workspace = true
