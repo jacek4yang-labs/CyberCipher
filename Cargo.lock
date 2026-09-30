@@ -1335,6 +1335,7 @@ dependencies = [
  "cybercipher-core",
  "cybercipher-media",
  "serde_json",
+ "xxhash-rust",
 ]
 
 [[package]]

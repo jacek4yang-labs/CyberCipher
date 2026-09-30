@@ -10,3 +10,4 @@ description = "Image steganography engine: StegSolve-compatible transforms, bit 
 cybercipher-core.workspace = true
 cybercipher-media.workspace = true
 serde_json.workspace = true
+xxhash-rust.workspace = true
