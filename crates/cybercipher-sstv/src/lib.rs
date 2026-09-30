@@ -21,6 +21,9 @@
 //! * [`score`] — image plausibility metrics used to reject false positives.
 //! * [`error`] — the crate's typed error transport (stands in for the
 //!   `anyhow` dependency the upstream crate used; see the module docs).
+//! * [`ops`] — the CyberCipher registry operation (`sstv_decode`,
+//!   CostClass::Heavy) with the resource bounds shared by the registry op,
+//!   the Tauri commands and the CLI.
 //!
 //! Boundary adaptations relative to upstream (the algorithm code is
 //! unchanged):
@@ -42,6 +45,7 @@ pub mod backend;
 pub mod dsp;
 pub mod error;
 pub mod modes;
+pub mod ops;
 pub mod pipeline;
 pub mod raster;
 pub mod report;
@@ -49,3 +53,10 @@ pub mod score;
 pub mod sync;
 pub mod synth;
 pub mod vis;
+
+use cybercipher_core::OperationRegistry;
+
+/// Register every sstv operation into the registry.
+pub fn register_all(reg: &mut OperationRegistry) {
+    ops::register(reg);
+}

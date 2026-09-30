@@ -1319,6 +1319,7 @@ dependencies = [
 name = "cybercipher-sstv"
 version = "0.1.0"
 dependencies = [
+ "cybercipher-core",
  "hound",
  "image",
  "rustfft",
