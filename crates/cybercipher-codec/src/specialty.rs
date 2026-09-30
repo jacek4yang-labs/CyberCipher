@@ -645,12 +645,11 @@ fn from_buddha_pbe_op(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResu
 /// Decode a hex parameter of exact expected length.
 fn hex_decode_param(raw: &str, param: &str, expected_len: usize) -> OpResult<Vec<u8>> {
     let clean: String = raw.chars().filter(|c| !c.is_whitespace()).collect();
-    if clean.len() != expected_len * 2 || !clean.chars().all(|c| c.is_ascii_hexdigit()) {
+    let expected_chars = expected_len * 2;
+    if clean.len() != expected_chars || !clean.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err(OperationError::invalid_param(
             param,
-            format!(
-                "`{param}` must be {expected_len} bytes of hex ({expected_len * 2} characters)"
-            ),
+            format!("`{param}` must be {expected_len} bytes of hex ({expected_chars} characters)"),
         )
         .with_actual(format!("`{raw}`")));
     }
