@@ -26,6 +26,12 @@ const XOR_EXPLORE_LIMIT: usize = 32 * 1024;
 /// How many XOR-decoded nodes may enter the beam per expanded node.
 const XOR_BEAM_SLOTS: usize = 3;
 const DEADLINE: Duration = Duration::from_millis(3000);
+/// Base58/62/36 decode the whole input as one big integer: O(n^2). Cap the
+/// speculative input size so a single decode stays in the low milliseconds
+/// (8 KiB measured ~25ms in a debug build) and the beam cannot blow the
+/// wall-clock deadline. Larger inputs remain available through the explicit
+/// From Base58/62/36 operations.
+const BIGNUM_EXPLORE_LIMIT: usize = 8 * 1024;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AutoCandidate {
@@ -104,6 +110,92 @@ fn is_base32_like(data: &[u8]) -> bool {
     total >= 8 && alpha * 100 >= total * 95 && data.iter().any(|&b| b.is_ascii_digit() || b == b'=')
 }
 
+// ------------------------- base-family gates (chunked/bignum alphabets) ----
+
+/// Bitcoin Base58 alphabet: excludes 0, O, I and l (mirrors the codec).
+const BASE58_ALPHABET: &[u8] = b"123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+const BASE62_ALPHABET: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz";
+/// ZeroMQ Z85 alphabet (0MQ spec 32/ZMTP).
+const Z85_ALPHABET: &[u8] =
+    b"0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ.-:+=^!/*?&<>()[]{}@%$#";
+/// basE91 alphabet (Joachim Henke): printable ASCII minus space, `'`, `\`, `-`.
+const BASE91_ALPHABET: &[u8] =
+    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!#$%&()*+,./:;<=>?@[]^_`{|}~\"";
+/// Base36 upper-case convention used by the codec's gate (decode itself is
+/// case-insensitive, but uppercase-only evidence keeps lowercase prose out).
+const BASE36_ALPHABET: &[u8] = b"0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ";
+
+/// (in-alphabet count, non-whitespace count). Whitespace is ignored: a
+/// trailing newline is presentation, not encoding evidence.
+fn alphabet_stats(data: &[u8], alphabet: &[u8]) -> (usize, usize) {
+    let mut hits = 0usize;
+    let mut total = 0usize;
+    for &b in data {
+        if b.is_ascii_whitespace() {
+            continue;
+        }
+        total += 1;
+        if alphabet.contains(&b) {
+            hits += 1;
+        }
+    }
+    (hits, total)
+}
+
+/// Base58 gate: >=90% of non-whitespace chars in the Bitcoin alphabet, and
+/// the absolute disqualifiers 0/O/I/l absent — a single one proves the data
+/// is NOT Base58 no matter how the ratios look. (Base62 is a superset: when
+/// both gates fire the scorer disambiguates by output quality.)
+fn is_base58_like(data: &[u8]) -> bool {
+    if data.iter().any(|&b| matches!(b, b'0' | b'O' | b'I' | b'l')) {
+        return false;
+    }
+    let (hits, total) = alphabet_stats(data, BASE58_ALPHABET);
+    total >= 8 && hits * 100 >= total * 90
+}
+
+/// Base62 gate: 0-9A-Za-z with >=95% compliance. Weaker evidence than the
+/// padding-checked Base64 gate — the scorer does the disambiguation.
+fn is_base62_like(data: &[u8]) -> bool {
+    let (hits, total) = alphabet_stats(data, BASE62_ALPHABET);
+    total >= 8 && hits * 100 >= total * 95
+}
+
+/// Ascii85 gate: every char in '!'..'u' (0x21..=0x75) plus the 'z' shorthand,
+/// with optional Adobe <~ ~> delimiters stripped first. Fires on length >= 10
+/// or whenever the Adobe delimiters are present.
+fn is_ascii85_like(data: &[u8]) -> bool {
+    let body = data
+        .strip_prefix(b"<~")
+        .map(|rest| rest.strip_suffix(b"~>").unwrap_or(rest))
+        .unwrap_or(data);
+    !body.is_empty()
+        && body
+            .iter()
+            .all(|&b| (0x21..=0x75).contains(&b) || b == b'z')
+        && (body.len() >= 10 || data.starts_with(b"<~"))
+}
+
+/// Z85 gate: exact alphabet match, length a multiple of 5 (4 bytes -> 5 chars).
+fn is_z85_like(data: &[u8]) -> bool {
+    let (hits, total) = alphabet_stats(data, Z85_ALPHABET);
+    total >= 10 && total % 5 == 0 && hits == total
+}
+
+/// basE91 gate: >=90% compliance with the 91-char alphabet. Almost everything
+/// printable passes it, so it is weak evidence — scored accordingly.
+fn is_base91_like(data: &[u8]) -> bool {
+    let (hits, total) = alphabet_stats(data, BASE91_ALPHABET);
+    total >= 10 && hits * 100 >= total * 90
+}
+
+/// Base36 gate: 0-9A-Z only (case-insensitive decode, but lowercase prose
+/// must not become a Base36 candidate), minimum length 10.
+fn is_base36_like(data: &[u8]) -> bool {
+    let (hits, total) = alphabet_stats(data, BASE36_ALPHABET);
+    total >= 10 && hits == total
+}
+
 fn is_url_encoded(data: &[u8]) -> bool {
     data.len() >= 6
         && data
@@ -147,6 +239,36 @@ const STEPS: &[Step] = &[
         op: "from-base32",
         applies: |d, _| is_base32_like(d),
         evidence: "valid Base32 alphabet",
+    },
+    Step {
+        op: "from-base58",
+        applies: |d, _| d.len() <= BIGNUM_EXPLORE_LIMIT && is_base58_like(d),
+        evidence: "Base58 alphabet match",
+    },
+    Step {
+        op: "from-base62",
+        applies: |d, _| d.len() <= BIGNUM_EXPLORE_LIMIT && is_base62_like(d),
+        evidence: "Base62 alphabet match",
+    },
+    Step {
+        op: "from-ascii85",
+        applies: |d, _| is_ascii85_like(d),
+        evidence: "Ascii85 alphabet match",
+    },
+    Step {
+        op: "from-z85",
+        applies: |d, _| is_z85_like(d),
+        evidence: "Z85 alphabet and length match",
+    },
+    Step {
+        op: "from-base91",
+        applies: |d, _| is_base91_like(d),
+        evidence: "basE91 alphabet match",
+    },
+    Step {
+        op: "from-base36",
+        applies: |d, _| d.len() <= BIGNUM_EXPLORE_LIMIT && is_base36_like(d),
+        evidence: "Base36 alphabet match",
     },
     Step {
         op: "from-hex",

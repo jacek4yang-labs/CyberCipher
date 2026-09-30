@@ -4,7 +4,7 @@
 
 #![allow(clippy::result_large_err)]
 
-use cybercipher_core::{ExecutionContext, OperationRegistry, Value};
+use cybercipher_core::{ExecutionContext, OperationRegistry, ParamMap, Value};
 use cybercipher_engine::{
     auto_decode, default_registry, RecipeEngine, RecipeNodeV1, RecipeV1, RunMode,
 };
@@ -12,6 +12,25 @@ use std::io::Write;
 
 fn registry() -> OperationRegistry {
     default_registry()
+}
+
+/// Encode `data` through a registered encoder op (e.g. "to-base58") so the
+/// round-trip tests exercise exactly the alphabets the engine must detect.
+fn encode_with_op(reg: &OperationRegistry, op_id: &str, data: &[u8]) -> String {
+    let op = reg
+        .get(op_id)
+        .unwrap_or_else(|| panic!("{op_id} must be registered"));
+    match op
+        .execute(
+            &Value::Bytes(data.to_vec()),
+            &ParamMap::new(),
+            &ExecutionContext::new(),
+        )
+        .expect("{op_id} must encode")
+    {
+        Value::Text(text) => text,
+        other => panic!("{op_id} must produce text, got {}", other.kind().name()),
+    }
 }
 
 fn top_candidate(
@@ -296,6 +315,149 @@ fn random_data_xor_exploration_stays_bounded() {
             !c.confident,
             "random data produced a confident candidate: {:?}",
             c.path
+        );
+    }
+}
+
+// ------------------------------------------------- base-family coverage ----
+
+#[test]
+fn single_layer_base58() {
+    let reg = registry();
+    let input = encode_with_op(&reg, "to-base58", b"flag{base58_roundtrip}");
+    let candidates = auto_decode(&reg, input.as_bytes(), &ExecutionContext::new());
+    let best = candidates
+        .iter()
+        .find(|c| c.path == vec!["from-base58"])
+        .expect("base58 layer must be discovered");
+    assert!(
+        best.preview.contains("flag{base58_roundtrip}"),
+        "preview {}",
+        best.preview
+    );
+    assert!(best.confident, "score {}", best.score);
+    assert!(
+        best.evidence.iter().any(|e| e.contains("Base58")),
+        "evidence must name the base58 gate: {:?}",
+        best.evidence
+    );
+}
+
+#[test]
+fn single_layer_ascii85() {
+    let reg = registry();
+    let input = encode_with_op(&reg, "to-ascii85", b"flag{ascii85_roundtrip}");
+    let candidates = auto_decode(&reg, input.as_bytes(), &ExecutionContext::new());
+    let best = candidates
+        .iter()
+        .find(|c| c.path == vec!["from-ascii85"])
+        .expect("ascii85 layer must be discovered");
+    assert!(
+        best.preview.contains("flag{ascii85_roundtrip}"),
+        "preview {}",
+        best.preview
+    );
+    assert!(best.confident, "score {}", best.score);
+}
+
+#[test]
+fn multi_layer_base58_base64() {
+    let reg = registry();
+    // Base58(Base64(flag)): the outer layer hides the Base64 padding, so the
+    // engine must fall back to the alphabet gates to open it.
+    use base64::Engine as _;
+    let b64 = base64::engine::general_purpose::STANDARD.encode(b"flag{b58_over_b64}");
+    let input = encode_with_op(&reg, "to-base58", b64.as_bytes());
+    let candidates = auto_decode(&reg, input.as_bytes(), &ExecutionContext::new());
+    let chained = candidates
+        .iter()
+        .find(|c| c.path == vec!["from-base58", "from-base64"])
+        .expect("base58->base64 chain must be discovered");
+    assert_eq!(chained.preview, "flag{b58_over_b64}");
+    assert!(chained.confident, "score {}", chained.score);
+}
+
+#[test]
+fn base58_rejected_when_zero_o_i_l_present() {
+    let reg = registry();
+    // Digits only with a '0' inside: 0/O/I/l are the base58 disqualifiers.
+    // The gate must refuse to fire no matter how the ratios look.
+    let input = b"1234567890123456";
+    let candidates = auto_decode(&reg, input, &ExecutionContext::new());
+    for c in &candidates {
+        assert!(
+            !c.path.iter().any(|p| p == "from-base58"),
+            "data containing '0' must not be decoded as base58: {c:?}"
+        );
+    }
+}
+
+#[test]
+fn single_layer_base36() {
+    let reg = registry();
+    let input = encode_with_op(&reg, "to-base36", b"flag{base36_roundtrip}");
+    let candidates = auto_decode(&reg, input.as_bytes(), &ExecutionContext::new());
+    let best = candidates
+        .iter()
+        .find(|c| c.path == vec!["from-base36"])
+        .expect("base36 layer must be discovered");
+    assert!(
+        best.preview.contains("flag{base36_roundtrip}"),
+        "preview {}",
+        best.preview
+    );
+    assert!(best.confident, "score {}", best.score);
+}
+
+#[test]
+fn random_alnum_data_is_not_confident() {
+    let reg = registry();
+    // Random alphanumeric text: the new alphabet gates (base62/91/64, ...)
+    // all fire, but their decodes are arbitrary bytes — none may be called
+    // confident, because these alphabets are weaker evidence than Base64.
+    let mut seed = 0x5EEDC0DEu64;
+    let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    let data: Vec<u8> = (0..512)
+        .map(|_| {
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            alphabet[((seed >> 33) as usize) % alphabet.len()]
+        })
+        .collect();
+    let candidates = auto_decode(&reg, &data, &ExecutionContext::new());
+    for c in &candidates {
+        assert!(
+            !c.confident,
+            "random alnum data produced a confident candidate: {c:?}"
+        );
+    }
+}
+
+#[test]
+fn large_random_alnum_stays_bounded() {
+    let reg = registry();
+    // 16 KiB of random alnum text exceeds the bignum exploration cap, so the
+    // O(n^2) base58/62/36 decodes must be skipped: bounded time, no confident
+    // claims.
+    let mut seed = 0xBADC0DEu64;
+    let alphabet = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+    let data: Vec<u8> = (0..16 * 1024)
+        .map(|_| {
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            alphabet[((seed >> 33) as usize) % alphabet.len()]
+        })
+        .collect();
+    let started = std::time::Instant::now();
+    let candidates = auto_decode(&reg, &data, &ExecutionContext::new());
+    let elapsed = started.elapsed();
+    assert!(elapsed.as_secs() < 10, "auto decode must stay bounded");
+    for c in &candidates {
+        assert!(
+            !c.confident,
+            "random data produced a confident candidate: {c:?}"
         );
     }
 }
