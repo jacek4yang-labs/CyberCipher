@@ -19,6 +19,7 @@ pub mod error;
 pub mod keys;
 pub mod ops;
 pub mod sm2;
+pub mod x509;
 
 pub use asn1::{parse_der_nodes, parse_der_tree, Asn1Class, Asn1Node, Asn1Value};
 pub use ecc::*;
@@ -26,3 +27,9 @@ pub use error::{PkiError, PkiResult};
 pub use keys::*;
 pub use ops::{PssSaltLength, RsaDigest, SignatureVerifyResult};
 pub use sm2::*;
+pub use x509::{
+    identify_pem, inspect_certificate, inspect_crl, inspect_csr, AttributeSummary,
+    BasicConstraintsInspection, CertificateInspection, CrlInspection, CsrInspection,
+    ExtensionSummary, PemIdentification, PemObjectType, PublicKeyInfoInspection, RdnEntry,
+    RevokedEntry,
+};

@@ -677,8 +677,9 @@ const WELL_KNOWN_OIDS: &[(&str, &str)] = &[
     ("0.9.2342.19200300.100.1.25", "domainComponent"),
     ("1.2.840.113549.1.9.1", "emailAddress"),
     ("1.2.840.113549.1.9.2", "unstructuredName"),
+    ("1.2.840.113549.1.9.3", "unstructuredAddress"),
     ("1.2.840.113549.1.9.7", "challengePassword"),
-    ("1.2.840.113549.1.9.8", "extensionRequest"),
+    ("1.2.840.113549.1.9.14", "extensionRequest"),
     // -- RSA / PKCS#1 algorithms
     ("1.2.840.113549.1.1.1", "rsaEncryption"),
     ("1.2.840.113549.1.1.4", "md5WithRSAEncryption"),
