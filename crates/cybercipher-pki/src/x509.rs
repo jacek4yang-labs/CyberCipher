@@ -409,7 +409,7 @@ fn inspect_spki(
 
 /// RFC 3339 rendering of an X.501 `Time` (`2026-09-30T05:51:07Z`).
 fn rfc3339(time: &Time) -> String {
-    rfc3339_from_unix(time.clone().to_unix_duration().as_secs() as i64)
+    rfc3339_from_unix((*time).to_unix_duration().as_secs() as i64)
 }
 
 /// RFC 3339 from Unix seconds (UTC). Civil-date conversion is the classic
@@ -634,7 +634,8 @@ fn format_ip(bytes: &[u8]) -> String {
 
 /// RFC 5280 keyUsage flag names, in bit order.
 fn key_usage_names(ku: &x509_parser::extensions::KeyUsage) -> Vec<String> {
-    const FLAGS: [(&str, fn(&x509_parser::extensions::KeyUsage) -> bool); 9] = [
+    type KeyUsageFlag = (&'static str, fn(&x509_parser::extensions::KeyUsage) -> bool);
+    const FLAGS: [KeyUsageFlag; 9] = [
         (
             "digitalSignature",
             x509_parser::extensions::KeyUsage::digital_signature,
@@ -1057,7 +1058,7 @@ mod tests {
     fn rfc3339_rendering() {
         assert_eq!(rfc3339_from_unix(0), "1970-01-01T00:00:00Z");
         // 2026-09-30 05:51:07 UTC
-        assert_eq!(rfc3339_from_unix(1_791_755_467), "2026-09-30T05:51:07Z");
+        assert_eq!(rfc3339_from_unix(1_790_747_467), "2026-09-30T05:51:07Z");
         // Leap-year day: 2024-02-29 12:00:00 UTC
         assert_eq!(rfc3339_from_unix(1_709_208_000), "2024-02-29T12:00:00Z");
         // Epoch-minus-one stays representable.
