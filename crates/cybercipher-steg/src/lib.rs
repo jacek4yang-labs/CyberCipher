@@ -7,16 +7,20 @@
 //! `>>> 8` shift, the Java `Random`-driven random colour maps, the opaque
 //! output of every computed transform, alpha-first extraction with
 //! MSB-first bit packing — are reproduced exactly and covered by golden
-//! parity tests. See `compatibility/stegsolver.toml` and
-//! `docs/design-steg-sstv.md`.
+//! parity tests. The `structure`/`carving` modules port the StegSolver
+//! container analyzers (PNG chunk / JPEG marker / GIF block / BMP header
+//! walks over raw file bytes) with appended-data carving. See
+//! `compatibility/stegsolver.toml` and `docs/design-steg-sstv.md`.
 
 #![allow(clippy::result_large_err)]
 
 pub mod auto_lsb;
+pub mod carving;
 pub mod extract;
 pub mod java_random;
 pub mod ops;
 pub mod payload;
+pub mod structure;
 pub mod transforms;
 
 use cybercipher_core::OperationRegistry;
@@ -24,4 +28,5 @@ use cybercipher_core::OperationRegistry;
 /// Register every steg operation into the registry.
 pub fn register_all(reg: &mut OperationRegistry) {
     ops::register(reg);
+    structure::register(reg);
 }
