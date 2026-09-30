@@ -13,12 +13,14 @@
 // cybercipher-core/src/lib.rs.)
 #![allow(clippy::result_large_err)]
 
+pub mod asn1;
 pub mod ecc;
 pub mod error;
 pub mod keys;
 pub mod ops;
 pub mod sm2;
 
+pub use asn1::{parse_der_nodes, parse_der_tree, Asn1Class, Asn1Node, Asn1Value};
 pub use ecc::*;
 pub use error::{PkiError, PkiResult};
 pub use keys::*;
