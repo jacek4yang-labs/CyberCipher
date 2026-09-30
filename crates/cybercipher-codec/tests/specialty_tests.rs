@@ -80,7 +80,10 @@ fn specialty_ops_are_registered() {
         assert_eq!(op.spec().cost, CostClass::Instant);
         assert_eq!(op.spec().category, Category::Classical);
         assert!(op.spec().tags.contains(&"ctf"), "{id} missing ctf tag");
-        assert!(op.spec().tags.contains(&"specialty"), "{id} missing specialty tag");
+        assert!(
+            op.spec().tags.contains(&"specialty"),
+            "{id} missing specialty tag"
+        );
     }
 }
 
@@ -152,10 +155,15 @@ fn buddha_reference_vector_via_registry() {
 #[test]
 fn buddha_pbe_registry_roundtrip() {
     let r = reg();
-    let enc = run(&r, "to-buddha-pbe", Value::Text("新佛曰 pbe".into()), &[
-        ("password", ParamValue::Str("takuron.top".into())),
-        ("salt", ParamValue::Str("0102030405060708".into())),
-    ])
+    let enc = run(
+        &r,
+        "to-buddha-pbe",
+        Value::Text("新佛曰 pbe".into()),
+        &[
+            ("password", ParamValue::Str("takuron.top".into())),
+            ("salt", ParamValue::Str("0102030405060708".into())),
+        ],
+    )
     .unwrap();
     let dec = run(
         &r,

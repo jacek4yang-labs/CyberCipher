@@ -385,11 +385,11 @@ fn pkcs7_unpad(data: &[u8]) -> OpResult<&[u8]> {
     };
     let pad = pad as usize;
     if pad == 0 || pad > 16 || pad > data.len() {
-        return Err(OperationError::decode(format!(
-            "invalid PKCS#7 padding byte {pad}"
-        ))
-        .with_expected("padding bytes in 1..=16 matching the pad length")
-        .with_actual(format!("trailing byte {pad}")));
+        return Err(
+            OperationError::decode(format!("invalid PKCS#7 padding byte {pad}"))
+                .with_expected("padding bytes in 1..=16 matching the pad length")
+                .with_actual(format!("trailing byte {pad}")),
+        );
     }
     if data[data.len() - pad..].iter().any(|&b| b as usize != pad) {
         return Err(OperationError::decode(
@@ -488,10 +488,10 @@ fn from_buddha_op(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<V
         }
     }
     if ciphertext.is_empty() {
-        return Err(OperationError::decode(
-            "no Buddha table characters found after the header",
-        )
-        .with_expected("ciphertext over the sutra table"));
+        return Err(
+            OperationError::decode("no Buddha table characters found after the header")
+                .with_expected("ciphertext over the sutra table"),
+        );
     }
     if ciphertext.len() % 16 != 0 {
         return Err(OperationError::length(
@@ -509,7 +509,8 @@ fn from_buddha_op(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<V
 
 /// Base64 alphabet order of the 新佛曰 table (ToolsFx `BuddhaPbeCipher.kt`,
 /// upstream <https://github.com/takuron/talk-with-buddha>).
-const BUDDHA_PBE_ALPHABET: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
+const BUDDHA_PBE_ALPHABET: &[u8] =
+    b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=";
 const BUDDHA_PBE_TABLE: &str = "埵孕唵呼羯蒙沙谨吉度俱尼喝佛迦豆地墀驮提伊伽烁阇他遮摩无陀阿啰醯罚那耶哆怛萨卢娑诃南室悉夜婆唎菩帝皤嚧利穆参舍苏钵曳数写栗楞咩输漫";
 const BUDDHA_PBE_HEADER: &str = "佛又曰：";
 const BUDDHA_PBE_DEFAULT_PASSWORD: &str = "takuron.top";
@@ -547,11 +548,9 @@ fn pbe_table_index(c: char) -> OpResult<usize> {
         .chars()
         .position(|t| t == c)
         .ok_or_else(|| {
-            OperationError::decode(format!(
-                "character `{c}` is not in the 新佛曰 table"
-            ))
-            .with_expected("one of the 65 新佛曰 table characters")
-            .with_actual(format!("`{c}`"))
+            OperationError::decode(format!("character `{c}` is not in the 新佛曰 table"))
+                .with_expected("one of the 65 新佛曰 table characters")
+                .with_actual(format!("`{c}`"))
         })
 }
 
@@ -579,7 +578,12 @@ fn to_buddha_pbe_op(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult
             .iter()
             .position(|&a| a == c)
             .ok_or_else(|| OperationError::internal("base64 emitted a non-alphabet byte"))?;
-        out.push(BUDDHA_PBE_TABLE.chars().nth(idx).expect("table has 65 entries"));
+        out.push(
+            BUDDHA_PBE_TABLE
+                .chars()
+                .nth(idx)
+                .expect("table has 65 entries"),
+        );
     }
     Ok(Value::Text(out))
 }
@@ -630,10 +634,12 @@ fn from_buddha_pbe_op(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResu
     let mut buf = ciphertext.to_vec();
     cbc::decrypt(&key, &iv, &mut buf);
     let padded = pkcs7_unpad(&buf)?;
-    String::from_utf8(padded.to_vec()).map(Value::Text).map_err(|_| {
-        OperationError::decode("decrypted data is not valid UTF-8 (wrong password?)")
-            .with_expected("UTF-8 plaintext")
-    })
+    String::from_utf8(padded.to_vec())
+        .map(Value::Text)
+        .map_err(|_| {
+            OperationError::decode("decrypted data is not valid UTF-8 (wrong password?)")
+                .with_expected("UTF-8 plaintext")
+        })
 }
 
 /// Decode a hex parameter of exact expected length.
@@ -642,7 +648,9 @@ fn hex_decode_param(raw: &str, param: &str, expected_len: usize) -> OpResult<Vec
     if clean.len() != expected_len * 2 || !clean.chars().all(|c| c.is_ascii_hexdigit()) {
         return Err(OperationError::invalid_param(
             param,
-            format!("`{param}` must be {expected_len} bytes of hex ({expected_len * 2} characters)"),
+            format!(
+                "`{param}` must be {expected_len} bytes of hex ({expected_len * 2} characters)"
+            ),
         )
         .with_actual(format!("`{raw}`")));
     }
@@ -725,26 +733,20 @@ fn from_beast_op(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<Va
     }
     let mut units: Vec<u16> = Vec::with_capacity(chars.len() / 8);
     for (pair, chunk) in chars.chunks(2).enumerate() {
-        let hi = codec
-            .iter()
-            .position(|&c| c == chunk[0])
-            .ok_or_else(|| {
-                OperationError::decode(format!(
-                    "character `{}` is not in the beast codec",
-                    chunk[0]
-                ))
-                .with_expected("characters from the codec table")
-            })?;
-        let lo = codec
-            .iter()
-            .position(|&c| c == chunk[1])
-            .ok_or_else(|| {
-                OperationError::decode(format!(
-                    "character `{}` is not in the beast codec",
-                    chunk[1]
-                ))
-                .with_expected("characters from the codec table")
-            })?;
+        let hi = codec.iter().position(|&c| c == chunk[0]).ok_or_else(|| {
+            OperationError::decode(format!(
+                "character `{}` is not in the beast codec",
+                chunk[0]
+            ))
+            .with_expected("characters from the codec table")
+        })?;
+        let lo = codec.iter().position(|&c| c == chunk[1]).ok_or_else(|| {
+            OperationError::decode(format!(
+                "character `{}` is not in the beast codec",
+                chunk[1]
+            ))
+            .with_expected("characters from the codec table")
+        })?;
         let value = (hi * 4 + lo + 16 - pair % 16) % 16;
         let slot = pair % 4;
         let shift = match slot {
@@ -756,17 +758,13 @@ fn from_beast_op(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<Va
         if slot == 0 {
             units.push(0);
         }
-        let last = units
-            .last_mut()
-            .expect("slot 0 always pushes a unit first");
+        let last = units.last_mut().expect("slot 0 always pushes a unit first");
         *last |= (value << shift) as u16;
     }
-    String::from_utf16(&units)
-        .map(Value::Text)
-        .map_err(|_| {
-            OperationError::decode("decoded code units are not valid UTF-16")
-                .with_expected("valid UTF-16 code units")
-        })
+    String::from_utf16(&units).map(Value::Text).map_err(|_| {
+        OperationError::decode("decoded code units are not valid UTF-16")
+            .with_expected("valid UTF-16 code units")
+    })
 }
 
 // -------------------------------------------------- Bear (熊曰) ----
@@ -839,7 +837,8 @@ fn to_bear_op(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<Value
     let dict: Vec<char> = BEAR_DICT.chars().collect();
     // Raw DEFLATE (no zlib/gzip framing). The upstream tool compresses at
     // level 1; any level decodes identically, so CyberCipher uses the default.
-    let mut encoder = flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
+    let mut encoder =
+        flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
     encoder
         .write_all(text.as_bytes())
         .map_err(|e| OperationError::internal(format!("deflate write failed: {e}")))?;
@@ -847,10 +846,7 @@ fn to_bear_op(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<Value
         .finish()
         .map_err(|e| OperationError::internal(format!("deflate finish failed: {e}")))?;
     let values = base91_encode_values(&compressed);
-    let mut mapped: Vec<char> = values
-        .iter()
-        .map(|&v| dict[v as usize])
-        .collect();
+    let mut mapped: Vec<char> = values.iter().map(|&v| dict[v as usize]).collect();
     mapped.reverse();
     let mut out = String::from(BEAR_HEADER);
     out.push(BEAR_MARKER);
@@ -893,18 +889,14 @@ fn from_bear_op(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<Val
     let compressed = base91_decode_values(&values)?;
     let mut decoder = flate2::read::DeflateDecoder::new(compressed.as_slice());
     let mut plain = Vec::new();
-    decoder
-        .read_to_end(&mut plain)
-        .map_err(|e| {
-            OperationError::decode(format!("raw-deflate payload is corrupt: {e}"))
-                .with_details("The bear ciphertext may be truncated or altered.")
-        })?;
-    String::from_utf8(plain)
-        .map(Value::Text)
-        .map_err(|_| {
-            OperationError::decode("decompressed bear payload is not valid UTF-8")
-                .with_expected("UTF-8 plaintext")
-        })
+    decoder.read_to_end(&mut plain).map_err(|e| {
+        OperationError::decode(format!("raw-deflate payload is corrupt: {e}"))
+            .with_details("The bear ciphertext may be truncated or altered.")
+    })?;
+    String::from_utf8(plain).map(Value::Text).map_err(|_| {
+        OperationError::decode("decompressed bear payload is not valid UTF-8")
+            .with_expected("UTF-8 plaintext")
+    })
 }
 
 // ------------------------- Socialist core values (社会主义核心价值观) ----
@@ -920,11 +912,7 @@ const SOCIALISM_PHRASES: [&str; 12] = [
 fn to_core_values_op(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<Value> {
     let _ = map;
     let text = input_text(v, "To Core Values")?;
-    let hex: String = text
-        .as_bytes()
-        .iter()
-        .map(|b| format!("{b:02X}"))
-        .collect();
+    let hex: String = text.as_bytes().iter().map(|b| format!("{b:02X}")).collect();
     let mut out = String::new();
     for c in hex.chars() {
         let digit = c.to_digit(16).expect("hex digit") as usize;
@@ -1170,8 +1158,8 @@ fn from_aaencode_op(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult
 /// The 16 `$`-symbol groups that evaluate to the digits 0-F (reference:
 /// utf-8.jp `jjencode`).
 const JJ_DIGITS: [&str; 16] = [
-    "___", "__$", "_$_", "_$$", "$__", "$_$", "$$_", "$$$", "$___", "$__$", "$_$_", "$_$$",
-    "$$__", "$$_$", "$$$_", "$$$$",
+    "___", "__$", "_$_", "_$$", "$__", "$_$", "$$_", "$$$", "$___", "$__$", "$_$_", "$_$$", "$$__",
+    "$$_$", "$$$_", "$$$$",
 ];
 
 /// Decode a JJEncode payload WITHOUT executing any JavaScript.
@@ -1255,12 +1243,7 @@ fn jj_decode_text(input: &str) -> OpResult<String> {
             while j < $limit {
                 if j > 1 {
                     let mut hit = false;
-                    for (sym, tok) in [
-                        ('l', &str_l),
-                        ('o', &str_o),
-                        ('t', &str_t),
-                        ('u', &str_u),
-                    ] {
+                    for (sym, tok) in [('l', &str_l), ('o', &str_o), ('t', &str_t), ('u', &str_u)] {
                         if dd.starts_with(tok.as_str()) {
                             dd = &dd[tok.len()..];
                             lotux = Some(sym);
@@ -1282,8 +1265,15 @@ fn jj_decode_text(input: &str) -> OpResult<String> {
                                 "JJEncode payload has a corrupted hex digit group",
                             )
                         })?;
-                    ch.push(std::char::from_digit(b.iter().position(|t| *t == *matched)
-                        .expect("matched from b") as u32, 16).unwrap());
+                    ch.push(
+                        std::char::from_digit(
+                            b.iter()
+                                .position(|t| *t == *matched)
+                                .expect("matched from b") as u32,
+                            16,
+                        )
+                        .unwrap(),
+                    );
                     dd = &dd[matched.len()..];
                 } else {
                     break;
@@ -1303,12 +1293,7 @@ fn jj_decode_text(input: &str) -> OpResult<String> {
             while j < 3 {
                 if j > 1 {
                     let mut hit = false;
-                    for (sym, tok) in [
-                        ('l', &str_l),
-                        ('o', &str_o),
-                        ('t', &str_t),
-                        ('u', &str_u),
-                    ] {
+                    for (sym, tok) in [('l', &str_l), ('o', &str_o), ('t', &str_t), ('u', &str_u)] {
                         if dd.starts_with(tok.as_str()) {
                             dd = &dd[tok.len()..];
                             lotux = Some(sym);
@@ -1352,11 +1337,13 @@ fn jj_decode_text(input: &str) -> OpResult<String> {
                                     "JJEncode payload has a corrupted hex digit group",
                                 )
                             })?;
-                        lotux = Some(std::char::from_digit(
-                            b.iter().position(|t| *t == *hex_matched).expect("matched") as u32,
-                            16,
-                        )
-                        .expect("hex digit"));
+                        lotux = Some(
+                            std::char::from_digit(
+                                b.iter().position(|t| *t == *hex_matched).expect("matched") as u32,
+                                16,
+                            )
+                            .expect("hex digit"),
+                        );
                         dd = &dd[hex_matched.len()..];
                         break;
                     }
@@ -1401,11 +1388,13 @@ fn jj_decode_text(input: &str) -> OpResult<String> {
                 .ok_or_else(|| {
                     OperationError::decode("JJEncode payload has a corrupted hex digit group")
                 })?;
-            units.push(std::char::from_digit(
-                b.iter().position(|t| *t == *matched).expect("matched") as u32,
-                16,
-            )
-            .expect("hex digit") as u16);
+            units.push(
+                std::char::from_digit(
+                    b.iter().position(|t| *t == *matched).expect("matched") as u32,
+                    16,
+                )
+                .expect("hex digit") as u16,
+            );
             data = &data[matched.len()..];
             continue;
         }
@@ -1446,9 +1435,7 @@ fn jj_decode_text(input: &str) -> OpResult<String> {
                 }
                 if data.starts_with(str_end.as_str()) {
                     if matched_literals == 0 {
-                        return Err(OperationError::decode(
-                            "JJEncode quoted run is empty",
-                        ));
+                        return Err(OperationError::decode("JJEncode quoted run is empty"));
                     }
                     data = &data[str_end.len()..];
                     break;
@@ -1999,7 +1986,13 @@ mod tests {
     fn bf_ignores_comments() {
         // Everything except the 8 commands is a comment; brackets still jump
         // (the cell is 0, so the "loop" body is skipped).
-        let out = bf_run("hello +-. world! [this is not a loop] +.", b"", 30_000, 1000).unwrap();
+        let out = bf_run(
+            "hello +-. world! [this is not a loop] +.",
+            b"",
+            30_000,
+            1000,
+        )
+        .unwrap();
         assert_eq!(out, vec![0, 1]);
     }
 
@@ -2017,7 +2010,11 @@ mod tests {
         let err = bf_run("+<", b"", 30_000, 1000).unwrap_err();
         assert!(err.message.contains("below cell 0"), "{}", err.message);
         let err = bf_run(">+", b"", 1, 1000).unwrap_err();
-        assert!(err.message.contains("past the last cell"), "{}", err.message);
+        assert!(
+            err.message.contains("past the last cell"),
+            "{}",
+            err.message
+        );
     }
 
     #[test]
@@ -2068,7 +2065,11 @@ mod tests {
         let err = ook_to_bf("Ook. Ookx").unwrap_err();
         assert!(err.message.contains("not followed by"), "{}", err.message);
         let err = ook_to_bf("hello").unwrap_err();
-        assert!(err.message.contains("not part of an Ook! token"), "{}", err.message);
+        assert!(
+            err.message.contains("not part of an Ook! token"),
+            "{}",
+            err.message
+        );
         assert!(ook_to_bf("   ").is_err());
         // A token pair that exists is fine; a bogus pair is a typed error.
         let err = ook_to_bf("Ook. Ook Ook! Ook.").unwrap_err();
@@ -2111,8 +2112,12 @@ mod tests {
         .unwrap();
         let Value::Text(enc) = enc else { panic!() };
         assert!(enc.starts_with(BUDDHA_HEADER));
-        let dec = from_buddha_op(&Value::Text(enc), &ParamMap::new(), &ExecutionContext::new())
-            .unwrap();
+        let dec = from_buddha_op(
+            &Value::Text(enc),
+            &ParamMap::new(),
+            &ExecutionContext::new(),
+        )
+        .unwrap();
         assert_eq!(dec, Value::Text(text.into()));
     }
 
@@ -2126,11 +2131,13 @@ mod tests {
             &ParamMap::new(),
             &ExecutionContext::new(),
         )
-        .unwrap() else { panic!() };
+        .unwrap() else {
+            panic!()
+        };
         let body: String = enc.chars().skip(BUDDHA_HEADER.chars().count()).collect();
         let mo: String = BUDDHA_MO_HEADER.chars().chain(body.chars().rev()).collect();
-        let dec = from_buddha_op(&Value::Text(mo), &ParamMap::new(), &ExecutionContext::new())
-            .unwrap();
+        let dec =
+            from_buddha_op(&Value::Text(mo), &ParamMap::new(), &ExecutionContext::new()).unwrap();
         assert_eq!(dec, Value::Text(text.into()));
     }
 
@@ -2150,7 +2157,11 @@ mod tests {
             &ExecutionContext::new(),
         )
         .unwrap_err();
-        assert!(err.message.contains("no Buddha table characters"), "{}", err.message);
+        assert!(
+            err.message.contains("no Buddha table characters"),
+            "{}",
+            err.message
+        );
     }
 
     // -------------------------------------------------- buddha pbe ----
@@ -2182,7 +2193,10 @@ mod tests {
     #[test]
     fn buddha_pbe_decode_reference_vector() {
         let out = from_buddha_pbe_op(
-            &Value::Text("佛又曰：输啰提尼佛尼唎穆度伽阿孕写罚怛阿婆羯帝喝输唎舍室俱烁谨谨烁阇曳蒙喝漫".into()),
+            &Value::Text(
+                "佛又曰：输啰提尼佛尼唎穆度伽阿孕写罚怛阿婆羯帝喝输唎舍室俱烁谨谨烁阇曳蒙喝漫"
+                    .into(),
+            ),
             &ParamMap::new(),
             &ExecutionContext::new(),
         )
@@ -2196,20 +2210,15 @@ mod tests {
         let mut params = ParamMap::new();
         params.insert("password", BUDDHA_PBE_DEFAULT_PASSWORD);
         params.insert("salt", "0001020304050607");
-        let Value::Text(enc) = to_buddha_pbe_op(
-            &Value::Text(text.into()),
-            &params,
-            &ExecutionContext::new(),
-        )
-        .unwrap() else { panic!() };
+        let Value::Text(enc) =
+            to_buddha_pbe_op(&Value::Text(text.into()), &params, &ExecutionContext::new()).unwrap()
+        else {
+            panic!()
+        };
         let mut decode_params = ParamMap::new();
         decode_params.insert("password", BUDDHA_PBE_DEFAULT_PASSWORD);
-        let dec = from_buddha_pbe_op(
-            &Value::Text(enc),
-            &decode_params,
-            &ExecutionContext::new(),
-        )
-        .unwrap();
+        let dec = from_buddha_pbe_op(&Value::Text(enc), &decode_params, &ExecutionContext::new())
+            .unwrap();
         assert_eq!(dec, Value::Text(text.into()));
     }
 
@@ -2231,12 +2240,9 @@ mod tests {
         assert!(err.message.contains("佛又曰"), "{}", err.message);
         let mut params = ParamMap::new();
         params.insert("salt", "not-hex");
-        assert!(to_buddha_pbe_op(
-            &Value::Text("x".into()),
-            &params,
-            &ExecutionContext::new()
-        )
-        .is_err());
+        assert!(
+            to_buddha_pbe_op(&Value::Text("x".into()), &params, &ExecutionContext::new()).is_err()
+        );
     }
 
     // ----------------------------------------------------- beast ----
@@ -2246,10 +2252,16 @@ mod tests {
     #[test]
     fn beast_decode_reference_vector() {
         let wiki = "~呜嗷嗷嗷嗷呜啊嗷啊~呜嗷呜呜~呜啊~啊嗷啊呜嗷呜~~~嗷~呜呜呜~~嗷嗷嗷呜啊呜呜啊呜嗷呜呜啊呜嗷呜啊嗷啊呜~嗷啊啊~嗷~呜嗷嗷~啊嗷嗷嗷呜啊嗷啊啊呜嗷呜呜~嗷嗷嗷啊嗷啊呜嗷呜~~~嗷~呜呜嗷呜~嗷嗷嗷呜啊呜啊嗷呜嗷呜呜~嗷啊呜啊嗷啊呜~嗷啊呜~嗷~呜呜嗷嗷啊嗷嗷嗷呜啊嗷嗷啊呜嗷呜呜~嗷呜嗷啊嗷啊呜~嗷啊啊~嗷~呜嗷啊啊~嗷嗷嗷呜啊嗷啊嗷呜嗷呜呜~嗷呜啊啊嗷啊呜嗷嗷啊呜~嗷~呜嗷呜嗷~嗷嗷嗷呜呜呜嗷~呜嗷呜呜啊呜~呜啊嗷啊呜~嗷啊啊~嗷~呜嗷~嗷啊嗷嗷嗷呜啊呜啊嗷呜嗷呜呜~嗷啊呜啊嗷啊呜~啊~啊~嗷~呜呜呜嗷呜嗷嗷嗷呜啊嗷呜嗷呜嗷呜呜~呜~啊啊嗷啊呜嗷嗷呜~~嗷~呜呜嗷呜嗷嗷嗷嗷呜啊呜呜呜啊";
-        let out =
-            from_beast_op(&Value::Text(wiki.into()), &ParamMap::new(), &ExecutionContext::new())
-                .unwrap();
-        assert_eq!(out, Value::Text("https://github.com/Leon406/SubCrawler".into()));
+        let out = from_beast_op(
+            &Value::Text(wiki.into()),
+            &ParamMap::new(),
+            &ExecutionContext::new(),
+        )
+        .unwrap();
+        assert_eq!(
+            out,
+            Value::Text("https://github.com/Leon406/SubCrawler".into())
+        );
     }
 
     /// SycAlright/beast_sdk README pins `encode("你好")` to the middle payload
@@ -2257,21 +2269,39 @@ mod tests {
     /// `~呜嗷` prefix and `啊` suffix.
     #[test]
     fn beast_encode_sdk_vector() {
-        let out =
-            to_beast_op(&Value::Text("你好".into()), &ParamMap::new(), &ExecutionContext::new())
-                .unwrap();
-        assert_eq!(out, Value::Text("~呜嗷呜嗷嗷嗷啊嗷嗷~啊呜~啊~呜呜嗷啊".into()));
+        let out = to_beast_op(
+            &Value::Text("你好".into()),
+            &ParamMap::new(),
+            &ExecutionContext::new(),
+        )
+        .unwrap();
+        assert_eq!(
+            out,
+            Value::Text("~呜嗷呜嗷嗷嗷啊嗷嗷~啊呜~啊~呜呜嗷啊".into())
+        );
     }
 
     #[test]
     fn beast_roundtrip() {
-        for text in ["hello world", "中文测试 with emoji \u{1F511} and \u{1F600}", "a"] {
-            let Value::Text(enc) =
-                to_beast_op(&Value::Text(text.into()), &ParamMap::new(), &ExecutionContext::new())
-                    .unwrap() else { panic!() };
-            let dec =
-                from_beast_op(&Value::Text(enc), &ParamMap::new(), &ExecutionContext::new())
-                    .unwrap();
+        for text in [
+            "hello world",
+            "中文测试 with emoji \u{1F511} and \u{1F600}",
+            "a",
+        ] {
+            let Value::Text(enc) = to_beast_op(
+                &Value::Text(text.into()),
+                &ParamMap::new(),
+                &ExecutionContext::new(),
+            )
+            .unwrap() else {
+                panic!()
+            };
+            let dec = from_beast_op(
+                &Value::Text(enc),
+                &ParamMap::new(),
+                &ExecutionContext::new(),
+            )
+            .unwrap();
             assert_eq!(dec, Value::Text(text.into()));
         }
     }
@@ -2304,7 +2334,11 @@ mod tests {
             &ExecutionContext::new(),
         )
         .unwrap_err();
-        assert!(err.message.contains("not in the beast codec"), "{}", err.message);
+        assert!(
+            err.message.contains("not in the beast codec"),
+            "{}",
+            err.message
+        );
         // Truncated payload: odd character count in the middle.
         let err = from_beast_op(
             &Value::Text("~呜嗷呜嗷嗷啊".into()),
@@ -2327,9 +2361,12 @@ mod tests {
     #[test]
     fn bear_decode_reference_vector() {
         let wiki = "熊曰：呋性呱吖萌盜性森破捕訴嗒喜冬呱唬嗡盜偶哈魚嗥麼噔囑襲達嗥取喜捕嘿家咬嗡性既洞喜達嗒嘿沒類嚁麼常哈現襲啽樣動你嗅嘍嗚爾現氏蜜動眠常嗡嗥破住啽嗥囑更沒常破嘍森唬偶嗅人氏拙怎噔雜很誒";
-        let out =
-            from_bear_op(&Value::Text(wiki.into()), &ParamMap::new(), &ExecutionContext::new())
-                .unwrap();
+        let out = from_bear_op(
+            &Value::Text(wiki.into()),
+            &ParamMap::new(),
+            &ExecutionContext::new(),
+        )
+        .unwrap();
         assert_eq!(
             out,
             Value::Text("https://greasyfork.org/zh-CN/scripts/439266-网盘有效性检查".into())
@@ -2339,13 +2376,21 @@ mod tests {
     #[test]
     fn bear_roundtrip() {
         for text in ["bear says hello", "熊出没注意！\nsecond line"] {
-            let Value::Text(enc) =
-                to_bear_op(&Value::Text(text.into()), &ParamMap::new(), &ExecutionContext::new())
-                    .unwrap() else { panic!() };
+            let Value::Text(enc) = to_bear_op(
+                &Value::Text(text.into()),
+                &ParamMap::new(),
+                &ExecutionContext::new(),
+            )
+            .unwrap() else {
+                panic!()
+            };
             assert!(enc.starts_with(BEAR_HEADER));
-            let dec =
-                from_bear_op(&Value::Text(enc), &ParamMap::new(), &ExecutionContext::new())
-                    .unwrap();
+            let dec = from_bear_op(
+                &Value::Text(enc),
+                &ParamMap::new(),
+                &ExecutionContext::new(),
+            )
+            .unwrap();
             assert_eq!(dec, Value::Text(text.into()));
         }
     }
@@ -2358,7 +2403,11 @@ mod tests {
             &ExecutionContext::new(),
         )
         .unwrap_err();
-        assert!(err.message.contains("not in the bear dictionary"), "{}", err.message);
+        assert!(
+            err.message.contains("not in the bear dictionary"),
+            "{}",
+            err.message
+        );
         let err = from_bear_op(
             &Value::Text("熊曰：性很".into()),
             &ParamMap::new(),
@@ -2413,7 +2462,9 @@ mod tests {
             &ParamMap::new(),
             &ExecutionContext::new(),
         )
-        .unwrap() else { panic!() };
+        .unwrap() else {
+            panic!()
+        };
         assert_eq!(enc.chars().count() % 2, 0);
         let dec = from_core_values_op(
             &Value::Text(enc),
