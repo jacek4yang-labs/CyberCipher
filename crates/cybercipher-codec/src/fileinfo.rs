@@ -336,6 +336,34 @@ fn sig_info(
     }
 }
 
+/// A file type detected by the static signature table (the detector behind
+/// the `file-magic` operation), exposed as a public struct so other crates can
+/// report detected types without forking the table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MagicMatch {
+    pub id: &'static str,
+    pub name: &'static str,
+    pub mime: &'static str,
+    pub extension: &'static str,
+    pub confidence: &'static str,
+}
+
+/// Sniffs `data` against the static signature table and returns the detected
+/// type, or `None` when nothing matches. This is the same detector the
+/// `file-magic` operation uses (RIFF/MP4/MP3/HTML special cases included).
+pub fn sniff_magic(data: &[u8]) -> Option<MagicMatch> {
+    detect_magic(data).map(|id| {
+        let (id, name, mime, ext, confidence) = sig_info(id);
+        MagicMatch {
+            id,
+            name,
+            mime,
+            extension: ext,
+            confidence,
+        }
+    })
+}
+
 fn detect_magic(data: &[u8]) -> Option<&'static str> {
     // RIFF family: sub-format lives at offset 8.
     if data.len() >= 12 && &data[0..4] == b"RIFF" {

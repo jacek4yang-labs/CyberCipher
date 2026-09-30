@@ -77,3 +77,10 @@
   owner: agent/sstv-bridge
   priority: P1
   depends_on: [M10-SSTV-01]
+
+- id: M9-IMAGE-03
+  title: structural analysis + carving
+  status: in_progress
+  owner: agent/structure
+  priority: P1
+  depends_on: [M9-IMAGE-01]

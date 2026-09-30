@@ -22,6 +22,7 @@ mod integer;
 mod structured;
 
 pub use encoding::decode_input;
+pub use fileinfo::{sniff_magic, MagicMatch};
 
 use cybercipher_core::OperationRegistry;
 

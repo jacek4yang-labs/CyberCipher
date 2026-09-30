@@ -14,7 +14,10 @@ use crate::auto_lsb;
 use crate::extract::{extract_bounded, ExtractionOptions, RgbOrder};
 use crate::transforms::{self};
 
-const MAX_EXTRACT_BYTES: usize = 16 * 1024 * 1024;
+/// Default bounded-preview size shared by the extraction and carving ops.
+pub(crate) const DEFAULT_PREVIEW_BYTES: usize = 65_536;
+/// Hard payload cap for the extraction and carving ops.
+pub(crate) const MAX_EXTRACT_BYTES: usize = 16 * 1024 * 1024;
 /// Hard caps for the Auto LSB scan op (defaults live in the param specs).
 const MAX_SCAN_CANDIDATES: usize = 200;
 const MAX_SCAN_PREFIX_BYTES: usize = 1024 * 1024;
@@ -121,8 +124,10 @@ fn image_extract_bits_op(v: &Value, params: &ParamMap, ctx: &ExecutionContext) -
         row_first: params.bool_or("row_first", true),
         invert_bits: params.bool_or("invert_bits", false),
     };
-    let max_bytes =
-        (params.int_or("max_bytes", 65_536).max(0) as u64).min(MAX_EXTRACT_BYTES as u64) as usize;
+    let max_bytes = (params
+        .int_or("max_bytes", DEFAULT_PREVIEW_BYTES as i64)
+        .max(0) as u64)
+        .min(MAX_EXTRACT_BYTES as u64) as usize;
     let roi = parse_roi(params)?.unwrap_or_else(|| Roi::whole(image.width, image.height));
     let result = extract_bounded(&image, roi, options, max_bytes, ctx)?;
     let report = serde_json::json!({
@@ -213,7 +218,7 @@ fn plane_mask_param() -> ParamSpec {
 // ---------------------------------------------------------------------------
 
 #[allow(clippy::too_many_arguments)]
-fn spec(
+pub(crate) fn spec(
     id: &'static str,
     name: &'static str,
     description: &'static str,
@@ -250,7 +255,7 @@ fn spec(
     }))
 }
 
-fn p_text(
+pub(crate) fn p_text(
     key: &'static str,
     label: &'static str,
     default: &'static str,
@@ -267,7 +272,12 @@ fn p_text(
     }
 }
 
-fn p_bool(key: &'static str, label: &'static str, default: bool, hint: &'static str) -> ParamSpec {
+pub(crate) fn p_bool(
+    key: &'static str,
+    label: &'static str,
+    default: bool,
+    hint: &'static str,
+) -> ParamSpec {
     ParamSpec {
         key,
         label,
@@ -279,7 +289,12 @@ fn p_bool(key: &'static str, label: &'static str, default: bool, hint: &'static 
     }
 }
 
-fn p_int(key: &'static str, label: &'static str, default: i64, hint: &'static str) -> ParamSpec {
+pub(crate) fn p_int(
+    key: &'static str,
+    label: &'static str,
+    default: i64,
+    hint: &'static str,
+) -> ParamSpec {
     ParamSpec {
         key,
         label,
