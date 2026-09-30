@@ -267,18 +267,30 @@ export const useStegoStore = create<StegoStore>((set, get) => {
   const resetResults = () =>
     set({
       info: null,
+      infoBusy: false,
       infoError: null,
       transformCache: {},
       transformCacheOrder: [],
+      transformBusy: false,
       transformError: null,
       transformErrorIndex: null,
+      extractBusy: false,
       extractError: null,
       extractResult: null,
+      scanBusy: false,
       scanError: null,
       candidates: null,
+      applyBusy: false,
       applyError: null,
       applied: null,
     });
+
+  /**
+   * True when the loaded file changed since an op captured its input — the
+   * op's result is stale and must not land (the file switch already reset
+   * the busy flags it would clear).
+   */
+  const superseded = (startBase64: string) => get().fileBase64 !== startBase64;
 
   /** Inserts a transform PNG into the bounded cache, evicting oldest first. */
   const cacheTransform = (index: number, pngBase64: string) => {
@@ -320,8 +332,10 @@ export const useStegoStore = create<StegoStore>((set, get) => {
           if (out === null || out.kind !== "json") {
             throw new Error("image_info returned no report");
           }
+          if (superseded(base64)) return;
           set({ info: out.value as StegoImageInfo, infoBusy: false });
         } catch (e) {
+          if (superseded(base64)) return;
           set({ infoBusy: false, infoError: e instanceof Error ? e.message : String(e) });
         }
       } catch (e) {
@@ -363,6 +377,7 @@ export const useStegoStore = create<StegoStore>((set, get) => {
       set({ transformBusy: true, transformError: null });
       try {
         const resp = await runSingleOp("image_transform", { transform: index }, fileBase64);
+        if (superseded(fileBase64)) return;
         if (resp.report.error) throw new Error(formatInvokeError(resp.report.error));
         if (resp.blocked_at !== null) {
           throw new Error(`run stopped at stage ${resp.blocked_at}`);
@@ -374,6 +389,7 @@ export const useStegoStore = create<StegoStore>((set, get) => {
         cacheTransform(index, out.base64);
         set({ transformBusy: false });
       } catch (e) {
+        if (superseded(fileBase64)) return;
         set({
           transformBusy: false,
           transformError: e instanceof Error ? e.message : String(e),
@@ -440,6 +456,7 @@ export const useStegoStore = create<StegoStore>((set, get) => {
           },
           fileBase64,
         );
+        if (superseded(fileBase64)) return;
         if (resp.report.error) throw new Error(formatInvokeError(resp.report.error));
         if (resp.blocked_at !== null) {
           throw new Error(`run stopped at stage ${resp.blocked_at}`);
@@ -450,6 +467,7 @@ export const useStegoStore = create<StegoStore>((set, get) => {
         }
         set({ extractBusy: false, extractResult: splitExtractOutput(out.base64) });
       } catch (e) {
+        if (superseded(fileBase64)) return;
         set({
           extractBusy: false,
           extractError: e instanceof Error ? e.message : String(e),
@@ -480,6 +498,7 @@ export const useStegoStore = create<StegoStore>((set, get) => {
           { deep, roi: "", max_candidates: DEFAULT_MAX_CANDIDATES, prefix_bytes: DEFAULT_PREFIX_BYTES },
           fileBase64,
         );
+        if (superseded(fileBase64)) return;
         if (resp.report.error) throw new Error(formatInvokeError(resp.report.error));
         if (resp.blocked_at !== null) {
           throw new Error(`run stopped at stage ${resp.blocked_at}`);
@@ -491,6 +510,7 @@ export const useStegoStore = create<StegoStore>((set, get) => {
             : [];
         set({ scanBusy: false, candidates: found });
       } catch (e) {
+        if (superseded(fileBase64)) return;
         set({ scanBusy: false, scanError: e instanceof Error ? e.message : String(e) });
       }
     },
@@ -514,6 +534,7 @@ export const useStegoStore = create<StegoStore>((set, get) => {
           },
           fileBase64,
         );
+        if (superseded(fileBase64)) return;
         if (resp.report.error) throw new Error(formatInvokeError(resp.report.error));
         if (resp.blocked_at !== null) {
           throw new Error(`run stopped at stage ${resp.blocked_at}`);
@@ -524,6 +545,7 @@ export const useStegoStore = create<StegoStore>((set, get) => {
         }
         set({ applyBusy: false, applied: splitExtractOutput(out.base64) });
       } catch (e) {
+        if (superseded(fileBase64)) return;
         set({ applyBusy: false, applyError: e instanceof Error ? e.message : String(e) });
       }
     },
