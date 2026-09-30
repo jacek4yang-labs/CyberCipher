@@ -10,10 +10,14 @@ use cybercipher_core::prelude::*;
 use cybercipher_core::{ExecutionContext, OpResult, OperationRegistry, Value};
 use cybercipher_media::{decode, encode_png, DecodeLimits, Roi};
 
+use crate::auto_lsb;
 use crate::extract::{extract_bounded, ExtractionOptions, RgbOrder};
 use crate::transforms::{self};
 
 const MAX_EXTRACT_BYTES: usize = 16 * 1024 * 1024;
+/// Hard caps for the Auto LSB scan op (defaults live in the param specs).
+const MAX_SCAN_CANDIDATES: usize = 200;
+const MAX_SCAN_PREFIX_BYTES: usize = 1024 * 1024;
 
 fn media_error(e: cybercipher_media::MediaError, op: &str) -> OperationError {
     use cybercipher_media::MediaError;
@@ -133,6 +137,62 @@ fn image_extract_bits_op(v: &Value, params: &ParamMap, ctx: &ExecutionContext) -
     out.push(b'\n');
     out.extend_from_slice(&result.data);
     Ok(Value::Bytes(out))
+}
+
+/// Serialises one scan candidate for the JSON output.
+fn candidate_json(candidate: &auto_lsb::LsbCandidate) -> serde_json::Value {
+    let preview_limit = candidate.preview.len().min(256);
+    let preview_hex: String = candidate.preview[..preview_limit]
+        .iter()
+        .map(|byte| format!("{byte:02x}"))
+        .collect();
+    let options = candidate.options;
+    serde_json::json!({
+        "settings": {
+            "description": options.describe(),
+            "config": candidate.formatted_config(),
+            "plane_mask": format!("{:08x}", options.plane_mask),
+            "argb_mask": format!("{:08x}", options.argb_mask()),
+            "order": auto_lsb::order_label(options.order),
+            "order_code": options.order.legacy_code(),
+            "lsb_first": options.lsb_first,
+            "row_first": options.row_first,
+            "invert_bits": options.invert_bits,
+        },
+        "score": candidate.score,
+        "reason": candidate.reason,
+        "payload_type": candidate.payload_type.type_name(),
+        "payload_type_id": candidate.payload_type.id(),
+        "preview_hex": preview_hex,
+        "preview_bytes": candidate.preview.len(),
+        "total_bytes": candidate.total_bytes,
+        "truncated": candidate.truncated,
+        "fingerprint": format!("{:016x}", candidate.fingerprint()),
+    })
+}
+
+fn auto_lsb_scan_op(v: &Value, params: &ParamMap, ctx: &ExecutionContext) -> OpResult<Value> {
+    const OP: &str = "Auto LSB Scan";
+    let image = decode_input_image(v, OP)?;
+    let deep = params.bool_or("deep", false);
+    let roi = parse_roi(params)?.unwrap_or_else(|| Roi::whole(image.width, image.height));
+    let max_candidates =
+        (params.int_or("max_candidates", 50).max(0) as usize).min(MAX_SCAN_CANDIDATES);
+    let prefix_bytes = (params
+        .int_or("prefix_bytes", auto_lsb::SCAN_PREFIX_LIMIT as i64)
+        .max(0) as usize)
+        .min(MAX_SCAN_PREFIX_BYTES);
+
+    // Cancellation/deadline travel through the execution context; progress
+    // is not surfaced by the registry (the command layer owns cancellation),
+    // so the callback is a no-op here.
+    let ranked = auto_lsb::scan_with_limits(&image, roi, deep, prefix_bytes, ctx, |_, _, _| {})?;
+    let items: Vec<serde_json::Value> = ranked
+        .iter()
+        .take(max_candidates)
+        .map(candidate_json)
+        .collect();
+    Ok(Value::Json(serde_json::Value::Array(items)))
 }
 
 fn plane_mask_param() -> ParamSpec {
@@ -304,6 +364,45 @@ pub(crate) fn register(reg: &mut OperationRegistry) {
         ),
         image_extract_bits_op,
     );
+
+    reg.add_simple(
+        spec(
+            "auto_lsb_scan",
+            "Auto LSB Scan",
+            "Bounded automatic LSB steganography scan: enumerates the StegSolver Fast (or Deep) extraction configurations, extracts a bounded prefix (default 64 KiB) per configuration, scores each extract with deterministic evidence (CTF flag syntax, file signatures, text tiers, base64, entropy), deduplicates equivalent configurations and returns ranked candidates. Apply a candidate with Extract Bits using its settings.",
+            A,
+            &[B],
+            J,
+            CostClass::Solver,
+            false,
+            vec![
+                p_bool(
+                    "deep",
+                    "Deep scan",
+                    false,
+                    "Adds rarer configurations (3-bit LSB across all six orders, 4-bit LSB, MSB bit 7, single-channel bit 2/7) to the Fast enumeration.",
+                ),
+                p_text("roi", "Region", "", "Optional 'x,y,width,height' region; defaults to the whole image."),
+                p_int(
+                    "max_candidates",
+                    "Max candidates",
+                    50,
+                    "Maximum number of ranked candidates returned. Hard cap 200.",
+                ),
+                p_int(
+                    "prefix_bytes",
+                    "Prefix bytes",
+                    65_536,
+                    "Bounded prefix extracted per configuration. Hard cap 1 MiB; the full extraction is Phase 2, available via Extract Bits with the candidate's settings.",
+                ),
+            ],
+            &["steg", "image", "ctf", "lsb", "auto"],
+            &[],
+            "Semantics ported from StegSolve via StegSolver c14bfa9 (MIT): AutoLsbScanner enumeration, PayloadDetector classification and the deterministic scoring table",
+            "Enumeration-count fixtures against the upstream option lists; scoring and end-to-end fixtures over synthetic images",
+        ),
+        auto_lsb_scan_op,
+    );
 }
 
 #[cfg(test)]
@@ -423,5 +522,144 @@ mod tests {
             )
             .unwrap_err();
         assert_eq!(err.kind, cybercipher_core::ErrorKind::InvalidInput);
+    }
+
+    /// 32x32 PNG with `flag{auto_lsb_scan_works}` hidden in RGB bit 0,
+    /// MSB-first, row-major.
+    fn hidden_flag_png() -> Vec<u8> {
+        let message = b"flag{auto_lsb_scan_works}";
+        let mut bits = Vec::with_capacity(message.len() * 8);
+        for &byte in message {
+            for shift in (0..8).rev() {
+                bits.push((byte >> shift) & 1);
+            }
+        }
+        let mut argb = Vec::with_capacity(32 * 32);
+        for pixel_index in 0..32 * 32 {
+            let mut pixel = 0xFF40_4040;
+            for (lane, shift) in [16u32, 8, 0].into_iter().enumerate() {
+                let bit_index = pixel_index * 3 + lane;
+                let bit = if bit_index < bits.len() {
+                    bits[bit_index]
+                } else {
+                    0
+                };
+                pixel = (pixel & !(1 << shift)) | (u32::from(bit) << shift);
+            }
+            argb.push(pixel);
+        }
+        let image = RgbaImage::new(32, 32, argb, false).unwrap();
+        encode_png(&image).unwrap()
+    }
+
+    #[test]
+    fn auto_lsb_scan_roundtrips_with_hidden_flag() {
+        let reg = registry();
+        let op = reg.get("auto_lsb_scan").expect("op registered");
+        let out = op
+            .execute(
+                &Value::Bytes(hidden_flag_png()),
+                &ParamMap::new(),
+                &ExecutionContext::new(),
+            )
+            .unwrap();
+        let Value::Json(candidates) = out else {
+            panic!("expected json");
+        };
+        let candidates = candidates.as_array().expect("array of candidates");
+        assert!(!candidates.is_empty());
+        assert!(candidates.len() <= 50, "default max_candidates");
+
+        let top = &candidates[0];
+        assert_eq!(top["score"], 98);
+        assert_eq!(top["reason"], "CTF flag: flag{auto_lsb_scan_works}");
+        // The flag + zero padding is BINARY-classified (the flag check runs
+        // before the classification switch, as upstream).
+        assert_eq!(top["payload_type"], "BIN");
+        assert_eq!(top["payload_type_id"], "binary");
+        assert_eq!(top["settings"]["description"], "r0 g0 b0");
+        assert_eq!(
+            top["settings"]["config"],
+            "RGB \u{b7} b0 \u{b7} Row \u{b7} LSB"
+        );
+        assert_eq!(top["settings"]["plane_mask"], "01010100");
+        assert_eq!(top["settings"]["order"], "RGB");
+        assert_eq!(top["settings"]["order_code"], 1);
+        assert_eq!(top["total_bytes"], 384);
+        assert_eq!(top["truncated"], false);
+        // Preview hex starts with "flag{" and is capped at 256 bytes.
+        let hex = top["preview_hex"].as_str().unwrap();
+        assert!(hex.starts_with("666c61677b"), "hex of \"flag{{\": {hex}");
+        assert_eq!(top["preview_bytes"], 384);
+        assert_eq!(hex.len(), 256 * 2);
+        // Scores are ranked descending.
+        let scores: Vec<u64> = candidates
+            .iter()
+            .map(|c| c["score"].as_u64().unwrap())
+            .collect();
+        assert!(scores.windows(2).all(|w| w[0] >= w[1]));
+    }
+
+    #[test]
+    fn auto_lsb_scan_validates_params() {
+        let reg = registry();
+        let op = reg.get("auto_lsb_scan").unwrap();
+
+        // Bad roi: typed invalid-parameter error.
+        let mut params = ParamMap::new();
+        params.insert("roi", "1,2,3");
+        let err = op
+            .execute(
+                &Value::Bytes(hidden_flag_png()),
+                &params,
+                &ExecutionContext::new(),
+            )
+            .unwrap_err();
+        assert_eq!(err.kind, cybercipher_core::ErrorKind::InvalidParam);
+
+        // Non-image input: typed invalid-input error.
+        let err = op
+            .execute(
+                &Value::Bytes(vec![0xDE, 0xAD, 0xBE, 0xEF]),
+                &ParamMap::new(),
+                &ExecutionContext::new(),
+            )
+            .unwrap_err();
+        assert_eq!(err.kind, cybercipher_core::ErrorKind::Decode);
+    }
+
+    #[test]
+    fn auto_lsb_scan_honours_candidate_and_prefix_caps() {
+        let reg = registry();
+        let op = reg.get("auto_lsb_scan").unwrap();
+        let input = Value::Bytes(hidden_flag_png());
+
+        let mut params = ParamMap::new();
+        params.insert("max_candidates", 3i64);
+        let out = op
+            .execute(&input, &params, &ExecutionContext::new())
+            .unwrap();
+        let Value::Json(candidates) = out else {
+            panic!("expected json");
+        };
+        assert_eq!(candidates.as_array().unwrap().len(), 3);
+
+        // Oversized prefix_bytes clamps to the 1 MiB cap; deep scan runs.
+        let mut params = ParamMap::new();
+        params.insert("prefix_bytes", 5_000_000i64);
+        params.insert("deep", true);
+        let out = op
+            .execute(&input, &params, &ExecutionContext::new())
+            .unwrap();
+        let Value::Json(candidates) = out else {
+            panic!("expected json");
+        };
+        assert!(!candidates.as_array().unwrap().is_empty());
+
+        // Cancellation through the execution context.
+        let flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let ctx = ExecutionContext::new().with_cancel(flag);
+        let err = op.execute(&input, &ParamMap::new(), &ctx).unwrap_err();
+        assert_eq!(err.kind, cybercipher_core::ErrorKind::Cancelled);
     }
 }

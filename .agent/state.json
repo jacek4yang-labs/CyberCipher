@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "phase": "M8-PKI-F-JWT / GUI-PKI-Lab / M9-image",
-  "last_reconciled_sha": "4064a78",
+  "phase": "Wave-3: M9-IMAGE-02 (Auto LSB) + M10-SSTV-02 (SSTV bridge) in flight",
+  "last_reconciled_sha": "378a8e7",
   "active_branch": null,
   "active_pr": null,
   "current_task": null,
@@ -44,15 +44,22 @@
     "QA-CONSISTENCY-01",
     "BENCH-01",
     "RECONCILE-01",
-    "CI-FIX-SM2-LEFTPAD"
+    "CI-FIX-SM2-LEFTPAD",
+    "M8-PKI-F-JWT",
+    "GUI-PKI-LAB-01",
+    "M9-IMAGE-01",
+    "M10-SSTV-01"
   ],
   "blocked": [],
-  "agent_lanes": {},
+  "agent_lanes": {
+    "agent/autolsb": "Auto LSB bounded scanner (steg PR-2)",
+    "agent/sstv-bridge": "sstv_decode registry op + Tauri/CLI bridge (SSTV PR-2)"
+  },
   "validation": {
     "cargo_fmt": "pass",
     "cargo_clippy": "pass",
     "cargo_test": "pass",
     "frontend": "pass"
   },
-  "notes": "Session 7: CI fix merged (#42). Registry ~187 ops, 545 tests. Remaining: JWT/JWS, PKI Lab GUI, image/QR/stego, CTF specialty, signature scanner, Auto Decode expansion, Crypto Assist generalization. Compatibility matrices stale \u2014 live audit needed."
+  "notes": "Session 8: 6 PRs merged (#44-#49): parity matrices + design doc, PKI Lab GUI, JWT/JWS, SSTV core migration, steg core (media+transforms+extraction), CI timeout 60m. Registry ~190 ops, ~734 tests. Matrices updated: steg solver engine core + sstv-auto modules covered. In flight: Auto LSB scanner, SSTV blob bridge. Next: structure/carving (Lane C), QR + Stego Lab (Lane D), SSTV Lab GUI, stereo/combine/frames (Lane F), CTF specialty, Auto Decode v3."
 }

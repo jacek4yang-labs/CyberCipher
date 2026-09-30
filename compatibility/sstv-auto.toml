@@ -22,95 +22,79 @@ notes = "Lane B PR sequence: PR-1 core crate migration (library, tests preserved
 # ----------------------------------------------------------- audio ----
 
 [entries.audio_ingestion]
-ours = "— (planned cybercipher-sstv::audio)"
-status = "missing"
-notes = "symphonia 0.5 features: wav/pcm, flac, mp1/mp2/mp3, aac/isomp4, alac, ogg-vorbis, adpcm, aiff, caf, mkv. Pure Rust, no ffmpeg runtime. Lane B PR-1 (blob-byte ingestion replaces path-only API at the CyberCipher boundary)."
+ours = "cybercipher-sstv::audio (migrated in-tree)"
+status = "covered"
+notes = "symphonia feature set intact (wav/flac/mp1-3/aac-mp4/alac/ogg/adpcm/aiff/caf/mkv); bytes-based load_bytes + path-based load. Pure Rust, no ffmpeg (PR #47)."
 
 [entries.audio_channel_selection]
-ours = "—"
-status = "missing"
-notes = "ChannelChoice (mono/stereo/multichannel), automatic selection of the channel carrying the strongest useful signal + explicit override. Lane B PR-1."
+ours = "audio::ChannelChoice"
+status = "covered"
+notes = "Automatic strongest-channel selection migrated; explicit override via options.channel; tests green (PR #47)."
 
 [entries.audio_safety]
-ours = "existing bounds policy to be applied"
-status = "missing"
-notes = "Level safety, silence detection (is_silent), bounded decoded duration/sample count, cancellation + deadline. SSTV decode is CostClass::Heavy — never Auto-Bake Instant. Lane B PR-1/PR-2."
-
-# ------------------------------------------------------------- dsp ----
+ours = "audio::is_silent/level; op-layer bounds in flight"
+status = "partial"
+notes = "Silence/level safety migrated (PR #47). Registry op with CostClass::Heavy + duration caps lands with the blob/Tauri bridge lane (in flight). Missing semantics: op-layer bound enforcement until the bridge merges."
 
 [entries.dsp_fft_track]
-ours = "— (planned cybercipher-sstv::dsp)"
-status = "missing"
-notes = "rustfft 6 Hann-windowed Analyzer producing compact time-frequency Track + Trajectory consumed by every later stage; helpers rms/peak/median/mean/normalize_to_peak/remove_dc/resample_linear. Lane B PR-1."
-
-# ----------------------------------------------------------- modes ----
+ours = "cybercipher-sstv::dsp"
+status = "covered"
+notes = "Hann-windowed rustfft Analyzer, Track + Trajectory, full helper set; 17 tests green (PR #47)."
 
 [entries.mode_database]
-ours = "— (planned cybercipher-sstv::modes)"
-status = "missing"
-notes = "Data-driven Mode geometry from slowrx (ChannelLayout/SstvMode/SyncPosition): Martin M1/M2, Scottie S1/S2/DX, Robot 24/36/72, PD-120/180/240. Same definitions drive extraction + synthesis + scoring so timing constants cannot drift. level_to_hz/hz_to_level (1500..2300 Hz), from_vis, from_name, all(). Lane B PR-1."
-
-# ------------------------------------------------------------- vis ----
+ours = "cybercipher-sstv::modes"
+status = "covered"
+notes = "Data-driven geometry from slowrx; Martin M1/M2, Scottie S1/S2/DX, Robot 24/36/72, PD-120/180/240; from_vis/from_name/all(); 12 tests green (PR #47)."
 
 [entries.vis_detection]
-ours = "— (planned cybercipher-sstv::vis)"
-status = "missing"
-notes = "Leader detection, VIS code recovery, parity validation; parity failure stays evidence/hint only, never authoritative. Report detected VIS + parity status + inferred mode + timing evidence. Lane B PR-1."
-
-# ------------------------------------------------------------ sync ----
+ours = "cybercipher-sstv::vis"
+status = "covered"
+notes = "Leader detection, VIS recovery, parity validation; parity-failure-as-hint preserved; 11 tests green (PR #47)."
 
 [entries.sync_recovery]
-ours = "— (planned cybercipher-sstv::sync)"
-status = "missing"
-notes = "Pulse detection with frequency-shift estimate (estimate_shift), chain fitting (Chain, chain_score, interval_spread) for line-period + clock-rate recovery + start position. Lane B PR-1."
-
-# ---------------------------------------------------- raster / synth ----
+ours = "cybercipher-sstv::sync"
+status = "covered"
+notes = "Pulse detection, estimate_shift, chain fitting/scoring, interval_spread; 11 tests green (PR #47)."
 
 [entries.raster_decode]
-ours = "— (planned cybercipher-sstv::raster + backend)"
-status = "missing"
-notes = "Pixel-grid recovery from measured signal; full-resolution decode via slowrx SstvDecoder (pure-Rust library dep, pinned). Frequency offset + clock correction applied automatically. Lane B PR-1."
+ours = "cybercipher-sstv::raster + backend (slowrx =0.5.3 pinned)"
+status = "covered"
+notes = "Grid recovery + full-resolution slowrx decode; automatic frequency-offset/clock correction preserved; tests green (PR #47)."
 
 [entries.synthesis]
-ours = "— (planned cybercipher-sstv::synth)"
-status = "missing"
-notes = "Grid -> SSTV audio (inverse of raster); enables the inverse-model validation loop. Lane B PR-1."
-
-# ------------------------------------------------------- autodetect ----
+ours = "cybercipher-sstv::synth"
+status = "covered"
+notes = "render / render_with_vis / test_grid; 10 tests green (PR #47)."
 
 [entries.blind_mode_inference]
-ours = "— (planned cybercipher-sstv::autodetect)"
-status = "missing"
-notes = "When VIS is absent/damaged/stripped: repeated line-sync periods infer candidate modes (Hypothesis/Candidate/Analysis, Origin::VIS|SyncPeriod|Forced). Never assumes ideal transmitter timing. Lane B PR-1."
+ours = "cybercipher-sstv::autodetect"
+status = "covered"
+notes = "Origin::VIS|SyncPeriod|Forced; sync-period inference without ideal-timing assumptions; 14 tests green (PR #47)."
 
 [entries.candidate_ranking_inverse_model]
-ours = "—"
-status = "missing"
-notes = "Explainable ranking: recover low-res grid -> re-synthesize -> compare tone trajectory vs original (evaluate/agreement), image plausibility via score::Quality (is_degenerate, looks_like_noise) rejects noise/flat frames. Never ranks on 'image looks non-empty'. Lane B PR-1."
+ours = "autodetect::evaluate/agreement + score::Quality"
+status = "covered"
+notes = "Inverse-model ranking (re-synthesize + trajectory agreement) and degenerate/noise rejection migrated; 22 tests green (PR #47)."
 
 [entries.ambiguity_honesty]
-ours = "—"
-status = "missing"
-notes = "indistinguishable_from (e.g. Robot 24 vs 36 overlap on-wire except VIS identity) — report ambiguity explicitly, never invent confidence. Lane B PR-1."
-
-# ---------------------------------------------------------- pipeline ----
+ours = "autodetect::indistinguishable_from"
+status = "covered"
+notes = "Robot24/36 ambiguity reporting migrated with tests (PR #47)."
 
 [entries.pipeline_automatic]
-ours = "— (planned cybercipher-sstv::pipeline)"
-status = "missing"
-notes = "Options (channel, forced mode, blind toggle, bounds) -> Outcome with defaults fully automatic. Lane B PR-1 (bytes/blob input at the CyberCipher boundary)."
+ours = "pipeline::run + pipeline::decode_bytes"
+status = "covered"
+notes = "Bytes-based core writes nothing to disk; Outcome carries report + in-memory images; path API composes over it (PR #47)."
 
 [entries.report]
-ours = "—"
-status = "missing"
-notes = "Report/Detection/AudioReport: mode, detection path, confidence, agreement, timing score, coverage, start time, frequency offset, clock correction, matched sync count, dimensions, warnings. Lane B PR-1."
-
-# ------------------------------------------------------------ output ----
+ours = "cybercipher-sstv::report"
+status = "covered"
+notes = "Report/Detection/AudioReport with to_json; all fields per upstream (PR #47)."
 
 [entries.png_output]
-ours = "— (image crate PNG encode shared with steg lane)"
-status = "missing"
-notes = "save_png equivalent behind CyberCipher blob output. Lane B PR-2."
+ours = "backend::encode_png"
+status = "covered"
+notes = "PNG bytes in memory as the explicit serialization step, per design (PR #47)."
 
 [entries.stego_handoff]
 ours = "— (superset, CyberCipher-only)"
@@ -120,11 +104,9 @@ notes = "Open in Stego Lab / Save PNG / Send to Workbench / Run Auto LSB / Run Q
 # ------------------------------------------------------------- tests ----
 
 [entries.test_migration]
-ours = "—"
-status = "missing"
-notes = "Preserve 142 upstream tests: synthetic mode transmissions (hound-dev only), VIS/parity failures, sync-period blind recovery, frequency offsets, clock drift, multichannel selection, ranking, noise rejection, degenerate-image rejection. Large challenge audio NOT committed; deterministic synthetic fixtures only. Lane B PR-1."
-
-# ---------------------------------------------------------- superset ----
+ours = "135 inline + 15 end-to-end tests"
+status = "covered"
+notes = "All upstream tests migrated and green (150 vs upstream 142; error-module tests added). Large fixture excluded per upstream skip design (PR #47)."
 
 [entries.typed_errors_bounds]
 ours = "typed OperationError + ExecutionContext deadlines/cancellation"
