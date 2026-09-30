@@ -55,6 +55,7 @@ cybercipher-attack = { path = "crates/cybercipher-attack" }
 cybercipher-pki = { path = "crates/cybercipher-pki" }
 cybercipher-media = { path = "crates/cybercipher-media" }
 cybercipher-steg = { path = "crates/cybercipher-steg" }
+cybercipher-sstv = { path = "crates/cybercipher-sstv" }
 
 [profile.release]
 opt-level = 3

@@ -54,6 +54,11 @@ enum Command {
         #[command(subcommand)]
         cmd: JwtCmd,
     },
+    /// SSTV decode: automatic mode detection + image recovery from audio.
+    Sstv {
+        #[command(subcommand)]
+        cmd: SstvCmd,
+    },
     /// Bounded explainable automatic decoding.
     Auto {
         /// Input file path, `-` for stdin, or a literal string.
@@ -141,16 +146,19 @@ enum PrngCmd {
 
 fn main() {
     let cli = Cli::parse();
-    // Default registry plus the PKI JWT operations (the pki crate is wired
-    // here rather than inside `default_registry` so library consumers opt in).
+    // Default registry plus the PKI JWT and SSTV operations (the extra crates
+    // are wired here rather than inside `default_registry` so library
+    // consumers opt in).
     let mut reg = cybercipher_engine::default_registry();
     cybercipher_pki::jwt::register(&mut reg);
+    cybercipher_sstv::register_all(&mut reg);
     let registry = Arc::new(reg);
     let engine = RecipeEngine::new(registry.clone());
 
     match cli.command {
         Command::Prng { cmd } => run_prng(cmd),
         Command::Jwt { cmd } => run_jwt(cmd),
+        Command::Sstv { cmd } => run_sstv(cmd),
         Command::Ops => {
             for info in registry.info() {
                 println!("{:<22} {:<16} {}", info.id, info.category.name(), info.name);
@@ -454,6 +462,123 @@ fn run_jwt(cmd: JwtCmd) {
             }
         }
     }
+}
+
+#[derive(Subcommand)]
+enum SstvCmd {
+    /// Decode an SSTV transmission from an audio file (WAV/FLAC/MP3/...).
+    Decode {
+        /// Audio file path, or `-` for stdin.
+        file: String,
+        /// Channel: auto | mono | left | right | zero-based index.
+        #[arg(long, default_value = "auto")]
+        channel: String,
+        /// Force a specific mode (e.g. robot36, martin1) instead of detecting.
+        #[arg(long)]
+        mode: Option<String>,
+        /// Allow blind sync-period inference when the VIS header is absent.
+        /// On by default; pass `--blind false` to require a valid header.
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+        blind: bool,
+        /// Reject audio longer than this many seconds before any decode work.
+        #[arg(long, default_value_t = 90)]
+        max_seconds: i64,
+        /// Write the JSON report to this path instead of stdout.
+        #[arg(long)]
+        out: Option<String>,
+        /// Write decoded images as PNG files with this path prefix
+        /// (`out/frame` -> `out/frame-001-robot36.png`).
+        #[arg(long)]
+        png: Option<String>,
+    },
+}
+
+fn run_sstv(cmd: SstvCmd) {
+    let SstvCmd::Decode {
+        file,
+        channel,
+        mode,
+        blind,
+        max_seconds,
+        out,
+        png,
+    } = cmd;
+    let bytes = read_input(&file);
+    let request = cybercipher_sstv::ops::DecodeRequest {
+        channel,
+        forced_mode: mode,
+        blind,
+        max_duration_seconds: max_seconds,
+        max_candidates: cybercipher_sstv::ops::DEFAULT_MAX_CANDIDATES,
+    };
+    let decoded = cybercipher_sstv::ops::decode_bounded(&bytes, &request, &ExecutionContext::new())
+        .unwrap_or_else(|e| fail(&e));
+
+    // PNGs are written first so the report can name the files that were
+    // actually created. Paths come only from the explicit `--png` argument.
+    let mut written: Vec<String> = Vec::new();
+    if let Some(prefix) = &png {
+        for (index, image) in decoded.images.iter().enumerate() {
+            let path = format!("{prefix}-{:03}-{}.png", index + 1, image.mode_slug);
+            write_bytes(&path, &image.png);
+            println!(
+                "wrote {path} ({}x{}, {} bytes)",
+                image.width,
+                image.height,
+                image.png.len()
+            );
+            written.push(path);
+        }
+    }
+
+    let mut report = decoded.report;
+    for (index, path) in written.iter().enumerate() {
+        if let Some(detection) = report.get_mut("detections").and_then(|d| d.get_mut(index)) {
+            detection["output_png"] = serde_json::Value::String(path.clone());
+        }
+    }
+    let text = serde_json::to_string_pretty(&report).unwrap_or_else(|e| {
+        eprintln!("error serialising report: {e}");
+        std::process::exit(1);
+    });
+    match &out {
+        Some(path) => {
+            write_bytes(path, text.as_bytes());
+            println!("report: {path}");
+        }
+        None => println!("{text}"),
+    }
+
+    for warning in report
+        .get("warnings")
+        .and_then(serde_json::Value::as_array)
+        .into_iter()
+        .flatten()
+    {
+        if let Some(text) = warning.as_str() {
+            eprintln!("warning: {text}");
+        }
+    }
+    if decoded.images.is_empty() {
+        eprintln!("no SSTV image was decoded (see warnings)");
+    }
+}
+
+/// Write bytes to an explicit user-specified path, creating the parent
+/// directory when needed.
+fn write_bytes(path: &str, bytes: &[u8]) {
+    if let Some(parent) = std::path::Path::new(path).parent() {
+        if !parent.as_os_str().is_empty() {
+            std::fs::create_dir_all(parent).unwrap_or_else(|e| {
+                eprintln!("error creating directory for `{path}`: {e}");
+                std::process::exit(1);
+            });
+        }
+    }
+    std::fs::write(path, bytes).unwrap_or_else(|e| {
+        eprintln!("error writing `{path}`: {e}");
+        std::process::exit(1);
+    });
 }
 
 fn run_prng(cmd: PrngCmd) {

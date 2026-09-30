@@ -70,3 +70,10 @@
   priority: P2
   depends_on: []
   owner: analysis
+
+- id: M10-SSTV-02
+  title: SSTV registry op + blob/Tauri/CLI bridge
+  status: in_progress
+  owner: agent/sstv-bridge
+  priority: P1
+  depends_on: [M10-SSTV-01]

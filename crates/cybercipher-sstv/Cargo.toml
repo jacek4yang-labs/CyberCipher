@@ -9,6 +9,7 @@ repository.workspace = true
 description = "Automatic SSTV detection and decoding for CyberCipher (migrated from sstv-auto)"
 
 [dependencies]
+cybercipher-core.workspace = true
 image.workspace = true
 rustfft.workspace = true
 serde.workspace = true
