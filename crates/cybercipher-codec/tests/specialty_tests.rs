@@ -35,8 +35,8 @@ fn run_text(reg: &OperationRegistry, id: &str, input: &str) -> OpResult<Value> {
     run(reg, id, Value::Text(input.to_string()), &[])
 }
 
-fn text_of(out: OpResult<Value>) -> String {
-    match out.expect("operation failed") {
+fn text_of(out: Value) -> String {
+    match out {
         Value::Text(t) => t,
         Value::Bytes(b) => String::from_utf8(b).expect("output is not UTF-8"),
         other => panic!("expected text-like output, got {other:?}"),
@@ -92,7 +92,7 @@ fn specialty_ops_are_registered() {
 #[test]
 fn brainfuck_registry_roundtrip() {
     let r = reg();
-    let program = text_of(run_text(&r, "to-brainfuck", "registry round trip!"));
+    let program = text_of(run_text(&r, "to-brainfuck", "registry round trip!").unwrap());
     let out = run(
         &r,
         "run-brainfuck",
@@ -100,7 +100,7 @@ fn brainfuck_registry_roundtrip() {
         &[("input", ParamValue::Str(String::new()))],
     )
     .unwrap();
-    assert_eq!(text_of(Ok(out)), "registry round trip!");
+    assert_eq!(text_of(out.unwrap()), "registry round trip!");
 }
 
 #[test]
@@ -109,7 +109,7 @@ fn brainfuck_hello_world_via_registry() {
     let program = "++++++++[>++++[>++>+++>+++>+<<<<-]>+>+>->>+[<]<-]>>.>---.+++++++\
                    ..+++.>>.<-.<.+++.------.--------.>>+.>++.";
     let out = run_text(&r, "run-brainfuck", program).unwrap();
-    assert_eq!(text_of(Ok(out)), "Hello World!\n");
+    assert_eq!(text_of(out.unwrap()), "Hello World!\n");
 }
 
 #[test]
@@ -122,9 +122,9 @@ fn brainfuck_step_limit_via_registry() {
 #[test]
 fn ook_registry_roundtrip() {
     let r = reg();
-    let ook = text_of(run_text(&r, "to-ook", "Ook round trip\n"));
+    let ook = text_of(run_text(&r, "to-ook", "Ook round trip\n").unwrap());
     let out = run_text(&r, "from-ook", &ook).unwrap();
-    assert_eq!(text_of(Ok(out)), "Ook round trip\n");
+    assert_eq!(text_of(out.unwrap()), "Ook round trip\n");
 }
 
 // -------------------------------------------------------- buddha ----
@@ -134,7 +134,7 @@ fn buddha_registry_roundtrip() {
     let r = reg();
     for text in ["与佛论禅", "Buddha says: 佛曰 123"] {
         let enc = run_text(&r, "to-buddha", text).unwrap();
-        let dec = run_text(&r, "from-buddha", &text_of(enc)).unwrap();
+        let dec = run_text(&r, "from-buddha", &text_of(enc.unwrap())).unwrap();
         assert_eq!(text_of(dec), *text);
     }
 }
@@ -181,7 +181,7 @@ fn buddha_pbe_registry_roundtrip() {
 fn beast_registry_roundtrip() {
     let r = reg();
     let enc = run_text(&r, "to-beast", "兽音译者 beast").unwrap();
-    let dec = run_text(&r, "from-beast", &text_of(enc)).unwrap();
+    let dec = run_text(&r, "from-beast", &text_of(enc.unwrap())).unwrap();
     assert_eq!(text_of(dec), "兽音译者 beast");
 }
 
@@ -199,7 +199,7 @@ fn beast_custom_codec() {
 #[test]
 fn bear_registry_roundtrip() {
     let r = reg();
-    let enc = text_of(run_text(&r, "to-bear", "熊曰 round trip"));
+    let enc = text_of(run_text(&r, "to-bear", "熊曰 round trip").unwrap());
     assert!(enc.starts_with("熊曰：呋"));
     let dec = run_text(&r, "from-bear", &enc).unwrap();
     assert_eq!(text_of(dec), "熊曰 round trip");
@@ -227,7 +227,7 @@ fn bear_reference_vector_via_registry() {
 fn core_values_registry_roundtrip() {
     let r = reg();
     let enc = run_text(&r, "to-core-values", "core values 42").unwrap();
-    let dec = run_text(&r, "from-core-values", &text_of(enc)).unwrap();
+    let dec = run_text(&r, "from-core-values", &text_of(enc.unwrap())).unwrap();
     assert_eq!(text_of(dec), "core values 42");
 }
 
