@@ -99,29 +99,29 @@ status = "covered"
 notes = "Registry op default max_bytes 65536; full extraction via explicit max_bytes in the engine API (PR #48). GUI preview wiring lands with Stego Lab."
 
 [entries.auto_lsb_fast_scan]
-ours = "— (planned Auto LSB bounded scan)"
-status = "missing"
-notes = "Exact Fast enumeration: RGB bit0 x6 orders x row/col x invert (24); RGB bits1,2 x {RGB,BGR} x row/col (8); RGB bits0+1 x6 x row/col x msb/lsb x invert (48); bits0+1+2 x {RGB,BGR} x row/col x msb/lsb (8); single-channel R/G/B bit0 row/col x invert (12), bit1 row/col (6), bits0+1 row/col x msb/lsb (12); alpha variants when has_alpha (alpha bit0 row/col x invert 4; RGBA bit0 x {RGB,BGR} x row/col x invert 8). Lane A PR-2."
+ours = "steg::auto_lsb::fast_scan_options(has_alpha) — 118 options without alpha, 130 with (pinned in tests)"
+status = "covered"
+notes = "Exact Fast enumeration: RGB bit0 x6 orders x row/col x invert (24); RGB bits1,2 x {RGB,BGR} x row/col (8); RGB bits0+1 x6 x row/col x msb/lsb x invert (48); bits0+1+2 x {RGB,BGR} x row/col x msb/lsb (8); single-channel R/G/B bit0 row/col x invert (12), bit1 row/col (6), bits0+1 row/col x msb/lsb (12); alpha variants when has_alpha (alpha bit0 row/col x invert 4; RGBA bit0 x {RGB,BGR} x row/col x invert 8). Group order and per-group ordering match AutoLsbScanner.java c14bfa9 item for item. Lane A PR-2."
 
 [entries.auto_lsb_deep_scan]
-ours = "—"
-status = "missing"
-notes = "Fast superset: 3-bit LSB across remaining 4 permutations, 4-bit LSB {RGB,BGR} x row/col x msb/lsb, MSB bit7 {RGB,BGR}, single-channel bit2/bit7. Lane A PR-2."
+ours = "steg::auto_lsb::deep_scan_options(has_alpha) — 158 / 170 options"
+status = "covered"
+notes = "Fast superset: 3-bit LSB across remaining 4 permutations (16), 4-bit LSB {RGB,BGR} x row/col x msb/lsb (8), MSB bit7 {RGB,BGR} x row/col (4), single-channel bit2/bit7 x R/G/B x row/col (12). Lane A PR-2."
 
 [entries.auto_lsb_scoring]
-ours = "Auto Decode evidence scoring (flag syntax, magic, entropy, printable ratio) exists for byte streams"
-status = "partial"
-notes = "Port the deterministic table: 98 CTF flag; 100 strong magic (zip/7z/rar/gzip/bzip2/xz/tar/png/jpeg/gif/webp/pdf/elf/PE-with-header/CAFEBABE); 95 BMP>=14B; 94 #! script; 92 JSON/XML; 90/86/80 text tiers; 72/45 base64; 65 partial-printable + unverified MZ; 30 structured binary; 20 binary; 15 high-entropy noise; 10 unclassified; 5 low variation; 1 uniform byte. Reuse our file-magic + shannon entropy primitives as the detectors (one scoring system, no fork). Lane A PR-2."
+ours = "steg::auto_lsb::score_payload over steg::payload::detect — the deterministic table, entropy via cybercipher_core::util::shannon_entropy"
+status = "covered"
+notes = "Ported verbatim: 98 CTF flag (regex (?i)(flag|ctf|steg|key|secret|pico|htb|thm)\\{[\\x20-\\x7e]{1,128}\\}, first 16 KiB, scanned before the type switch); 100 strong magic (zip/7z/rar/gzip/bzip2/xz/tar/png/jpeg/gif/webp/pdf/elf/PE-with-verified-header/CAFEBABE); 95 BMP>=14B; 94 #! script; 92 JSON/XML (binary-classified only, as upstream); 90/86/80 text tiers (upstream printable = 0x20..0x7E, whitespace excluded — this is what keeps tier 80 reachable); 72/45 base64; 65 partial-printable + unverified MZ; 30 structured binary; 20 binary; 15 high-entropy noise; 10 unclassified; 5 low variation; 1 uniform byte; 0 empty. Payload types mirror upstream PayloadDetector (steg/payload.rs); the codec's fileinfo magic table is not yet publicly reusable — switch the magic half of payload.rs to it once codec exposes a sniff API."
 
 [entries.auto_lsb_dedup_rank]
-ours = "—"
-status = "missing"
-notes = "Dedup by fingerprint+total_bytes (+options when truncated — a matching prefix does not prove identical full payloads), rank by score desc, progress callbacks every 8 candidates + batch flushes of 10. Lane A PR-2."
+ours = "steg::auto_lsb::DedupRanker + scan_with_limits — XXH3 fingerprint over the bounded preview"
+status = "covered"
+notes = "Dedup by fingerprint+total_bytes (+options when truncated — a matching prefix does not prove identical full payloads), higher-score duplicate replaces in place, rank by score desc (stable, ties keep insertion order), progress callbacks every 8 candidates + final. Upstream's 10-candidate batch flushes are a UI concern; the headless scan returns one ranked Vec. Lane A PR-2."
 
 [entries.auto_lsb_phase2_apply]
-ours = "— (supersets upstream via Workbench/Auto-Decode handoff)"
-status = "missing"
-notes = "Phase 2 full extraction on demand + Apply Settings / Extract Bytes / Send to Workbench / Send to Auto Analyze / Save Payload. Upstream has apply+save; our superset is the cross-tool composition. Lane A PR-2 + GUI."
+ours = "Phase 2 = extract_bounded with the candidate's options at any max_bytes (engine-side); registry op auto_lsb_scan (CostClass::Solver) returns settings JSON that feeds image_extract_bits directly. GUI Apply Settings / Send to Workbench / Save Payload land with the Stego Lab lane"
+status = "partial"
+notes = "Engine + registry surface complete and tested end-to-end (scan ranks a hidden payload top; apply recovers it). The cross-tool handoff (Workbench/Auto-Decode composition) and GUI actions are the later GUI lane. Lane A PR-2 + GUI."
 
 # ------------------------------------------------ structure/carving ----
 

@@ -12,9 +12,11 @@
 
 #![allow(clippy::result_large_err)]
 
+pub mod auto_lsb;
 pub mod extract;
 pub mod java_random;
 pub mod ops;
+pub mod payload;
 pub mod transforms;
 
 use cybercipher_core::OperationRegistry;
