@@ -1620,3 +1620,342 @@ button.rsa-finding-row:focus-visible,
   font-size: 13px;
   flex: 1;
 }
+
+/* --------------------------------------------------------- PKI lab ---- */
+
+.pki-page .pki-expl {
+  max-width: 860px;
+  line-height: 1.6;
+}
+
+.pki-tabs {
+  display: flex;
+  gap: 4px;
+  margin-top: 14px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+
+.pki-tab {
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 6px 12px;
+  margin-bottom: -1px;
+  font-family: var(--mono);
+}
+
+.pki-tab:hover {
+  color: var(--text);
+}
+
+.pki-tab.active {
+  color: var(--text);
+  border-bottom-color: var(--accent);
+}
+
+.pki-tab-body {
+  margin-top: 16px;
+  max-width: 880px;
+}
+
+.pki-section {
+  margin-bottom: 22px;
+}
+
+.pki-section h3 {
+  margin: 0 0 10px;
+  font-size: 11.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-dim);
+  border-bottom: 1px dashed var(--border);
+  padding-bottom: 4px;
+}
+
+.pki-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 8px;
+  min-width: 0;
+}
+
+.pki-field label {
+  font-size: 11.5px;
+  color: var(--text-dim);
+  font-family: var(--mono);
+}
+
+.pki-field .pki-hint {
+  font-family: var(--sans);
+  opacity: 0.75;
+  font-size: 10.5px;
+}
+
+.pki-field input,
+.pki-field textarea {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 3px;
+  padding: 4px 6px;
+  font-size: 12px;
+  font-family: var(--mono);
+  width: 100%;
+}
+
+.pki-field textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.pki-field input:focus,
+.pki-field textarea:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+
+.pki-data-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.pki-data-row select {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+
+.pki-run-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+  flex-wrap: wrap;
+}
+
+.pki-select-label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--text-dim);
+}
+
+.pki-select-label select {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 4px 6px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+}
+
+.pki-subhead {
+  font-size: 10.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-family: var(--mono);
+  margin: 12px 0 4px;
+}
+
+.pki-report {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.pki-report-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin-bottom: 4px;
+}
+
+.pki-kind-chip {
+  font-family: var(--mono);
+  font-size: 10px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  border: 1px solid var(--border-strong);
+  background: var(--bg);
+  color: var(--accent);
+  white-space: nowrap;
+}
+
+.pki-kind-chip.priv {
+  color: var(--amber);
+}
+
+.pki-kind-chip.pub {
+  color: var(--green);
+}
+
+.pki-src {
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.pki-summary {
+  font-size: 12px;
+  line-height: 1.5;
+  margin-bottom: 6px;
+}
+
+.pki-alternatives {
+  font-size: 11px;
+  font-family: var(--mono);
+  margin-top: 6px;
+}
+
+.pki-result-block {
+  margin-top: 6px;
+}
+
+.pki-size-note {
+  font-size: 10.5px;
+  font-family: var(--mono);
+  margin-top: 2px;
+}
+
+.pki-verdict {
+  font-family: var(--mono);
+  font-size: 11.5px;
+  padding: 5px 8px;
+  border-radius: 4px;
+  margin: 4px 0;
+  word-break: break-word;
+}
+
+.pki-verdict.ok {
+  color: var(--green);
+  background: color-mix(in srgb, var(--green) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--green) 35%, transparent);
+}
+
+.pki-verdict.bad {
+  color: var(--red);
+  background: color-mix(in srgb, var(--red) 8%, transparent);
+  border: 1px solid color-mix(in srgb, var(--red) 35%, transparent);
+}
+
+.pki-facts {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+  margin: 2px 0 4px;
+  font-size: 11.5px;
+}
+
+.pki-rdn-list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-bottom: 6px;
+}
+
+.pki-rdn-row {
+  display: flex;
+  gap: 10px;
+  align-items: baseline;
+  padding: 3px 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 11.5px;
+}
+
+.pki-rdn-name {
+  font-family: var(--mono);
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.pki-rdn-oid {
+  font-family: var(--mono);
+  font-size: 10px;
+  white-space: nowrap;
+}
+
+.pki-rdn-value {
+  font-family: var(--mono);
+  word-break: break-all;
+  min-width: 0;
+}
+
+.pki-advanced-toggle {
+  background: none;
+  border: none;
+  color: var(--text-dim);
+  cursor: pointer;
+  font-size: 11.5px;
+  padding: 4px 0 6px;
+  text-align: left;
+}
+
+.pki-advanced-toggle:hover {
+  color: var(--text);
+}
+
+.pki-twist {
+  display: inline-block;
+  width: 10px;
+  color: var(--accent);
+}
+
+.pki-asn1-node.nested {
+  margin-left: 16px;
+  border-left: 1px solid var(--border);
+  padding-left: 6px;
+}
+
+.pki-asn1-row {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+  width: 100%;
+  background: none;
+  border: none;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 2px 2px;
+  text-align: left;
+  cursor: default;
+}
+
+button.pki-asn1-row {
+  cursor: pointer;
+}
+
+button.pki-asn1-row:hover .pki-asn1-tag {
+  color: var(--accent);
+}
+
+.pki-asn1-tag {
+  white-space: nowrap;
+}
+
+.pki-asn1-value {
+  color: var(--text-dim);
+  word-break: break-all;
+}
+
+.pki-asn1-preview {
+  font-family: var(--mono);
+  font-size: 10px;
+  margin-left: 18px;
+  word-break: break-all;
+}

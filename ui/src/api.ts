@@ -300,4 +300,451 @@ export const api = {
 
   cryptoAssist: (request: AssistRequest) =>
     invoke<AssistResult>("crypto_assist", { request }),
+
+  // ------------------------------------------------------------- PKI lab ----
+
+  pkiInspectKey: (material: string, hint?: string | null) =>
+    invoke<PkiKeyReport>("pki_inspect_key", { material, hint }),
+
+  pkiRsaKeygen: (bits: number) =>
+    invoke<PkiRsaKeygenResult>("pki_rsa_keygen", { request: { bits } }),
+
+  pkiRsaEncrypt: (request: PkiRsaEncryptRequest) =>
+    invoke<PkiRsaEncryptResult>("pki_rsa_encrypt", { request }),
+
+  pkiRsaDecrypt: (request: PkiRsaDecryptRequest) =>
+    invoke<PkiRsaDecryptResult>("pki_rsa_decrypt", { request }),
+
+  pkiRsaSign: (request: PkiRsaSignRequest) =>
+    invoke<PkiRsaSignResult>("pki_rsa_sign", { request }),
+
+  pkiRsaVerify: (request: PkiRsaVerifyRequest) =>
+    invoke<SignatureVerifyResult>("pki_rsa_verify", { request }),
+
+  pkiEccKeygen: (curve: string) =>
+    invoke<PkiEccKeygenResult>("pki_ecc_keygen", { request: { curve } }),
+
+  pkiEcdsaSign: (request: PkiEcdsaSignRequest) =>
+    invoke<PkiEcdsaSignResult>("pki_ecdsa_sign", { request }),
+
+  pkiEcdsaVerify: (request: PkiEcdsaVerifyRequest) =>
+    invoke<PkiEcdsaVerifyResult>("pki_ecdsa_verify", { request }),
+
+  pkiEcdh: (request: { curve: string; private_hex: string; peer_public_hex: string }) =>
+    invoke<PkiSharedSecretResult>("pki_ecdh", { request }),
+
+  pkiEd25519Sign: (request: { private_hex: string; data_text: string; data_encoding: string }) =>
+    invoke<PkiSignatureHexResult>("pki_ed25519_sign", { request }),
+
+  pkiEd25519Verify: (request: {
+    public_hex: string;
+    data_text: string;
+    data_encoding: string;
+    signature_hex: string;
+  }) => invoke<PkiEd25519VerifyResult>("pki_ed25519_verify", { request }),
+
+  pkiX25519: (request: { private_hex: string; peer_public_hex: string }) =>
+    invoke<PkiSharedSecretResult>("pki_x25519", { request }),
+
+  pkiSm2Keygen: () => invoke<PkiSm2KeygenResult>("pki_sm2_keygen"),
+
+  pkiSm2Sign: (request: {
+    private_hex: string;
+    data_text: string;
+    data_encoding: string;
+    user_id?: string | null;
+  }) => invoke<PkiSm2SignResult>("pki_sm2_sign", { request }),
+
+  pkiSm2Verify: (request: {
+    public_hex: string;
+    data_text: string;
+    data_encoding: string;
+    signature_hex: string;
+    user_id?: string | null;
+  }) => invoke<PkiSm2VerifyResult>("pki_sm2_verify", { request }),
+
+  pkiSm2Encrypt: (request: {
+    public_hex: string;
+    plaintext_text: string;
+    plaintext_encoding: string;
+  }) => invoke<PkiSm2EncryptResult>("pki_sm2_encrypt", { request }),
+
+  pkiSm2Decrypt: (request: {
+    private_hex: string;
+    ciphertext_text: string;
+    ciphertext_encoding: string;
+  }) => invoke<PkiSm2DecryptResult>("pki_sm2_decrypt", { request }),
+
+  pkiCertInspect: (material: string) =>
+    invoke<PkiCertReport>("pki_cert_inspect", { request: { material } }),
 };
+
+// -------------------------------------------------------------- PKI lab ----
+// Mirrors the serde types in apps/cybercipher-gui/src/pki_commands.rs and the
+// engine structs in crates/cybercipher-pki; keep them in sync.
+
+/** One label/value row of a key or certificate report. */
+export interface PkiField {
+  label: string;
+  value: string;
+  multiline: boolean;
+}
+
+/** Binary result: lowercase hex is canonical, UTF-8 rendering when valid. */
+export interface PkiBytes {
+  hex: string;
+  utf8?: string;
+  size: number;
+}
+
+/** Unified key-inspection report from pki_inspect_key. */
+export interface PkiKeyReport {
+  kind: "rsa" | "ec" | "ed25519" | "x25519" | "sm2";
+  curve?: string;
+  is_private: boolean;
+  bit_length?: number;
+  source_format: string;
+  summary: string;
+  public_fields: PkiField[];
+  private_fields: PkiField[];
+  encodings: PkiField[];
+  alternatives: string[];
+}
+
+/** Mirrors the engine's RsaKeyMaterial (hex components). */
+export interface RsaKeyMaterial {
+  n: string;
+  e: string;
+  d: string;
+  p: string;
+  q: string;
+  dp: string;
+  dq: string;
+  qinv: string;
+}
+
+export interface PkiRsaKeygenResult {
+  private_pem: string;
+  public_pem: string;
+  private_pkcs1_pem: string;
+  public_pkcs1_pem: string;
+  report: PkiKeyReport;
+}
+
+export interface PkiRsaEncryptRequest {
+  key_pem: string;
+  scheme: "oaep" | "pkcs1v15";
+  hash?: string | null;
+  label?: string | null;
+  plaintext_text: string;
+  plaintext_encoding: string;
+}
+
+export interface PkiRsaEncryptResult {
+  ciphertext: PkiBytes;
+  scheme: string;
+  hash?: string;
+}
+
+export interface PkiRsaDecryptRequest {
+  key_pem: string;
+  scheme: "oaep" | "pkcs1v15";
+  hash?: string | null;
+  label?: string | null;
+  ciphertext_text: string;
+  ciphertext_encoding: string;
+}
+
+export interface PkiRsaDecryptResult {
+  plaintext: PkiBytes;
+}
+
+export interface PkiRsaSignRequest {
+  key_pem: string;
+  scheme: "pkcs1v15" | "pss";
+  hash: string;
+  salt_len?: string | null;
+  data_text: string;
+  data_encoding: string;
+}
+
+export interface PkiRsaSignResult {
+  signature: PkiBytes;
+  scheme: string;
+  digest: string;
+  salt_len?: string;
+}
+
+export interface PkiRsaVerifyRequest {
+  key_pem: string;
+  scheme: "pkcs1v15" | "pss";
+  hash: string;
+  salt_len?: string | null;
+  data_text: string;
+  data_encoding: string;
+  signature_text: string;
+}
+
+/** Mirrors cybercipher_pki::SignatureVerifyResult. */
+export interface SignatureVerifyResult {
+  valid: boolean;
+  reason?: string;
+  scheme: string;
+  digest: string;
+  salt_len?: number;
+}
+
+export interface PkiEccKeygenResult {
+  curve: string;
+  private_hex: string;
+  public_compressed_hex: string;
+  public_uncompressed_hex: string;
+  private_pkcs8_pem: string;
+  public_spki_pem: string;
+  report: PkiKeyReport;
+}
+
+export interface PkiEcdsaSignRequest {
+  curve: string;
+  private_hex: string;
+  digest: string;
+  format?: string | null;
+  nonce?: string | null;
+  data_text: string;
+  data_encoding: string;
+}
+
+export interface PkiEcdsaSignResult {
+  signature_hex: string;
+  curve: string;
+  digest: string;
+  format: string;
+  nonce: string;
+}
+
+export interface PkiEcdsaVerifyRequest {
+  curve: string;
+  public_hex: string;
+  digest: string;
+  format?: string | null;
+  data_text: string;
+  data_encoding: string;
+  signature_hex: string;
+}
+
+/** Mirrors cybercipher_pki::EcdsaVerifyResult. */
+export interface PkiEcdsaVerifyResult {
+  valid: boolean;
+  reason?: string;
+  curve: string;
+  digest: string;
+  signature_format: string;
+}
+
+export interface PkiSharedSecretResult {
+  shared_secret_hex: string;
+}
+
+export interface PkiSignatureHexResult {
+  signature_hex: string;
+}
+
+/** Mirrors cybercipher_pki::Ed25519VerifyResult. */
+export interface PkiEd25519VerifyResult {
+  valid: boolean;
+  reason?: string;
+}
+
+/** Mirrors cybercipher_pki::Sm2KeyPair. */
+export interface Sm2KeyPair {
+  private_hex: string;
+  public_compressed_hex: string;
+  public_uncompressed_hex: string;
+}
+
+export interface PkiSm2KeygenResult extends Sm2KeyPair {
+  report: PkiKeyReport;
+}
+
+export interface PkiSm2SignResult {
+  signature_hex: string;
+  user_id: string;
+}
+
+/** Mirrors cybercipher_pki::Sm2VerifyResult. */
+export interface PkiSm2VerifyResult {
+  valid: boolean;
+  reason?: string;
+  user_id: string;
+}
+
+export interface PkiSm2EncryptResult {
+  ciphertext: PkiBytes;
+}
+
+export interface PkiSm2DecryptResult {
+  plaintext: PkiBytes;
+}
+
+export interface PkiCertReport {
+  object_type: "certificate" | "csr" | "crl";
+  pem_label?: string;
+  der_hex: string;
+  certificate?: CertificateInspection;
+  csr?: CsrInspection;
+  crl?: CrlInspection;
+  asn1_tree: Asn1Node[];
+}
+
+/** Mirrors cybercipher_pki::RdnEntry. */
+export interface RdnEntry {
+  oid: string;
+  name?: string;
+  value: string;
+}
+
+/** Mirrors cybercipher_pki::PublicKeyInfoInspection. */
+export interface PublicKeyInfoInspection {
+  algorithm: string;
+  algorithm_oid: string;
+  key_type: string;
+  bit_length?: number;
+  curve?: string;
+  public_key_hex?: string;
+}
+
+/** Mirrors cybercipher_pki::ExtensionSummary. */
+export interface ExtensionSummary {
+  oid: string;
+  name?: string;
+  critical: boolean;
+}
+
+/** Mirrors cybercipher_pki::BasicConstraintsInspection. */
+export interface BasicConstraintsInspection {
+  ca: boolean;
+  path_len?: number;
+}
+
+/** Mirrors cybercipher_pki::CertificateInspection. */
+export interface CertificateInspection {
+  version: number;
+  version_label: string;
+  serial_hex: string;
+  signature_algorithm: string;
+  signature_algorithm_oid: string;
+  issuer: RdnEntry[];
+  subject: RdnEntry[];
+  not_before: string;
+  not_after: string;
+  public_key: PublicKeyInfoInspection;
+  fingerprint_sha256: string;
+  fingerprint_sha1: string;
+  extensions: ExtensionSummary[];
+  subject_alt_names: string[];
+  key_usage: string[];
+  extended_key_usage: string[];
+  basic_constraints?: BasicConstraintsInspection;
+  subject_key_identifier?: string;
+  authority_key_identifier?: string;
+  summary: string;
+}
+
+/** Mirrors cybercipher_pki::AttributeSummary. */
+export interface AttributeSummary {
+  oid: string;
+  name?: string;
+  value_count: number;
+}
+
+/** Mirrors cybercipher_pki::CsrInspection. */
+export interface CsrInspection {
+  version: number;
+  subject: RdnEntry[];
+  public_key: PublicKeyInfoInspection;
+  signature_algorithm: string;
+  signature_algorithm_oid: string;
+  attributes: AttributeSummary[];
+  signature_verified: boolean | null;
+  verification_note: string;
+  summary: string;
+}
+
+/** Mirrors cybercipher_pki::RevokedEntry. */
+export interface RevokedEntry {
+  serial_hex: string;
+  revocation_date: string;
+}
+
+/** Mirrors cybercipher_pki::CrlInspection. */
+export interface CrlInspection {
+  issuer: RdnEntry[];
+  this_update: string;
+  next_update?: string;
+  signature_algorithm: string;
+  signature_algorithm_oid: string;
+  revoked: RevokedEntry[];
+  revoked_count: number;
+  crl_number_hex?: string;
+  summary: string;
+}
+
+/** Mirrors cybercipher_pki::Asn1Class. */
+export type Asn1Class = "universal" | "application" | "context" | "private";
+
+/** Mirrors cybercipher_pki::Asn1Value (tagged union). */
+export type Asn1Value =
+  | { type: "integer"; value: string; hex: string }
+  | { type: "boolean"; value: boolean }
+  | { type: "null" }
+  | { type: "object_identifier"; dotted: string; name?: string }
+  | { type: "utf8_string"; text: string }
+  | { type: "printable_string"; text: string }
+  | { type: "ia5_string"; text: string }
+  | { type: "numeric_string"; text: string }
+  | { type: "visible_string"; text: string }
+  | { type: "utc_time"; text: string }
+  | { type: "generalized_time"; text: string }
+  | { type: "bit_string"; hex: string; unused_bits: number }
+  | { type: "octet_string"; hex: string }
+  | { type: "raw"; hex: string };
+
+/** Mirrors cybercipher_pki::Asn1Node. */
+export interface Asn1Node {
+  tag_class: Asn1Class;
+  tag_number: number;
+  tag_name?: string;
+  constructed: boolean;
+  offset: number;
+  header_len: number;
+  value_offset: number;
+  value_len: number;
+  total_len: number;
+  value?: Asn1Value;
+  children: Asn1Node[];
+  hex_preview?: string;
+}
+
+/**
+ * Render a rejected `invoke` error as readable text. Tauri rejects with the
+ * serialized command error; the PKI commands send the engine's structured
+ * OperationError (kind/message/parameter/expected/actual/details).
+ */
+export function formatInvokeError(e: unknown): string {
+  if (typeof e === "string") return e;
+  if (e && typeof e === "object") {
+    const err = e as Record<string, unknown>;
+    if (typeof err.message === "string") {
+      const kind = typeof err.kind === "string" ? err.kind : "error";
+      let text = `${kind}: ${err.message}`;
+      const extra: string[] = [];
+      if (typeof err.parameter === "string") extra.push(`parameter=${err.parameter}`);
+      if (typeof err.expected === "string") extra.push(`expected ${err.expected}`);
+      if (typeof err.actual === "string") extra.push(`got ${err.actual}`);
+      if (typeof err.details === "string") extra.push(err.details);
+      if (extra.length > 0) text += ` — ${extra.join("; ")}`;
+      return text;
+    }
+  }
+  return String(e);
+}
