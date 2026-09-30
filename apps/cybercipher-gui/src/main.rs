@@ -27,6 +27,7 @@ fn main() {
             commands::list_operations,
             commands::bake,
             commands::auto_analyze,
+            commands::crypto_assist,
             commands::rsa_analyze,
             commands::cancel_run,
             commands::input_stats,

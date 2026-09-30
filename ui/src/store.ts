@@ -1,6 +1,8 @@
 import { create } from "zustand";
 import {
   api,
+  type AssistHit,
+  type AssistResult,
   type AutoCandidate,
   type BakeResponse,
   type ExecutionReport,
@@ -157,6 +159,21 @@ export interface Store {
   rsaRunning: boolean;
   rsaLastError: string | null;
 
+  // Crypto assist panel (Auto Analyze page)
+  assistCiphertext: string;
+  assistEncoding: Store["inputEncoding"];
+  assistKeyCandidate: string;
+  assistIvHex: string;
+  assistHint: string;
+  assistResult: AssistResult | null;
+  assistRunning: boolean;
+  assistError: string | null;
+  /**
+   * Honesty note shown in the Workbench after "Apply as Recipe" when the hit
+   * used an IV the recipe input cannot express yet (carved first/last block).
+   */
+  assistRecipeNote: string | null;
+
   init: () => Promise<void>;
   setPage: (p: Page) => void;
   setTheme: (t: "dark" | "light") => void;
@@ -170,6 +187,15 @@ export interface Store {
   runRsa: (solve: boolean) => Promise<void>;
   applyRsaReportParams: () => void;
   resetRsaLab: () => void;
+
+  setAssistCiphertext: (t: string) => void;
+  setAssistEncoding: (e: Store["inputEncoding"]) => void;
+  setAssistKeyCandidate: (t: string) => void;
+  setAssistIvHex: (t: string) => void;
+  setAssistHint: (t: string) => void;
+  runCryptoAssist: () => Promise<void>;
+  applyAssistHit: (hit: AssistHit) => void;
+  dismissAssistRecipeNote: () => void;
 
   addOp: (opId: string, atIndex?: number) => void;
   removeOp: (nodeId: string) => void;
@@ -215,6 +241,16 @@ export const useStore = create<Store>((set, get) => ({
   rsaReport: null,
   rsaRunning: false,
   rsaLastError: null,
+
+  assistCiphertext: "",
+  assistEncoding: "hex",
+  assistKeyCandidate: "",
+  assistIvHex: "",
+  assistHint: "",
+  assistResult: null,
+  assistRunning: false,
+  assistError: null,
+  assistRecipeNote: null,
 
   init: async () => {
     const ops = await api.listOperations();
@@ -297,6 +333,117 @@ export const useStore = create<Store>((set, get) => ({
       rsaReport: null,
       rsaLastError: null,
     }),
+
+  setAssistCiphertext: (assistCiphertext) => set({ assistCiphertext }),
+
+  setAssistEncoding: (assistEncoding) => set({ assistEncoding }),
+
+  setAssistKeyCandidate: (assistKeyCandidate) => set({ assistKeyCandidate }),
+
+  setAssistIvHex: (assistIvHex) => set({ assistIvHex }),
+
+  setAssistHint: (assistHint) => set({ assistHint }),
+
+  runCryptoAssist: async () => {
+    const {
+      assistCiphertext,
+      assistEncoding,
+      assistKeyCandidate,
+      assistIvHex,
+      assistHint,
+      assistRunning,
+    } = get();
+    if (assistRunning) return;
+    if (!assistCiphertext.trim()) {
+      set({ assistError: "paste the ciphertext to analyze first" });
+      return;
+    }
+    if (!assistKeyCandidate.trim()) {
+      set({ assistError: "enter a key candidate — the assist searches around what you give it, it does not brute-force keys" });
+      return;
+    }
+    set({ assistRunning: true, assistError: null });
+    try {
+      const result = await api.cryptoAssist({
+        ciphertext_text: assistCiphertext,
+        ciphertext_encoding: assistEncoding,
+        key_candidate: assistKeyCandidate,
+        iv_hex: assistIvHex.trim() !== "" ? assistIvHex : null,
+        hint: assistHint.trim() !== "" ? assistHint : null,
+      });
+      set({ assistResult: result });
+    } catch (e) {
+      set({ assistError: String(e) });
+    } finally {
+      set({ assistRunning: false });
+    }
+  },
+
+  applyAssistHit: (hit) => {
+    const { opsById, assistCiphertext, assistEncoding } = get();
+    const aesOp = opsById["aes-decrypt"];
+    if (!aesOp) return;
+
+    // Build the recipe the same way applyAutoCandidate/importRecipeJson do:
+    // fresh ids, default params from the op spec, then explicit overrides.
+    nodeCounter = 0;
+    const nodes: RecipeNode[] = [];
+
+    // Input-decode step so the Workbench bytes match the assist's ciphertext.
+    const decodeOpId: string | null =
+      assistEncoding === "hex"
+        ? "from-hex"
+        : assistEncoding === "base64"
+          ? "from-base64"
+          : assistEncoding === "decimal"
+            ? "from-decimal"
+            : null; // utf8 input needs no decode op
+    const decodeOp = decodeOpId ? opsById[decodeOpId] : undefined;
+    if (decodeOpId && decodeOp) {
+      nodeCounter += 1;
+      nodes.push({
+        id: `n${nodeCounter}`,
+        op: decodeOpId,
+        enabled: true,
+        params: initParams(decodeOp),
+      });
+    }
+
+    // aes-decrypt with the hit's resolved parameters (key and IV as hex).
+    nodeCounter += 1;
+    const params = initParams(aesOp);
+    params.key = hit.key_hex;
+    params.key_encoding = "hex";
+    params.mode = hit.mode;
+    if (hit.mode !== "ecb") {
+      params.iv = hit.iv_hex;
+      params.iv_encoding = "hex";
+    }
+    params.padding = hit.padding ?? "none";
+    nodes.push({ id: `n${nodeCounter}`, op: "aes-decrypt", enabled: true, params });
+
+    // Keep it honest: no registry op can carve an IV block out of the input
+    // yet, so say exactly what the user must do with the input themselves.
+    let assistRecipeNote: string | null = null;
+    if (hit.iv_source === "first_block") {
+      assistRecipeNote =
+        "Crypto Assist recipe: the IV was carved from the FIRST 16 bytes of the ciphertext (no op can trim that block yet). Feed aes-decrypt the ciphertext WITHOUT its leading IV block — drop the first 16 bytes (e.g. the first 32 hex characters) from the input to reproduce the assist preview.";
+    } else if (hit.iv_source === "last_block") {
+      assistRecipeNote =
+        "Crypto Assist recipe: the IV was carved from the LAST 16 bytes of the ciphertext (no op can trim that block yet). Feed aes-decrypt the ciphertext WITHOUT its trailing IV block — drop the last 16 bytes from the input to reproduce the assist preview.";
+    }
+
+    set({
+      recipe: nodes,
+      inputText: assistCiphertext,
+      inputEncoding: assistEncoding,
+      page: "workbench",
+      assistRecipeNote,
+    });
+    void get().bake(false);
+  },
+
+  dismissAssistRecipeNote: () => set({ assistRecipeNote: null }),
 
   addOp: (opId, atIndex) => {
     const op = get().opsById[opId];

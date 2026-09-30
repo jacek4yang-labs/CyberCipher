@@ -211,6 +211,62 @@ export interface RsaAnalyzeRequest {
   budget_ms: number;
 }
 
+// ---------------------------------------------------------- crypto assist ----
+
+/** Mirrors cybercipher_attack::assist::KeyInterpretation (serde snake_case). */
+export type AssistKeyInterpretation = "utf8" | "hex" | "base64";
+
+/** Mirrors cybercipher_attack::assist::Mode (serde snake_case). */
+export type AssistMode = "ecb" | "cbc" | "ctr" | "cfb" | "ofb";
+
+/** Mirrors cybercipher_attack::assist::Padding (serde snake_case). */
+export type AssistPadding = "pkcs7" | "none" | "zero" | "iso7816";
+
+/** Mirrors cybercipher_attack::assist::IvSource (serde snake_case). */
+export type AssistIvSource = "explicit" | "first_block" | "last_block" | "zero";
+
+/** Mirrors cybercipher_attack::assist::AssistHit (serde snake_case). */
+export interface AssistHit {
+  rank: number;
+  score: number;
+  confident: boolean;
+  cipher: string;
+  key_length: number;
+  key_interpretation: AssistKeyInterpretation;
+  /** Resolved key material as lowercase hex pairs. */
+  key_hex: string;
+  mode: AssistMode;
+  /** null for stream modes (CTR/CFB/OFB), which have no padding concept. */
+  padding: AssistPadding | null;
+  iv_source: AssistIvSource;
+  /** The IV actually used, as lowercase hex pairs (empty for ECB). */
+  iv_hex: string;
+  /** Bounded lossy plaintext preview produced by the engine. */
+  preview: string;
+  evidence: string[];
+}
+
+/** Mirrors cybercipher_attack::assist::AssistResult (serde snake_case). */
+export interface AssistResult {
+  hits: AssistHit[];
+  candidates_tried: number;
+  candidates_pruned: number;
+  deadline_ms: number;
+  timed_out: boolean;
+}
+
+/** Mirrors the GUI's crypto_assist command request. */
+export interface AssistRequest {
+  ciphertext_text: string;
+  /** utf8 | hex | base64 | decimal (same set as the Workbench input). */
+  ciphertext_encoding: string;
+  key_candidate: string;
+  /** Optional explicit IV as hex. */
+  iv_hex?: string | null;
+  /** Optional known-plaintext hint that boosts matching hits. */
+  hint?: string | null;
+}
+
 export const api = {
   listOperations: () => invoke<OperationInfo[]>("list_operations"),
 
@@ -241,4 +297,7 @@ export const api = {
 
   rsaAnalyze: (request: RsaAnalyzeRequest) =>
     invoke<RsaAnalyzerReport>("rsa_analyze", { request }),
+
+  cryptoAssist: (request: AssistRequest) =>
+    invoke<AssistResult>("crypto_assist", { request }),
 };
