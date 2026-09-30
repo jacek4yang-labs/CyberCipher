@@ -9,6 +9,7 @@ members = [
     "crates/cybercipher-pki",
     "crates/cybercipher-media",
     "crates/cybercipher-steg",
+    "crates/cybercipher-sstv",
     "apps/cybercipher-gui",
     "apps/cybercipher-cli",
 ]
@@ -38,6 +39,13 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 # crate does not expose palette/indices, and `png` is already in the tree via
 # image's `png` feature (no new transitive dependencies).
 png = "0.18"
+rustfft = "6.2"
+# Pinned exact per docs/design-steg-sstv.md (hard invariant 2): slowrx stays a
+# pinned crates.io dependency, re-evaluated for vendoring at 1.0.
+slowrx = "=0.5.3"
+symphonia = { version = "0.5.4", features = ["aac", "adpcm", "alac", "flac", "isomp4", "mkv", "mp1", "mp2", "mp3", "ogg", "pcm", "vorbis", "wav", "aiff", "caf"] }
+# Dev-dependency of cybercipher-sstv: synthetic WAV fixtures in tests only.
+hound = "3.5"
 
 cybercipher-core = { path = "crates/cybercipher-core" }
 cybercipher-codec = { path = "crates/cybercipher-codec" }
