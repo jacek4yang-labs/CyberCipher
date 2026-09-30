@@ -363,7 +363,7 @@ mod cbc {
             let mut out = [0u8; 16];
             {
                 let slice: &mut [u8] = &mut out;
-                let mut block: &mut AesBlock = slice.try_into().expect("16 bytes");
+                let block: &mut AesBlock = slice.try_into().expect("16 bytes");
                 cipher.decrypt_block(block);
                 for (a, b) in block.iter_mut().zip(prev.iter()) {
                     *a ^= *b;
