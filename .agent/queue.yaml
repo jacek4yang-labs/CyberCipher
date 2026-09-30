@@ -31,10 +31,10 @@
 
 - id: CTF-SPECIALTY-01
   title: Brainfuck/Ook bounded interpreter, AAEncode, JJEncode, Chinese encodings (provenance first)
-  status: pending
+  status: in_progress
   priority: P2
   depends_on: []
-  owner: classical
+  owner: agent/ctf
 
 - id: M7-SIG-01
   title: Crypto signature scanner (TEA delta, AES S-box, SM4, SHA/MD5, ChaCha, RC4 KSA)
