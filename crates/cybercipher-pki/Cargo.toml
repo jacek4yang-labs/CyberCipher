@@ -59,3 +59,12 @@ signature = "2"
 # the elliptic-curve 0.13 / pkcs8 0.10 stack above.
 sm2 = { version = "0.13", features = ["alloc", "pem", "pkcs8", "std"] }
 sm3 = "0.4"
+
+# --- X.509 certificate / CSR / CRL structures ---
+# x509-cert 0.2 is version-aligned with the ASN.1 stack above (der 0.7 /
+# spki 0.7), so parsed structures interoperate directly with the key-format
+# code. x509-parser (asn1-rs/der-parser based, independent of that stack)
+# supplements it with the richer extension parsers (SAN, key usage, EKU, ...)
+# that x509-cert 0.2 does not decode for us.
+x509-cert = "0.2"
+x509-parser = "0.16"
