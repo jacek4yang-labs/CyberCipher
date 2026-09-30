@@ -1,0 +1,12 @@
+[package]
+name = "cybercipher-steg"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+repository.workspace = true
+description = "Image steganography engine: StegSolve-compatible transforms, bit extraction, Auto LSB (CyberCipher)"
+
+[dependencies]
+cybercipher-core.workspace = true
+cybercipher-media.workspace = true
+serde_json.workspace = true

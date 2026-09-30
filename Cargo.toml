@@ -7,6 +7,8 @@ members = [
     "crates/cybercipher-crypto",
     "crates/cybercipher-attack",
     "crates/cybercipher-pki",
+    "crates/cybercipher-media",
+    "crates/cybercipher-steg",
     "apps/cybercipher-gui",
     "apps/cybercipher-cli",
 ]
@@ -31,6 +33,11 @@ xxhash-rust = { version = "0.8", features = ["xxh3"] }
 dirs = "6"
 parking_lot = "0.12"
 criterion = "0.5"
+image = { version = "0.25", default-features = false, features = ["png", "jpeg", "gif", "bmp", "webp"] }
+# Direct dependency of cybercipher-media's indexed-PNG path: the `image`
+# crate does not expose palette/indices, and `png` is already in the tree via
+# image's `png` feature (no new transitive dependencies).
+png = "0.18"
 
 cybercipher-core = { path = "crates/cybercipher-core" }
 cybercipher-codec = { path = "crates/cybercipher-codec" }
@@ -38,6 +45,8 @@ cybercipher-engine = { path = "crates/cybercipher-engine" }
 cybercipher-crypto = { path = "crates/cybercipher-crypto" }
 cybercipher-attack = { path = "crates/cybercipher-attack" }
 cybercipher-pki = { path = "crates/cybercipher-pki" }
+cybercipher-media = { path = "crates/cybercipher-media" }
+cybercipher-steg = { path = "crates/cybercipher-steg" }
 
 [profile.release]
 opt-level = 3
