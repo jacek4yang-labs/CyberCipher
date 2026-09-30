@@ -1128,6 +1128,7 @@ dependencies = [
  "cybercipher-core",
  "cybercipher-crypto",
  "cybercipher-engine",
+ "cybercipher-pki",
  "num-bigint",
  "serde_json",
 ]
