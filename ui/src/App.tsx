@@ -16,6 +16,7 @@ import { RecipesPage } from "./components/RecipesPage";
 import { AutoPage } from "./components/AutoPage";
 import { RsaLabPage } from "./components/RsaLabPage";
 import { PkiLabPage } from "./components/PkiLabPage";
+import { SstvLabPage } from "./components/SstvLabPage";
 import { SettingsPage } from "./components/SettingsPage";
 import { useStore, debounce } from "./store";
 import { useState } from "react";
@@ -42,6 +43,8 @@ export default function App() {
         <RsaLabPage />
       ) : page === "pki-lab" ? (
         <PkiLabPage />
+      ) : page === "sstv-lab" ? (
+        <SstvLabPage />
       ) : page === "auto" ? (
         <AutoPage />
       ) : page === "recipes" ? (
