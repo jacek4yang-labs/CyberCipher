@@ -85,7 +85,15 @@ pub fn parse_sm2_public_key(public_hex: &str) -> PkiResult<Sm2PublicKeyMaterial>
 /// Parse a 32-byte big-endian private scalar from hex into a crate-level
 /// `SecretKey`, rejecting zero and scalars >= the group order.
 pub(crate) fn secret_from_hex(private_hex: &str) -> PkiResult<sm2::SecretKey> {
-    let bytes = decode_scalar_hex("private_key", private_hex, SM2_SCALAR_LEN)?;
+    // JWK-style short scalars strip leading zeros, which can produce
+    // odd-length hex. Left-pad to even length before strict decoding —
+    // a 63-char scalar is the same integer as the 64-char padded form.
+    let padded = if !private_hex.len().is_multiple_of(2) {
+        format!("0{private_hex}")
+    } else {
+        private_hex.to_string()
+    };
+    let bytes = decode_scalar_hex("private_key", &padded, SM2_SCALAR_LEN)?;
     let field = sm2::FieldBytes::clone_from_slice(&bytes);
     sm2::SecretKey::from_bytes(&field).map_err(|e| {
         invalid_key("invalid private key scalar: not in the SM2 curve group order range")
