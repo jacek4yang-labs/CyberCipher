@@ -35,3 +35,18 @@ sha1 = { version = "0.10", features = ["oid"] }
 sha2 = { version = "0.10", features = ["oid"] }
 rand = "0.8"
 base64ct = "1"
+
+# --- ECC foundation (NIST curves + Ed25519 + X25519) ---
+# Mature RustCrypto crates; no hand-implemented curve arithmetic anywhere in
+# the `ecc` module. elliptic-curve 0.13 is version-aligned with the ASN.1
+# stack above (pkcs8 0.10 / spki 0.7 / der 0.7), so SPKI/PKCS#8 structures are
+# interoperable with the RSA side of the crate.
+elliptic-curve = { version = "0.13", features = ["alloc", "pem", "pkcs8", "sec1"] }
+p256 = { version = "0.13", features = ["ecdsa", "ecdh", "pem", "pkcs8", "std"] }
+p384 = { version = "0.13", features = ["ecdsa", "ecdh", "pem", "pkcs8", "std"] }
+# The shared ECDSA layer p256/p384 build on (0.16 in both). Added explicitly so
+# the generic P-256/P-384 helpers can name `ecdsa::Signature<C>`/`SigningKey`.
+ecdsa = { version = "0.16", features = ["alloc", "der", "digest", "signing", "verifying"] }
+ed25519-dalek = { version = "2", default-features = false, features = ["fast", "rand_core", "zeroize", "alloc", "pkcs8", "pem"] }
+x25519-dalek = { version = "2", features = ["static_secrets"] }
+signature = "2"
