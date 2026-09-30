@@ -1,8 +1,10 @@
-//! JWK / JWKS conversion for RSA keys (RFC 7517 + RFC 7518 section 6.3).
+//! JWK / JWKS conversion (RFC 7517): RSA keys (RFC 7518 section 6.3) and EC
+//! keys (RFC 7518 section 6.2, `kty: "EC"` with `crv` P-256/P-384).
 //!
 //! JWK big integers are base64url-encoded without padding (`n`, `e`, `d`,
-//! `p`, `q`, `dp`, `dq`, `qi`); CyberCipher's own transport format is hex, so
-//! conversion happens on both sides of the JWK boundary.
+//! `p`, `q`, `dp`, `dq`, `qi`, and the EC coordinates `x`/`y`); CyberCipher's
+//! own transport format is hex, so conversion happens on both sides of the
+//! JWK boundary.
 //!
 //! Encoding is strictly RFC-compliant (unpadded base64url); decoding
 //! tolerates padded input for interop with sloppy producers.
@@ -163,6 +165,129 @@ pub fn jwks_to_json(keys: &[RsaJwk]) -> PkiResult<String> {
     }
     serde_json::to_string(&Jwks { keys })
         .map_err(|e| PkiError::internal("JWKS serialization failed").with_details(e.to_string()))
+}
+
+// -- EC keys (RFC 7518 section 6.2) ---------------------------------------------
+
+/// An EC JSON Web Key: `kty: "EC"` with `crv` P-256/P-384 and fixed-width
+/// base64url `x`/`y` coordinates (plus optional `kid`).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct EccJwk {
+    pub kty: String,
+    pub crv: String,
+    pub x: String,
+    pub y: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub kid: Option<String>,
+}
+
+/// Convert an EC keypair to a public JWK (`x`/`y` from the uncompressed SEC1
+/// point). Only P-256/P-384 are representable; Ed25519/X25519 material is an
+/// `Unsupported` error (Ed25519 JWKs have no `y` coordinate).
+pub fn ecc_keypair_to_jwk(keypair: &crate::ecc::EccKeyPair) -> PkiResult<EccJwk> {
+    ecc_public_material_to_jwk(&crate::ecc::EccPublicKeyMaterial {
+        curve: keypair.curve,
+        public_compressed_hex: keypair.public_compressed_hex.clone(),
+        public_uncompressed_hex: keypair.public_uncompressed_hex.clone(),
+    })
+}
+
+/// Convert EC public material to a JWK. The point is re-validated on-curve
+/// during the hex decode path.
+pub fn ecc_public_material_to_jwk(
+    material: &crate::ecc::EccPublicKeyMaterial,
+) -> PkiResult<EccJwk> {
+    let crv = match material.curve {
+        crate::ecc::EccCurve::P256 => "P-256",
+        crate::ecc::EccCurve::P384 => "P-384",
+        other => {
+            return Err(PkiError::unsupported(format!(
+                "EC JWK conversion supports only P-256/P-384 (got {other})"
+            ))
+            .with_expected("P-256 (crv P-256) or P-384 (crv P-384)")
+            .with_actual(other.label()))
+        }
+    };
+    let point = crate::ecc::decode_hex("public_key", &material.public_uncompressed_hex)?;
+    let field_len = material.curve.private_key_size();
+    // Uncompressed SEC1: 0x04 || x || y with fixed-width coordinates.
+    if point.len() != 1 + 2 * field_len || point[0] != 0x04 {
+        return Err(PkiError::decode(
+            "EC public key is not an uncompressed SEC1 point (04 || x || y)",
+        )
+        .with_parameter("public_key")
+        .with_expected(format!("uncompressed point of {} bytes", 1 + 2 * field_len))
+        .with_actual(format!("{} bytes", point.len())));
+    }
+    let x = to_hex(&point[1..1 + field_len]);
+    let y = to_hex(&point[1 + field_len..]);
+    Ok(EccJwk {
+        kty: "EC".to_string(),
+        crv: crv.to_string(),
+        x: hex_to_b64url(&x),
+        y: hex_to_b64url(&y),
+        kid: None,
+    })
+}
+
+/// Convert an EC public JWK into validated public key material (the point is
+/// validated on-curve). Coordinates are fixed-width big-endian; producers
+/// that stripped leading zeros are tolerated via left-padding.
+pub fn ecc_jwk_to_public_material(jwk: &EccJwk) -> PkiResult<crate::ecc::EccPublicKeyMaterial> {
+    require_kty_ec(jwk)?;
+    let curve = match jwk.crv.as_str() {
+        "P-256" => crate::ecc::EccCurve::P256,
+        "P-384" => crate::ecc::EccCurve::P384,
+        other => {
+            return Err(PkiError::unsupported(format!("unsupported EC curve crv = '{other}'"))
+                .with_parameter("crv")
+                .with_expected("P-256 or P-384")
+                .with_actual(other.to_string()))
+        }
+    };
+    let field_len = curve.private_key_size();
+    let x = b64url_decode("x", &jwk.x)?;
+    let y = b64url_decode("y", &jwk.y)?;
+    if x.len() > field_len || y.len() > field_len {
+        return Err(PkiError::length(
+            format!("at most {field_len} bytes (fixed-width coordinate)"),
+            format!("{} / {} bytes", x.len(), y.len()),
+            "EC JWK coordinate is larger than the curve field size",
+        )
+        .with_parameter(if x.len() > field_len { "x" } else { "y" }));
+    }
+    let mut point = Vec::with_capacity(1 + 2 * field_len);
+    point.push(0x04);
+    point.extend(std::iter::repeat(0u8).take(field_len - x.len()));
+    point.extend_from_slice(&x);
+    point.extend(std::iter::repeat(0u8).take(field_len - y.len()));
+    point.extend_from_slice(&y);
+    crate::ecc::parse_ecc_public_key(curve, &to_hex(&point))
+}
+
+/// Parse a single EC JWK from JSON.
+pub fn parse_ecc_jwk(json: &str) -> PkiResult<EccJwk> {
+    serde_json::from_str(json)
+        .map_err(|e| PkiError::decode("invalid EC JWK JSON").with_details(e.to_string()))
+}
+
+/// Serialize an EC JWK to JSON (compact).
+pub fn ecc_jwk_to_json(jwk: &EccJwk) -> PkiResult<String> {
+    serde_json::to_string(jwk)
+        .map_err(|e| PkiError::internal("EC JWK serialization failed").with_details(e.to_string()))
+}
+
+fn require_kty_ec(jwk: &EccJwk) -> PkiResult<()> {
+    if !jwk.kty.eq_ignore_ascii_case("EC") {
+        return Err(PkiError::unsupported(format!(
+            "unsupported JWK key type: kty = '{}' (expected 'EC')",
+            jwk.kty
+        ))
+        .with_parameter("kty")
+        .with_expected("EC")
+        .with_actual(jwk.kty.clone()));
+    }
+    Ok(())
 }
 
 // -- Inspection ----------------------------------------------------------------

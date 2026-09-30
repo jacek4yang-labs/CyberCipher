@@ -13,8 +13,9 @@ pub mod jwk;
 pub mod pem;
 
 pub use jwk::{
-    jwk_to_json, jwk_to_keypair, jwk_to_public_material, jwks_to_json, keypair_to_jwk, parse_jwk,
-    parse_jwks, public_material_to_jwk, RsaJwk,
+    ecc_jwk_to_json, ecc_jwk_to_public_material, ecc_keypair_to_jwk, ecc_public_material_to_jwk,
+    jwk_to_json, jwk_to_keypair, jwk_to_public_material, jwks_to_json, keypair_to_jwk,
+    parse_ecc_jwk, parse_jwk, parse_jwks, public_material_to_jwk, EccJwk, RsaJwk,
 };
 pub use pem::{
     inspect_der, inspect_pem, parse_pem, parse_pkcs1_private_der, parse_pkcs1_public_der,

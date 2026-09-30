@@ -60,6 +60,13 @@ signature = "2"
 sm2 = { version = "0.13", features = ["alloc", "pem", "pkcs8", "std"] }
 sm3 = "0.4"
 
+# --- JWT / JWS (RFC 7519 + RFC 7515) ---
+# HMAC for the HS* family (version-aligned with the sha2 0.10 copy above,
+# both on digest 0.10). subtle (already resolved transitively via the
+# elliptic-curve stack) provides the constant-time MAC comparison.
+hmac = "0.12"
+subtle = "2"
+
 # --- X.509 certificate / CSR / CRL structures ---
 # x509-cert 0.2 is version-aligned with the ASN.1 stack above (der 0.7 /
 # spki 0.7), so parsed structures interoperate directly with the key-format
