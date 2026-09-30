@@ -72,9 +72,42 @@ fn gzip_op(v: &Value, _: &ParamMap, _: &ExecutionContext) -> OpResult<Value> {
     encoder
         .write_all(bytes.as_ref())
         .map_err(|e| OperationError::internal(format!("gzip failed: {e}")))?;
-    Ok(Value::Bytes(encoder.finish().map_err(|e| {
+    Ok(Value::from_bytes(encoder.finish().map_err(|e| {
         OperationError::internal(format!("gzip failed: {e}"))
     })?))
+}
+
+/// Compression *encoding* op (To Zlib).
+fn zlib_compress(data: &[u8]) -> OpResult<Vec<u8>> {
+    let mut encoder = flate2::write::ZlibEncoder::new(Vec::new(), flate2::Compression::default());
+    encoder
+        .write_all(data)
+        .map_err(|e| OperationError::internal(format!("zlib failed: {e}")))?;
+    encoder
+        .finish()
+        .map_err(|e| OperationError::internal(format!("zlib failed: {e}")))
+}
+
+fn zlib_encode_op(v: &Value, _: &ParamMap, _: &ExecutionContext) -> OpResult<Value> {
+    let bytes = input_bytes(v, "To Zlib")?;
+    Ok(Value::from_bytes(zlib_compress(bytes.as_ref())?))
+}
+
+/// Compression *encoding* op (To Deflate): raw DEFLATE stream, no wrapper.
+fn deflate_compress(data: &[u8]) -> OpResult<Vec<u8>> {
+    let mut encoder =
+        flate2::write::DeflateEncoder::new(Vec::new(), flate2::Compression::default());
+    encoder
+        .write_all(data)
+        .map_err(|e| OperationError::internal(format!("deflate failed: {e}")))?;
+    encoder
+        .finish()
+        .map_err(|e| OperationError::internal(format!("deflate failed: {e}")))
+}
+
+fn deflate_encode_op(v: &Value, _: &ParamMap, _: &ExecutionContext) -> OpResult<Value> {
+    let bytes = input_bytes(v, "To Deflate")?;
+    Ok(Value::from_bytes(deflate_compress(bytes.as_ref())?))
 }
 
 use std::io::Write;
@@ -166,5 +199,43 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
             "Round-trip tests",
         ),
         gzip_op,
+    );
+
+    reg.add_simple(
+        spec(
+            "to-zlib",
+            "To Zlib",
+            "Compresses bytes into a zlib-wrapped deflate stream.",
+            C,
+            &[B, T],
+            B,
+            CostClass::Interactive,
+            true,
+            vec![],
+            tags,
+            &["zlib compress", "zlib encode"],
+            "RFC 1950 (ZLIB)",
+            "Round-trip tests",
+        ),
+        zlib_encode_op,
+    );
+
+    reg.add_simple(
+        spec(
+            "to-deflate",
+            "To Deflate",
+            "Compresses bytes into a raw DEFLATE stream (no zlib/gzip wrapper).",
+            C,
+            &[B, T],
+            B,
+            CostClass::Interactive,
+            true,
+            vec![],
+            tags,
+            &["to-raw-deflate", "deflate compress"],
+            "RFC 1951 (DEFLATE)",
+            "Round-trip tests",
+        ),
+        deflate_encode_op,
     );
 }
