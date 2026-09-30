@@ -1129,7 +1129,7 @@ fn aa_decode_text(input: &str) -> OpResult<String> {
     if mode == Some('o') && !oct_digits.is_empty() {
         push_octal(&mut units, &oct_digits)?;
     }
-    String::from_utf16(&units).map(Value::Text).map_err(|_| {
+    String::from_utf16(&units).map_err(|_| {
         OperationError::decode("aaencode payload decodes to invalid UTF-16 (lone surrogates)")
             .with_expected("valid UTF-16 code units")
     })
@@ -1362,22 +1362,22 @@ fn jj_decode_text(input: &str) -> OpResult<String> {
     while !data.is_empty() {
         if data.starts_with(str_l.as_str()) {
             data = &data[str_l.len()..];
-            units.push(b'l');
+            units.push('l' as u16);
             continue;
         }
         if data.starts_with(str_o.as_str()) {
             data = &data[str_o.len()..];
-            units.push(b'o');
+            units.push('o' as u16);
             continue;
         }
         if data.starts_with(str_t.as_str()) {
             data = &data[str_t.len()..];
-            units.push(b't');
+            units.push('t' as u16);
             continue;
         }
         if data.starts_with(str_u.as_str()) {
             data = &data[str_u.len()..];
-            units.push(b'u');
+            units.push('u' as u16);
             continue;
         }
         if data.starts_with(str_hex.as_str()) {
@@ -1423,13 +1423,13 @@ fn jj_decode_text(input: &str) -> OpResult<String> {
                 }
                 if data.starts_with(str_quote.as_str()) {
                     data = &data[str_quote.len()..];
-                    units.push(b'"');
+                    units.push('"' as u16);
                     matched_literals += 1;
                     continue;
                 }
                 if data.starts_with(str_slash.as_str()) {
                     data = &data[str_slash.len()..];
-                    units.push(b'\\');
+                    units.push('\\' as u16);
                     matched_literals += 1;
                     continue;
                 }
@@ -1486,7 +1486,7 @@ fn jj_decode_text(input: &str) -> OpResult<String> {
         ))
         .with_expected("literal run, escape sequence or symbol token"));
     }
-    String::from_utf16(&units).map(Value::Text).map_err(|_| {
+    String::from_utf16(&units).map_err(|_| {
         OperationError::decode("JJEncode payload decodes to invalid UTF-16 (lone surrogates)")
             .with_expected("valid UTF-16 code units")
     })
