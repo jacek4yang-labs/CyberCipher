@@ -15,7 +15,10 @@ permissions:
 jobs:
   Rust:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    # The steg/SSTV lanes added heavy DSP test suites (symphonia/rustfft/slowrx
+    # build + 15 synthetic SSTV roundtrips at ~30s each on CI runners), which
+    # no longer fit 30 minutes.
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - name: Install Tauri system dependencies

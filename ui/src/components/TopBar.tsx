@@ -25,6 +25,7 @@ export function TopBar() {
           [
             ["workbench", "Workbench"],
             ["rsa-lab", "RSA Lab"],
+            ["pki-lab", "PKI Lab"],
             ["auto", "Auto Analyze"],
             ["recipes", "Recipes"],
             ["settings", "Settings"],
