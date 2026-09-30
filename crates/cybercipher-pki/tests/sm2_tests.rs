@@ -397,3 +397,140 @@ fn signature_byte_conversions_round_trip() {
         "Decode"
     );
 }
+
+// ---------------------------------------------------------------------------
+// SM2 encrypt / decrypt (GB/T 32918.4, C1||C3||C2 layout)
+// ---------------------------------------------------------------------------
+
+use cybercipher_pki::sm2::{sm2_decrypt, sm2_encrypt, SM2_C1_LEN, SM2_C3_LEN};
+
+#[test]
+fn encrypt_decrypt_round_trip_various_sizes() {
+    let kp = generate_sm2_keypair().unwrap();
+    for size in [0usize, 1, 15, 31, 32, 33, 64, 255, 1000] {
+        let plaintext: Vec<u8> = (0..size).map(|i| (i % 251) as u8).collect();
+        let ciphertext = sm2_encrypt(&kp.public_uncompressed_hex, &plaintext).unwrap();
+        assert_eq!(ciphertext.len(), SM2_C1_LEN + SM2_C3_LEN + plaintext.len());
+        let decrypted = sm2_decrypt(&kp.private_hex, &ciphertext).unwrap();
+        assert_eq!(decrypted, plaintext, "round-trip failed for {size} bytes");
+    }
+}
+
+#[test]
+fn ciphertext_layout_and_each_encryption_is_fresh() {
+    let kp = generate_sm2_keypair().unwrap();
+    let msg = b"layout check".repeat(3);
+
+    let ct = sm2_encrypt(&kp.public_uncompressed_hex, &msg).unwrap();
+    // Layout: 0x04 || x1 || y1 || C3 || C2.
+    assert_eq!(ct[0], 0x04);
+    assert_eq!(ct.len(), SM2_C1_LEN + SM2_C3_LEN + msg.len());
+
+    // C1 must be a valid, on-curve SM2 point (it is [k]G).
+    let c1 = parse_sm2_public_key(&hex_encode(&ct[..SM2_C1_LEN])).unwrap();
+    assert_eq!(c1.public_uncompressed_hex, hex_encode(&ct[..SM2_C1_LEN]));
+
+    // Fresh randomness: two encryptions of the same message share no C1/C2.
+    let ct2 = sm2_encrypt(&kp.public_uncompressed_hex, &msg).unwrap();
+    assert_ne!(ct, ct2, "C1 must be random per encryption");
+    assert_ne!(
+        &ct[SM2_C1_LEN + SM2_C3_LEN..],
+        &ct2[SM2_C1_LEN + SM2_C3_LEN..]
+    );
+
+    // Both decrypt back to the message.
+    assert_eq!(sm2_decrypt(&kp.private_hex, &ct).unwrap(), msg);
+    assert_eq!(sm2_decrypt(&kp.private_hex, &ct2).unwrap(), msg);
+}
+
+#[test]
+fn decrypt_wrong_key_or_tampered_c3_is_a_typed_error() {
+    let kp = generate_sm2_keypair().unwrap();
+    let other = generate_sm2_keypair().unwrap();
+    let msg = b"integrity matters";
+
+    // Wrong private key: well-formed ciphertext, C3 mismatch -> KeyError.
+    let ct = sm2_encrypt(&kp.public_uncompressed_hex, msg).unwrap();
+    let err = sm2_decrypt(&other.private_hex, &ct).unwrap_err();
+    assert_eq!(kind_of(&err), "KeyError");
+    assert!(err.message.contains("C3 integrity hash mismatch"));
+
+    // Flip one byte of C3.
+    let mut tampered = ct.clone();
+    let i = SM2_C1_LEN;
+    tampered[i] ^= 0x01;
+    let err = sm2_decrypt(&kp.private_hex, &tampered).unwrap_err();
+    assert_eq!(kind_of(&err), "KeyError");
+
+    // Flip one byte of C2 (masked message).
+    let mut tampered = ct.clone();
+    let last = tampered.len() - 1;
+    tampered[last] ^= 0xff;
+    let err = sm2_decrypt(&kp.private_hex, &tampered).unwrap_err();
+    assert_eq!(kind_of(&err), "KeyError");
+
+    // Flip one byte of C1 x-coordinate: usually off-curve or wrong shared
+    // point; either way it must be a typed error, never a panic.
+    let mut tampered = ct.clone();
+    tampered[1] ^= 0x01;
+    assert!(sm2_decrypt(&kp.private_hex, &tampered).is_err());
+}
+
+#[test]
+fn decrypt_structural_errors_are_typed() {
+    let kp = generate_sm2_keypair().unwrap();
+    let ct = sm2_encrypt(&kp.public_uncompressed_hex, b"x").unwrap();
+
+    // Truncated: below the 97-byte C1||C3 minimum.
+    for cut in [0, 1, 64, 96] {
+        let err = sm2_decrypt(&kp.private_hex, &ct[..cut]).unwrap_err();
+        assert_eq!(kind_of(&err), "LengthMismatch", "cut={cut}");
+    }
+
+    // Wrong C1 tag (compressed-point confusion).
+    let mut bad = ct.clone();
+    bad[0] = 0x03;
+    let err = sm2_decrypt(&kp.private_hex, &bad).unwrap_err();
+    assert_eq!(kind_of(&err), "Decode");
+    assert!(err.message.contains("tag 0x04"));
+
+    // C1 coordinates not on the curve.
+    let mut bad = ct.clone();
+    bad[1] = 0xff;
+    bad[2] = 0xff;
+    let err = sm2_decrypt(&kp.private_hex, &bad).unwrap_err();
+    assert!(matches!(kind_of(&err).as_str(), "KeyError" | "Decode"));
+
+    // Empty ciphertext.
+    let err = sm2_decrypt(&kp.private_hex, &[]).unwrap_err();
+    assert_eq!(kind_of(&err), "LengthMismatch");
+
+    // Bad private key before any ciphertext work.
+    let err = sm2_decrypt(&"00".repeat(32), &ct).unwrap_err();
+    assert_eq!(kind_of(&err), "KeyError");
+}
+
+#[test]
+fn encrypt_rejects_malformed_public_key() {
+    let err = sm2_encrypt(&"ab".repeat(65), b"x").unwrap_err();
+    assert_eq!(kind_of(&err), "Decode");
+    // Off-curve point (P-256 generator).
+    let p256_generator = "04\
+        6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296\
+        4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5";
+    let err = sm2_encrypt(p256_generator, b"x").unwrap_err();
+    assert_eq!(kind_of(&err), "KeyError");
+    // Compressed public keys encrypt fine too.
+    let kp = generate_sm2_keypair().unwrap();
+    let ct = sm2_encrypt(&kp.public_compressed_hex, b"compressed").unwrap();
+    assert_eq!(sm2_decrypt(&kp.private_hex, &ct).unwrap(), b"compressed");
+}
+
+#[test]
+fn encrypt_decrypt_binary_safety() {
+    // All byte values, including zeros and 0xff, must survive round-trips.
+    let kp = generate_sm2_keypair().unwrap();
+    let plaintext: Vec<u8> = (0..=255u8).chain([0x00, 0x04, 0xff]).collect();
+    let ct = sm2_encrypt(&kp.public_uncompressed_hex, &plaintext).unwrap();
+    assert_eq!(sm2_decrypt(&kp.private_hex, &ct).unwrap(), plaintext);
+}
