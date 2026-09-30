@@ -10,10 +10,10 @@
 
 - id: GUI-PKI-LAB-01
   title: PKI Lab GUI — Inspect/RSA/ECC/SM2/Certificate/JWT tabs (RSA Lab pattern)
-  status: ready
+  status: in_progress
   priority: P1
   depends_on: []
-  owner: gui
+  owner: agent/pkilab
 
 - id: M9-IMAGE-01
   title: PNG chunk inspector, EXIF, QR, channel extraction, bit planes, LSB helpers

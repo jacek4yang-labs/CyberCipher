@@ -16,7 +16,7 @@ import {
   type ValuePayload,
 } from "./api";
 
-export type Page = "workbench" | "rsa-lab" | "auto" | "recipes" | "settings";
+export type Page = "workbench" | "rsa-lab" | "pki-lab" | "auto" | "recipes" | "settings";
 
 /** Scalar RSA key-material fields editable in the lab form. */
 export const RSA_FIELD_KEYS = [
