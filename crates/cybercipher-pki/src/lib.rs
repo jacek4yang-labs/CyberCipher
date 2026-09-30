@@ -16,6 +16,7 @@
 pub mod asn1;
 pub mod ecc;
 pub mod error;
+pub mod jwt;
 pub mod keys;
 pub mod ops;
 pub mod sm2;
@@ -24,6 +25,10 @@ pub mod x509;
 pub use asn1::{parse_der_nodes, parse_der_tree, Asn1Class, Asn1Node, Asn1Value};
 pub use ecc::*;
 pub use error::{PkiError, PkiResult};
+pub use jwt::{
+    jwt_decode, jwt_sign, jwt_verify, jwt_verify_at, JwtAlg, JwtDecoded, JwtSignParams,
+    JwtVerified, JwtVerifyParams,
+};
 pub use keys::*;
 pub use ops::{PssSaltLength, RsaDigest, SignatureVerifyResult};
 pub use sm2::*;

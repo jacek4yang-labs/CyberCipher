@@ -1128,6 +1128,7 @@ dependencies = [
  "cybercipher-core",
  "cybercipher-crypto",
  "cybercipher-engine",
+ "cybercipher-pki",
  "num-bigint",
  "serde_json",
 ]
@@ -1260,6 +1261,7 @@ dependencies = [
  "ecdsa",
  "ed25519-dalek",
  "elliptic-curve",
+ "hmac",
  "num-bigint-dig",
  "p256",
  "p384",
@@ -1275,6 +1277,7 @@ dependencies = [
  "sm2",
  "sm3",
  "spki",
+ "subtle",
  "x25519-dalek",
  "x509-cert",
  "x509-parser",
