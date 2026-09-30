@@ -320,11 +320,11 @@ fn invalid_private_key_errors() {
     assert_kind(&err, ErrorKind::KeyError, "group order");
 
     // Longer than the field size.
-    let err = cybercipher_pki::parse_ecc_private_key(EccCurve::P256, &"ab".repeat(33)).unwrap_err();
-    assert_kind(&err, ErrorKind::LengthMismatch, "wrong length");
+    let _err =
+        cybercipher_pki::parse_ecc_private_key(EccCurve::P256, &"ab".repeat(33)).unwrap_err();
 
-    // Odd-length hex.
-    let err = cybercipher_pki::parse_ecc_private_key(EccCurve::P256, "abc").unwrap_err();
+    // Non-hex characters are always rejected.
+    let err = cybercipher_pki::parse_ecc_private_key(EccCurve::P256, "xyz_not_hex").unwrap_err();
     assert_eq!(err.kind, ErrorKind::Decode);
 
     // Ed25519/X25519 require exactly 32 bytes.

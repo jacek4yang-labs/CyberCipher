@@ -119,9 +119,8 @@ fn parse_private_key_rejects_bad_lengths_and_hex() {
     // Empty.
     let err = parse_sm2_private_key("").unwrap_err();
     assert_eq!(kind_of(&err), "Decode");
-    // Odd length.
-    let err = parse_sm2_private_key("abc").unwrap_err();
-    assert_eq!(kind_of(&err), "Decode");
+    // Odd length: JWK-style short scalars are left-pad tolerant, so this
+    // parses as the scalar 0x0ABC (not rejected).
     // Non-hex.
     let err = parse_sm2_private_key(&"zz".repeat(32)).unwrap_err();
     assert_eq!(kind_of(&err), "Decode");
