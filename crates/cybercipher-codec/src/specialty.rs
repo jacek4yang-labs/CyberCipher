@@ -361,6 +361,7 @@ mod cbc {
         prev.copy_from_slice(iv);
         for chunk in data.as_chunks_mut::<16>().0 {
             let mut out = [0u8; 16];
+            out.copy_from_slice(chunk);
             {
                 let slice: &mut [u8] = &mut out;
                 let block: &mut AesBlock = slice.try_into().expect("16 bytes");
@@ -816,7 +817,7 @@ fn base91_decode_values(values: &[u32]) -> OpResult<Vec<u8>> {
         pending = None;
         let v = v0 as u64 + val as u64 * 91;
         b += v << n;
-        n += if (v0 & 8191) > 88 { 13 } else { 14 };
+        n += if (v & 8191) > 88 { 13 } else { 14 };
         while n > 7 {
             out.push((b & 0xff) as u8);
             b >>= 8;
@@ -1201,7 +1202,7 @@ fn jj_decode_text(input: &str) -> OpResult<String> {
     // Payload markers (gv-independent; `$$` is a fixed property name):
     // `$$+"\""+` … `"\")())();`
     const START: &str = "$$+\"\\\"\"+";
-    const END: &str = "\"\\\")())();";
+    const END: &str = "\"\\\"\"\")())();";
     let start_idx = text.find(START).ok_or_else(|| {
         OperationError::decode("input is not JJEncode (payload start marker not found)")
             .with_expected("JJEncode output with the `$$+\"\\\"\"+` payload marker")
@@ -1970,8 +1971,8 @@ mod tests {
         // ,[,]: echo every input byte until end of input (EOF -> 0 halts).
         let out = bf_run(",[.,]", b"ctf rules", 30_000, 1_000_000).unwrap();
         assert_eq!(out, b"ctf rules");
-        // EOF reads 0, so a single output loop emits one zero byte.
-        assert_eq!(bf_run("+[.,]", b"", 30_000, 1_000_000).unwrap(), vec![0]);
+        // EOF reads 0: `,.` prints one zero byte for empty input.
+        assert_eq!(bf_run(",.", b"", 30_000, 1_000_000).unwrap(), vec![0]);
     }
 
     #[test]
@@ -2060,7 +2061,7 @@ mod tests {
 
     #[test]
     fn ook_rejects_garbage() {
-        assert!(ook_to_bf("Ook. Ook.").is_err()); // odd token count
+        assert!(ook_to_bf("Ook.").is_err()); // odd token count
         let err = ook_to_bf("Ook. Ookx").unwrap_err();
         assert!(err.message.contains("not followed by"), "{}", err.message);
         let err = ook_to_bf("hello").unwrap_err();
@@ -2345,7 +2346,7 @@ mod tests {
             &ExecutionContext::new(),
         )
         .unwrap_err();
-        assert!(err.message.contains("even number"), "{}", err.message);
+        assert!(err.message.contains("truncated"), "{}", err.message);
     }
 
     // ------------------------------------------------------ bear ----
@@ -2482,9 +2483,9 @@ mod tests {
             &ExecutionContext::new(),
         )
         .unwrap_err();
-        assert!(err.message.contains("even number"), "{}", err.message);
+        assert!(err.message.contains("truncated"), "{}", err.message);
         let err = from_core_values_op(
-            &Value::Text("富强民主体".into()),
+            &Value::Text("富强誒怎".into()),
             &ParamMap::new(),
             &ExecutionContext::new(),
         )
