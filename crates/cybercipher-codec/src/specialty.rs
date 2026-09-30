@@ -133,15 +133,11 @@ fn bf_run(program: &str, input: &[u8], cells: usize, max_steps: u64) -> OpResult
                 tape[ptr] = input.get(input_pos).copied().unwrap_or(0);
                 input_pos += 1;
             }
-            b'[' => {
-                if tape[ptr] == 0 {
-                    pc = jumps[pc].expect("bracket map covers every `[`");
-                }
+            b'[' if tape[ptr] == 0 => {
+                pc = jumps[pc].expect("bracket map covers every `[`");
             }
-            b']' => {
-                if tape[ptr] != 0 {
-                    pc = jumps[pc].expect("bracket map covers every `]`");
-                }
+            b']' if tape[ptr] != 0 => {
+                pc = jumps[pc].expect("bracket map covers every `]`");
             }
             _ => {} // everything else is a comment
         }
@@ -229,7 +225,7 @@ fn ook_to_bf(text: &str) -> OpResult<String> {
             .with_expected("Ook. / Ook! / Ook? token pairs")
             .with_actual("empty token stream"));
     }
-    if symbols.len() % 2 != 0 {
+    if !symbols.len().is_multiple_of(2) {
         return Err(OperationError::decode(
             "Ook! programs are token pairs, but the input has an odd token count",
         )
@@ -274,14 +270,14 @@ fn bf_to_ook(program: &str) -> String {
 
 fn bf_limits(map: &ParamMap) -> OpResult<(usize, u64)> {
     let cells = map.int_or("memory_cells", BF_DEFAULT_CELLS);
-    if cells < 1 || cells > BF_MAX_CELLS {
+    if !(1..=BF_MAX_CELLS).contains(&cells) {
         return Err(OperationError::invalid_param(
             "memory_cells",
             format!("`memory_cells` must be between 1 and {BF_MAX_CELLS}"),
         ));
     }
     let steps = map.int_or("max_steps", BF_DEFAULT_STEPS);
-    if steps < 1 || steps > BF_MAX_STEPS {
+    if !(1..=BF_MAX_STEPS).contains(&steps) {
         return Err(OperationError::invalid_param(
             "max_steps",
             format!("`max_steps` must be between 1 and {BF_MAX_STEPS}"),
@@ -348,8 +344,9 @@ mod cbc {
         let cipher = aes::Aes256::new_from_slice(key).expect("AES-256 key is 32 bytes");
         let mut prev = [0u8; 16];
         prev.copy_from_slice(iv);
-        for chunk in padded.chunks_exact_mut(16) {
-            let block: &mut AesBlock = chunk.try_into().expect("chunk is 16 bytes");
+        for chunk in padded.as_chunks_mut::<16>().0 {
+            let slice: &mut [u8] = chunk;
+            let block: &mut AesBlock = slice.try_into().expect("chunk is 16 bytes");
             for (a, b) in block.iter_mut().zip(prev.iter()) {
                 *a ^= *b;
             }
@@ -362,11 +359,12 @@ mod cbc {
         let cipher = aes::Aes256::new_from_slice(key).expect("AES-256 key is 32 bytes");
         let mut prev = [0u8; 16];
         prev.copy_from_slice(iv);
-        for chunk in data.chunks_exact_mut(16) {
+        for chunk in data.as_chunks_mut::<16>().0 {
             let mut out = [0u8; 16];
             {
-                let mut block: &mut AesBlock = (&mut out[..]).try_into().expect("16 bytes");
-                cipher.decrypt_block(&mut block);
+                let slice: &mut [u8] = &mut out;
+                let mut block: &mut AesBlock = slice.try_into().expect("16 bytes");
+                cipher.decrypt_block(block);
                 for (a, b) in block.iter_mut().zip(prev.iter()) {
                     *a ^= *b;
                 }
@@ -403,11 +401,11 @@ fn pkcs7_unpad(data: &[u8]) -> OpResult<&[u8]> {
 
 fn pkcs7_pad(data: &mut Vec<u8>) {
     let pad = 16 - (data.len() % 16);
-    data.extend(std::iter::repeat(pad as u8).take(pad));
+    data.extend(std::iter::repeat_n(pad as u8, pad));
 }
 
 fn utf16le_from_bytes(bytes: &[u8]) -> OpResult<String> {
-    if bytes.len() % 2 != 0 {
+    if !bytes.len().is_multiple_of(2) {
         return Err(OperationError::decode(
             "decrypted data has an odd byte count and cannot be UTF-16LE",
         )
@@ -415,8 +413,10 @@ fn utf16le_from_bytes(bytes: &[u8]) -> OpResult<String> {
         .with_actual(format!("{} bytes", bytes.len())));
     }
     let units: Vec<u16> = bytes
-        .chunks_exact(2)
-        .map(|c| u16::from_le_bytes([c[0], c[1]]))
+        .as_chunks::<2>()
+        .0
+        .iter()
+        .map(|c| u16::from_le_bytes(*c))
         .collect();
     String::from_utf16(&units)
         .map_err(|_| OperationError::decode("decrypted data is not valid UTF-16 text"))
@@ -493,7 +493,7 @@ fn from_buddha_op(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<V
                 .with_expected("ciphertext over the sutra table"),
         );
     }
-    if ciphertext.len() % 16 != 0 {
+    if !ciphertext.len().is_multiple_of(16) {
         return Err(OperationError::length(
             "a multiple of 16 mapped bytes",
             format!("{} mapped bytes", ciphertext.len()),
@@ -723,7 +723,7 @@ fn from_beast_op(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<Va
         body
     };
     let chars: Vec<char> = middle.chars().collect();
-    if chars.len() % 2 != 0 {
+    if !chars.len().is_multiple_of(2) {
         return Err(OperationError::length(
             "an even number of codec characters",
             format!("{} characters", chars.len()),
@@ -933,7 +933,7 @@ fn from_core_values_op(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpRes
     let text = input_text(v, "From Core Values")?;
     let body = text.trim();
     let chars: Vec<char> = body.chars().collect();
-    if chars.len() % 2 != 0 {
+    if !chars.len().is_multiple_of(2) {
         return Err(OperationError::length(
             "an even number of characters (2 per phrase)",
             format!("{} characters", chars.len()),
@@ -972,7 +972,7 @@ fn from_core_values_op(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpRes
         )
         .with_expected("a digit phrase after each A-F marker"));
     }
-    if hex.len() % 2 != 0 {
+    if !hex.len().is_multiple_of(2) {
         return Err(OperationError::decode(
             "core-values decode produced an odd number of hex digits",
         ));
