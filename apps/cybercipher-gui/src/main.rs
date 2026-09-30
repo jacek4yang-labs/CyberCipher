@@ -6,12 +6,17 @@
 
 mod commands;
 mod pki_commands;
+mod sstv_commands;
 mod state;
 
 use std::sync::Arc;
 
 fn main() {
-    let registry = Arc::new(cybercipher_engine::default_registry());
+    // Default registry plus the SSTV operation (the sstv crate is wired here
+    // rather than inside `default_registry` so library consumers opt in).
+    let mut registry = cybercipher_engine::default_registry();
+    cybercipher_sstv::register_all(&mut registry);
+    let registry = Arc::new(registry);
     let engine = Arc::new(cybercipher_engine::RecipeEngine::new(registry.clone()));
 
     let recipes_dir = dirs::config_dir()
@@ -55,6 +60,8 @@ fn main() {
             pki_commands::pki_sm2_encrypt,
             pki_commands::pki_sm2_decrypt,
             pki_commands::pki_cert_inspect,
+            sstv_commands::sstv_decode_audio,
+            sstv_commands::sstv_modes,
         ])
         .run(tauri::generate_context!())
         .expect("error while running CyberCipher");

@@ -1153,6 +1153,7 @@ dependencies = [
  "cybercipher-crypto",
  "cybercipher-engine",
  "cybercipher-pki",
+ "cybercipher-sstv",
  "num-bigint",
  "serde_json",
 ]
@@ -1262,11 +1263,13 @@ dependencies = [
 name = "cybercipher-gui"
 version = "0.1.0"
 dependencies = [
+ "base64 0.22.1",
  "cybercipher-attack",
  "cybercipher-codec",
  "cybercipher-core",
  "cybercipher-engine",
  "cybercipher-pki",
+ "cybercipher-sstv",
  "dirs 6.0.0",
  "parking_lot",
  "serde",

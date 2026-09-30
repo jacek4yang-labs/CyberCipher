@@ -74,7 +74,7 @@ pub fn clamp_candidates(count: i64) -> i64 {
 /// A decode request with CyberCipher resource bounds, shared by the registry
 /// op, the Tauri command layer and the CLI so all three enforce the same
 /// limits.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct DecodeRequest {
     /// Channel selection: `auto`, `mono` (average of all channels), `left`,
     /// `right`, or a zero-based channel index. See
