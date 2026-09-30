@@ -15,6 +15,7 @@ mod byteops;
 mod classical_misc;
 mod compression;
 mod encoding;
+mod fileinfo;
 mod helpers;
 mod inspect;
 mod integer;
@@ -30,6 +31,7 @@ pub fn register_all(reg: &mut OperationRegistry) {
     archives::register(reg);
     integer::register(reg);
     encoding::register(reg);
+    fileinfo::register(reg);
     basefamilies::register(reg);
     classical_misc::register(reg);
     byteops::register(reg);
