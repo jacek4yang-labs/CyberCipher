@@ -1,0 +1,142 @@
+# sstv-auto compatibility matrix — SSTV decode/synthesis baseline.
+# Statuses: covered | superset | partial | missing | intentional-out-of-scope | same-capability
+#
+# sstv-auto (https://github.com/jacek4yang/sstv-auto, MIT, Rust, rust-version
+# 1.85) is already a library crate with the exact layering CyberCipher wants.
+# Integration strategy (docs/design-steg-sstv.md): migrate its modules into a
+# workspace crate `cybercipher-sstv` (option 1 — in-tree refactor), NOT a
+# subprocess and NOT a long-term git dependency. Its decode backend is the
+# pure-Rust `slowrx` crate (published library, no runtime executable), pinned
+# as a normal dependency; symphonia provides pure-Rust audio ingestion (no
+# ffmpeg at runtime).
+#
+# Reference commit: f626d50 (main, 2026-09). 13 modules, 142 tests.
+
+[meta]
+upstream = "https://github.com/jacek4yang/sstv-auto"
+baseline_date = 2026-09-30
+source_commit = "f626d505e2928efaa7c217e21fb61fcf43686768"
+license = "MIT"
+notes = "Lane B PR sequence: PR-1 core crate migration (library, tests preserved), PR-2 blob/file bridge + Tauri commands, PR-3 SSTV Lab UI + Stego handoff. Attribution: MIT license notices preserved, provenance entry in PROVENANCE.md."
+
+# ----------------------------------------------------------- audio ----
+
+[entries.audio_ingestion]
+ours = "— (planned cybercipher-sstv::audio)"
+status = "missing"
+notes = "symphonia 0.5 features: wav/pcm, flac, mp1/mp2/mp3, aac/isomp4, alac, ogg-vorbis, adpcm, aiff, caf, mkv. Pure Rust, no ffmpeg runtime. Lane B PR-1 (blob-byte ingestion replaces path-only API at the CyberCipher boundary)."
+
+[entries.audio_channel_selection]
+ours = "—"
+status = "missing"
+notes = "ChannelChoice (mono/stereo/multichannel), automatic selection of the channel carrying the strongest useful signal + explicit override. Lane B PR-1."
+
+[entries.audio_safety]
+ours = "existing bounds policy to be applied"
+status = "missing"
+notes = "Level safety, silence detection (is_silent), bounded decoded duration/sample count, cancellation + deadline. SSTV decode is CostClass::Heavy — never Auto-Bake Instant. Lane B PR-1/PR-2."
+
+# ------------------------------------------------------------- dsp ----
+
+[entries.dsp_fft_track]
+ours = "— (planned cybercipher-sstv::dsp)"
+status = "missing"
+notes = "rustfft 6 Hann-windowed Analyzer producing compact time-frequency Track + Trajectory consumed by every later stage; helpers rms/peak/median/mean/normalize_to_peak/remove_dc/resample_linear. Lane B PR-1."
+
+# ----------------------------------------------------------- modes ----
+
+[entries.mode_database]
+ours = "— (planned cybercipher-sstv::modes)"
+status = "missing"
+notes = "Data-driven Mode geometry from slowrx (ChannelLayout/SstvMode/SyncPosition): Martin M1/M2, Scottie S1/S2/DX, Robot 24/36/72, PD-120/180/240. Same definitions drive extraction + synthesis + scoring so timing constants cannot drift. level_to_hz/hz_to_level (1500..2300 Hz), from_vis, from_name, all(). Lane B PR-1."
+
+# ------------------------------------------------------------- vis ----
+
+[entries.vis_detection]
+ours = "— (planned cybercipher-sstv::vis)"
+status = "missing"
+notes = "Leader detection, VIS code recovery, parity validation; parity failure stays evidence/hint only, never authoritative. Report detected VIS + parity status + inferred mode + timing evidence. Lane B PR-1."
+
+# ------------------------------------------------------------ sync ----
+
+[entries.sync_recovery]
+ours = "— (planned cybercipher-sstv::sync)"
+status = "missing"
+notes = "Pulse detection with frequency-shift estimate (estimate_shift), chain fitting (Chain, chain_score, interval_spread) for line-period + clock-rate recovery + start position. Lane B PR-1."
+
+# ---------------------------------------------------- raster / synth ----
+
+[entries.raster_decode]
+ours = "— (planned cybercipher-sstv::raster + backend)"
+status = "missing"
+notes = "Pixel-grid recovery from measured signal; full-resolution decode via slowrx SstvDecoder (pure-Rust library dep, pinned). Frequency offset + clock correction applied automatically. Lane B PR-1."
+
+[entries.synthesis]
+ours = "— (planned cybercipher-sstv::synth)"
+status = "missing"
+notes = "Grid -> SSTV audio (inverse of raster); enables the inverse-model validation loop. Lane B PR-1."
+
+# ------------------------------------------------------- autodetect ----
+
+[entries.blind_mode_inference]
+ours = "— (planned cybercipher-sstv::autodetect)"
+status = "missing"
+notes = "When VIS is absent/damaged/stripped: repeated line-sync periods infer candidate modes (Hypothesis/Candidate/Analysis, Origin::VIS|SyncPeriod|Forced). Never assumes ideal transmitter timing. Lane B PR-1."
+
+[entries.candidate_ranking_inverse_model]
+ours = "—"
+status = "missing"
+notes = "Explainable ranking: recover low-res grid -> re-synthesize -> compare tone trajectory vs original (evaluate/agreement), image plausibility via score::Quality (is_degenerate, looks_like_noise) rejects noise/flat frames. Never ranks on 'image looks non-empty'. Lane B PR-1."
+
+[entries.ambiguity_honesty]
+ours = "—"
+status = "missing"
+notes = "indistinguishable_from (e.g. Robot 24 vs 36 overlap on-wire except VIS identity) — report ambiguity explicitly, never invent confidence. Lane B PR-1."
+
+# ---------------------------------------------------------- pipeline ----
+
+[entries.pipeline_automatic]
+ours = "— (planned cybercipher-sstv::pipeline)"
+status = "missing"
+notes = "Options (channel, forced mode, blind toggle, bounds) -> Outcome with defaults fully automatic. Lane B PR-1 (bytes/blob input at the CyberCipher boundary)."
+
+[entries.report]
+ours = "—"
+status = "missing"
+notes = "Report/Detection/AudioReport: mode, detection path, confidence, agreement, timing score, coverage, start time, frequency offset, clock correction, matched sync count, dimensions, warnings. Lane B PR-1."
+
+# ------------------------------------------------------------ output ----
+
+[entries.png_output]
+ours = "— (image crate PNG encode shared with steg lane)"
+status = "missing"
+notes = "save_png equivalent behind CyberCipher blob output. Lane B PR-2."
+
+[entries.stego_handoff]
+ours = "— (superset, CyberCipher-only)"
+status = "missing"
+notes = "Open in Stego Lab / Save PNG / Send to Workbench / Run Auto LSB / Run QR scan on the recovered image. Cross-link chain: challenge.wav -> SSTV -> PNG -> Auto LSB -> bytes -> Auto Decode -> flag. Lane B PR-3 + Stego Lab GUI."
+
+# ------------------------------------------------------------- tests ----
+
+[entries.test_migration]
+ours = "—"
+status = "missing"
+notes = "Preserve 142 upstream tests: synthetic mode transmissions (hound-dev only), VIS/parity failures, sync-period blind recovery, frequency offsets, clock drift, multichannel selection, ranking, noise rejection, degenerate-image rejection. Large challenge audio NOT committed; deterministic synthetic fixtures only. Lane B PR-1."
+
+# ---------------------------------------------------------- superset ----
+
+[entries.typed_errors_bounds]
+ours = "typed OperationError + ExecutionContext deadlines/cancellation"
+status = "superset"
+notes = "Upstream uses anyhow + strict clippy (no unwrap/panic outside tests). We keep those lints in the migrated crate and add typed operation errors, cost classes, and resource bounds at the registry boundary."
+
+[entries.registry_recipe_integration]
+ours = "OperationRegistry + recipes + provenance"
+status = "superset"
+notes = "sstv_decode registers as CostClass::Heavy op; results become blobs consumable by every other CyberCipher tool. Upstream is a standalone CLI."
+
+[entries.cross_tool_composition]
+ours = "planned acceptance flows G..J"
+status = "missing"
+notes = "SSTV->image->stego->decode chains as regression fixtures (docs/design-steg-sstv.md)."
