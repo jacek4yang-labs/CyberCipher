@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "phase": "M8/M9",
-  "last_reconciled_sha": "4ffcf12",
+  "phase": "M8/M9 completion + pre-1.0",
+  "last_reconciled_sha": "884cf03",
   "active_branch": null,
   "active_pr": null,
   "current_task": null,
@@ -37,6 +37,8 @@
     "M8-PKI-C",
     "M8-PKI-D",
     "M8-PKI-E",
+    "M8-PKI-F",
+    "M9-FILE-01",
     "RELEASE-TAR-01",
     "QA-COVERAGE",
     "QA-CONSISTENCY-01",
@@ -51,5 +53,5 @@
     "cargo_test": "pass",
     "frontend": "pass"
   },
-  "notes": "Session 5 end: 37 PRs merged, main=4ffcf12. New: ECC foundation (ECDSA/ECDH/Ed25519/X25519), Crypto Assist GUI, Auto Decode v2 (base58/62/85/91/36 candidates), SM2 (keygen/sign/verify/encrypt/decrypt + SM3). Registry ~125 ops, 485 tests. Remaining: M8-PKI-F (X.509/JWT), M9-FILE-01, M7-SIG-01, M5-SEED-01, CTF specialty, ECDSA attacks, GUI PKI lab."
+  "notes": "Session 6 end: 40 PRs merged, main=884cf03. New: X.509/CSR/CRL inspection, ASN.1 tree inspector, 31 codec ops (compression symmetry, bzip2/xz/zstd/lz4/brotli/tar/zip, CBOR/MsgPack/TLV/VarInt, file-magic/UTF-16/entropy). Registry ~187 ops, 515+ tests. Remaining: M8-PKI-F JWT/JWS half, CTF specialty (Brainfuck/Ook/AAEncode/JJEncode/Chinese), PKI Lab GUI, Crypto Assist generalization, M9 image/QR/stego, signature scanner, compatibility closure."
 }
