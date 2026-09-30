@@ -49,6 +49,11 @@ enum Command {
         /// JSON file path or `-` for stdin.
         input: String,
     },
+    /// JWT/JWS: decode, verify, or sign compact tokens (RFC 7519/7515).
+    Jwt {
+        #[command(subcommand)]
+        cmd: JwtCmd,
+    },
     /// Bounded explainable automatic decoding.
     Auto {
         /// Input file path, `-` for stdin, or a literal string.
@@ -136,11 +141,16 @@ enum PrngCmd {
 
 fn main() {
     let cli = Cli::parse();
-    let registry = Arc::new(cybercipher_engine::default_registry());
+    // Default registry plus the PKI JWT operations (the pki crate is wired
+    // here rather than inside `default_registry` so library consumers opt in).
+    let mut reg = cybercipher_engine::default_registry();
+    cybercipher_pki::jwt::register(&mut reg);
+    let registry = Arc::new(reg);
     let engine = RecipeEngine::new(registry.clone());
 
     match cli.command {
         Command::Prng { cmd } => run_prng(cmd),
+        Command::Jwt { cmd } => run_jwt(cmd),
         Command::Ops => {
             for info in registry.info() {
                 println!("{:<22} {:<16} {}", info.id, info.category.name(), info.name);
@@ -285,6 +295,162 @@ no plaintext recovered (see findings)"
                     eprintln!("error: {e}");
                     std::process::exit(2);
                 }
+            }
+        }
+    }
+}
+
+#[derive(Subcommand)]
+enum JwtCmd {
+    /// Decode a token into header/payload/signature — output is UNVERIFIED.
+    Decode {
+        /// Token file path, `-` for stdin, or a literal token string.
+        input: String,
+    },
+    /// Verify a token's signature (and optionally its claims).
+    Verify {
+        /// Token file path, `-` for stdin, or a literal token string.
+        input: String,
+        /// JWS algorithm: HS256|HS384|HS512|RS256|RS384|RS512|ES256|ES384|EdDSA.
+        #[arg(short, long)]
+        alg: String,
+        /// Key: shared secret (HS*), key PEM/hex (RS*/ES*/EdDSA), a file
+        /// path, or `-` for stdin.
+        #[arg(short, long)]
+        key: String,
+        /// How to read the HS* shared secret: utf8 | hex.
+        #[arg(long, default_value = "utf8")]
+        secret_encoding: String,
+        /// How to read ES*/EdDSA keys: pem | hex.
+        #[arg(long, default_value = "pem")]
+        key_encoding: String,
+        /// Validate exp/nbf/iat/iss/aud claims after the signature check.
+        #[arg(long, default_value_t = true, action = clap::ArgAction::Set)]
+        validate_claims: bool,
+        /// Clock-skew tolerance for temporal claims, in seconds.
+        #[arg(long, default_value_t = 60)]
+        leeway: i64,
+        /// Exact-match issuer check.
+        #[arg(long)]
+        expected_iss: Option<String>,
+        /// Exact-match audience check (string or array member).
+        #[arg(long)]
+        expected_aud: Option<String>,
+        /// Freeze the verification clock (unix seconds) for reproducibility.
+        #[arg(long)]
+        now_unix: Option<i64>,
+    },
+    /// Sign JSON claims into a compact JWS.
+    Sign {
+        /// Claims JSON file path, `-` for stdin, or a literal JSON string.
+        input: String,
+        /// JWS algorithm: HS256|HS384|HS512|RS256|RS384|RS512|ES256|ES384|EdDSA.
+        #[arg(short, long)]
+        alg: String,
+        /// Key: shared secret (HS*), private key PEM/hex (RS*/ES*/EdDSA), a
+        /// file path, or `-` for stdin.
+        #[arg(short, long)]
+        key: String,
+        /// How to read the HS* shared secret: utf8 | hex.
+        #[arg(long, default_value = "utf8")]
+        secret_encoding: String,
+        /// How to read ES*/EdDSA keys: pem | hex.
+        #[arg(long, default_value = "pem")]
+        key_encoding: String,
+        /// Extra JOSE header members as a JSON object (never overrides alg).
+        #[arg(long)]
+        header_extra: Option<String>,
+    },
+}
+
+fn run_jwt(cmd: JwtCmd) {
+    use cybercipher_pki::jwt::{
+        jwt_decode, jwt_sign, jwt_verify, jwt_verify_at, JwtAlg, JwtSignParams, JwtVerifyParams,
+        KeyEncoding, SecretEncoding,
+    };
+
+    match cmd {
+        JwtCmd::Decode { input } => {
+            let token = String::from_utf8_lossy(&read_input(&input)).into_owned();
+            match jwt_decode(&token) {
+                Ok(decoded) => print_value(&Value::Json(
+                    serde_json::to_value(&decoded).unwrap_or_default(),
+                )),
+                Err(e) => fail(&e),
+            }
+        }
+        JwtCmd::Verify {
+            input,
+            alg,
+            key,
+            secret_encoding,
+            key_encoding,
+            validate_claims,
+            leeway,
+            expected_iss,
+            expected_aud,
+            now_unix,
+        } => {
+            let token = String::from_utf8_lossy(&read_input(&input)).into_owned();
+            let alg = JwtAlg::parse(&alg).unwrap_or_else(|e| fail(&e));
+            let key = String::from_utf8_lossy(&read_input(&key)).into_owned();
+            let params = JwtVerifyParams {
+                secret_encoding: SecretEncoding::parse(&secret_encoding)
+                    .unwrap_or_else(|e| fail(&e)),
+                key_encoding: KeyEncoding::parse(&key_encoding).unwrap_or_else(|e| fail(&e)),
+                validate_claims,
+                leeway_secs: leeway,
+                expected_iss,
+                expected_aud,
+            };
+            let result = match now_unix {
+                Some(now) => jwt_verify_at(&token, alg, &key, &params, now),
+                None => jwt_verify(&token, alg, &key, &params),
+            };
+            match result {
+                Ok(verified) => {
+                    print_value(&Value::Json(
+                        serde_json::to_value(&verified).unwrap_or_default(),
+                    ));
+                    if !verified.valid {
+                        eprintln!("error: JWT verification failed");
+                        std::process::exit(1);
+                    }
+                }
+                Err(e) => fail(&e),
+            }
+        }
+        JwtCmd::Sign {
+            input,
+            alg,
+            key,
+            secret_encoding,
+            key_encoding,
+            header_extra,
+        } => {
+            let claims_text = String::from_utf8_lossy(&read_input(&input)).into_owned();
+            let claims: serde_json::Value =
+                serde_json::from_str(&claims_text).unwrap_or_else(|e| {
+                    eprintln!("error: claims input is not valid JSON: {e}");
+                    std::process::exit(2);
+                });
+            let alg = JwtAlg::parse(&alg).unwrap_or_else(|e| fail(&e));
+            let key = String::from_utf8_lossy(&read_input(&key)).into_owned();
+            let header_extra = match header_extra {
+                None => serde_json::Value::Null,
+                Some(text) => serde_json::from_str(&text).unwrap_or_else(|e| {
+                    eprintln!("error: --header-extra is not valid JSON: {e}");
+                    std::process::exit(2);
+                }),
+            };
+            let params = JwtSignParams {
+                secret_encoding: SecretEncoding::parse(&secret_encoding)
+                    .unwrap_or_else(|e| fail(&e)),
+                key_encoding: KeyEncoding::parse(&key_encoding).unwrap_or_else(|e| fail(&e)),
+            };
+            match jwt_sign(claims, header_extra, alg, &key, &params) {
+                Ok(token) => println!("{token}"),
+                Err(e) => fail(&e),
             }
         }
     }
