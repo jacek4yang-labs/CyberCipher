@@ -1,0 +1,225 @@
+# StegSolver compatibility matrix — steganography engine baseline.
+# Statuses: covered | superset | partial | missing | intentional-out-of-scope | same-capability
+#
+# StegSolver (https://github.com/jacek4yang/stegsolver, MIT) is a Java 21 /
+# JavaFX rebuild of the original StegSolve by Caesum. CyberCipher targets the
+# ENGINE semantics, not the Java UI: bit-exact transform/extract behavior,
+# structural analysis, and payload recovery, ported to safe Rust with no Java
+# runtime in the product or (after fixtures are pinned) in CI.
+#
+# Reference commit: c14bfa9 (main, 2026-09). Engine packages inspected:
+# core/ (ImageData, ImageOps, Channel, Roi, FrameSource, CoalescingJobRunner),
+# transform/ (TransformCatalog 42 defs, ImageTransforms, CombineMode,
+# StereoTransform), extract/ (DataExtractor, ExtractionOptions, RgbOrder,
+# AutoLsbScanner, LsbCandidate), parser/ (Png/Jpeg/Gif/Bmp + FileReport),
+# barcode/ (BarcodeScanner, PayloadDetector, StructuredAppend).
+#
+# Parity oracle: src/test/java/.../transform/LegacyReference.java (literal
+# transcription of legacy StegSolve algorithms, tests-only). CyberCipher pins
+# deterministic fixtures + expected outputs generated against these semantics;
+# Java is NOT required at CyberCipher runtime and not in normal CI.
+
+[meta]
+upstream = "https://github.com/jacek4yang/stegsolver"
+baseline_date = 2026-09-30
+source_commit = "c14bfa98b6f0af1a142773329b2a188455972d8f"
+license = "MIT"
+notes = "Behavioral/source reference only. Java UI is out of scope by hard acceptance test (final tar.gz contains/requires no JVM/JavaFX/Maven). Lane A/B/C/D/F = planned CyberCipher PR sequence, see docs/design-steg-sstv.md."
+
+# ------------------------------------------------------- image core ----
+
+[entries.image_data_model]
+ours = "— (planned cybercipher-media flat RGBA8 buffer)"
+status = "missing"
+notes = "Upstream: w/h + non-premultiplied 0xAARRGGBB int per pixel, has_alpha, palette+indices retained for indexed sources, crop, pixelAt. Port 1:1 (u32 ARGB in a flat Vec) so golden tests transfer. Lane A PR-1."
+
+[entries.image_decode_bounded]
+ours = "file_sniff + file magic (codec/fileinfo), no pixel decode yet"
+status = "partial"
+notes = "We classify formats; upstream decodes via ImageIO. We add pre-decode file-size + pixel-count caps via the image crate. Lane A PR-1."
+
+[entries.image_encode]
+ours = "—"
+status = "missing"
+notes = "PNG encode for transform/combine/SSTV outputs. Lane A PR-1 (image crate PNG encoder behind blob output)."
+
+[entries.roi]
+ours = "—"
+status = "missing"
+notes = "Clamped ROI struct shared by extract/scan/barcode/stereo. Lane A PR-1."
+
+[entries.channel_model]
+ours = "—"
+status = "missing"
+notes = "ALPHA(24..31)/RED/GREEN/BLUE shift model with ordinal-based plane-space masks, matching ExtractionOptions.bitFor. Lane A PR-1."
+
+# ------------------------------------------------------- transforms ----
+
+[entries.transform_catalog_42]
+ours = "— (planned steg bit-plane ops)"
+status = "missing"
+notes = "StegSolve order preserved: 0 original, 1 invert (XOR 0xFFFFFF), 2..9 alpha planes 7..0, 10..17 red, 18..25 green, 26..33 blue, 34..37 full channels, 38..40 random colour maps 1..3, 41 gray pixels. All computed outputs forced opaque (legacy TYPE_INT_RGB behavior). Lane A PR-1 with golden parity fixtures."
+
+[entries.transform_bit_planes]
+ours = "—"
+status = "missing"
+notes = "bitPlane: out = ((argb >>> shift+plane) & 1) != 0 ? 0xFFFFFFFF : 0xFF000000. Lane A PR-1."
+
+[entries.transform_invert]
+ours = "—"
+status = "missing"
+notes = "argb XOR 0xFFFFFF then opaque. Lane A PR-1."
+
+[entries.transform_full_channel_mask]
+ours = "—"
+status = "missing"
+notes = "Mask with the legacy quirk: result >>>= 8 when the mask reaches the alpha byte (full alpha renders as red). Parity requires reproducing this exactly. Lane A PR-1."
+
+[entries.transform_random_colour_maps]
+ours = "—"
+status = "missing"
+notes = "Three deterministic maps, Java Random LCG seeds 0x5EED0001..3. Requires a faithful Java Random (48-bit LCG, nextInt(256) = (seed >>> 40)) in tests/util. Component map: c' = ((c*cm)^cx)+ca per channel; palette map applies to palette entries (indexed sources keep indices). Lane A PR-1 — java_random helper is test-visible engine code, documented."
+
+[entries.transform_gray_pixels]
+ours = "—"
+status = "missing"
+notes = "White where r == g == b, black elsewhere. Lane A PR-1."
+
+[entries.transform_engine_cancellation]
+ours = "job coalescing exists for bake; image transforms planned"
+status = "partial"
+notes = "Upstream: flat arrays, bounded transform/render caches, CoalescingJobRunner discarding superseded work, thread-interrupt checks inside hot loops. We map to generation-ID cancellation in the Tauri command layer + ExecutionContext cancellation in hot loops. Lane A PR-1 + GUI lane."
+
+# ------------------------------------------------------- extraction ----
+
+[entries.manual_bit_extraction]
+ours = "— (planned steg extract ops)"
+status = "missing"
+notes = "Exact contract: planeMask in plane space (channel ordinal*8+plane), visit order alpha-first then RGB permutation (legacy codes 1=RGB..6=BGR), planes 7..0 (MSB-first) or 0..7 (LSB-first), row/column traversal, invertBits (~pixel), MSB-first bit packing into bytes, zero-padded trailing partial byte, bounded maxBytes with total_bytes + truncated, ROI-clamped, cancellation checked per row/col. Lane A PR-1."
+
+[entries.extraction_preview_bound]
+ours = "—"
+status = "missing"
+notes = "64 KiB bounded preview default; full extraction only on explicit action. Lane A PR-1 + GUI."
+
+# ---------------------------------------------------- auto lsb scan ----
+
+[entries.auto_lsb_fast_scan]
+ours = "— (planned Auto LSB bounded scan)"
+status = "missing"
+notes = "Exact Fast enumeration: RGB bit0 x6 orders x row/col x invert (24); RGB bits1,2 x {RGB,BGR} x row/col (8); RGB bits0+1 x6 x row/col x msb/lsb x invert (48); bits0+1+2 x {RGB,BGR} x row/col x msb/lsb (8); single-channel R/G/B bit0 row/col x invert (12), bit1 row/col (6), bits0+1 row/col x msb/lsb (12); alpha variants when has_alpha (alpha bit0 row/col x invert 4; RGBA bit0 x {RGB,BGR} x row/col x invert 8). Lane A PR-2."
+
+[entries.auto_lsb_deep_scan]
+ours = "—"
+status = "missing"
+notes = "Fast superset: 3-bit LSB across remaining 4 permutations, 4-bit LSB {RGB,BGR} x row/col x msb/lsb, MSB bit7 {RGB,BGR}, single-channel bit2/bit7. Lane A PR-2."
+
+[entries.auto_lsb_scoring]
+ours = "Auto Decode evidence scoring (flag syntax, magic, entropy, printable ratio) exists for byte streams"
+status = "partial"
+notes = "Port the deterministic table: 98 CTF flag; 100 strong magic (zip/7z/rar/gzip/bzip2/xz/tar/png/jpeg/gif/webp/pdf/elf/PE-with-header/CAFEBABE); 95 BMP>=14B; 94 #! script; 92 JSON/XML; 90/86/80 text tiers; 72/45 base64; 65 partial-printable + unverified MZ; 30 structured binary; 20 binary; 15 high-entropy noise; 10 unclassified; 5 low variation; 1 uniform byte. Reuse our file-magic + shannon entropy primitives as the detectors (one scoring system, no fork). Lane A PR-2."
+
+[entries.auto_lsb_dedup_rank]
+ours = "—"
+status = "missing"
+notes = "Dedup by fingerprint+total_bytes (+options when truncated — a matching prefix does not prove identical full payloads), rank by score desc, progress callbacks every 8 candidates + batch flushes of 10. Lane A PR-2."
+
+[entries.auto_lsb_phase2_apply]
+ours = "— (supersets upstream via Workbench/Auto-Decode handoff)"
+status = "missing"
+notes = "Phase 2 full extraction on demand + Apply Settings / Extract Bytes / Send to Workbench / Send to Auto Analyze / Save Payload. Upstream has apply+save; our superset is the cross-tool composition. Lane A PR-2 + GUI."
+
+# ------------------------------------------------ structure/carving ----
+
+[entries.png_structure]
+ours = "— (planned)"
+status = "missing"
+notes = "Chunk list with offsets/lengths/CRC status, palette, text/compressed-text/iTXt comments, trailing data. Strict bounds, truncation-tested, hostile-input fuzzed. Lane C PR-1."
+
+[entries.jpeg_structure]
+ours = "—"
+status = "missing"
+notes = "Segment markers with offsets/lengths, APPn/EXIF visibility, trailing bytes. Lane C PR-1."
+
+[entries.gif_structure]
+ours = "—"
+status = "missing"
+notes = "Blocks/extensions, comment extensions, frame count, trailing data. Lane C PR-1."
+
+[entries.bmp_structure]
+ours = "—"
+status = "missing"
+notes = "Header fields, palette, pixel-array offset/layout, trailing data. Lane C PR-1."
+
+[entries.appended_data_carving]
+ours = "— (superset planned: detected magic reuse)"
+status = "missing"
+notes = "Explicit end-of-file detection for PNG(JPEG EOI/GIF trailer/BMP array end) with offset/size/preview/detected magic + Extract/Send-to-Workbench/Send-to-Auto-Analyze. Lane C PR-1."
+
+[entries.frame_animation_support]
+ours = "—"
+status = "missing"
+notes = "Lazy frame access, bounded cache, frame metadata, export selected frame (GIF first; APNG/WebP if library support is clean). Lane C PR-2."
+
+# ---------------------------------------------------- qr / barcode ----
+
+[entries.qr_barcode_scan]
+ours = "— (planned Lane D)"
+status = "missing"
+notes = "Whole-image + ROI scan, multiple symbols, Structured Append merge, inverted/rotated/rescaled fallbacks, alternate binarizer where useful, TRY_HARDER analogue. Rust: rxing (ZXing port, covers 1D+2D breadth like upstream) primary, rqrr fallback for QR-only. Lane D PR-1."
+
+[entries.qr_binary_safe_payload]
+ours = "Auto Decode handles bytes-first input"
+status = "partial"
+notes = "Upstream separates raw payload bytes / decoded text / raw codewords + payload classification with suggested extensions, bounded hex/ASCII preview, never opens payloads. We mirror the separation and add Copy Text/Hex, Save, Send to Workbench, Send to Auto Decode. Lane D PR-1 + GUI."
+
+[entries.screen_region_capture]
+ours = "—"
+status = "intentional-out-of-scope"
+notes = "X11 ScreenGrabber is desktop integration, not engine. Per product decision, core QR scanning operates on loaded image/ROI; optional capture may come later behind platform gates (Wayland-aware). Not required for parity closure."
+
+# ------------------------------------------------------- stego tools ----
+
+[entries.stereogram_solver]
+ours = "— (planned Lane F)"
+status = "missing"
+notes = "shiftedXor with right-edge wrap (out(x,y)=in(x,y)^in((x+offset) mod w, y)), edgeHold variant, bestOffset scan (sampling step, offsets 1..w/2, smallest offset wins ties, cancellation), normalize/next/prev offset. Lane F PR-1."
+
+[entries.image_combine_13_modes]
+ours = "— (planned Lane F)"
+status = "missing"
+notes = "Exact modes: XOR/OR/AND/ADD/SUB/MUL whole-pixel (Java int wraparound semantics pinned by tests), per-channel ADD/SUB/MUL with channel masks, LIGHTEST/DARKEST per-channel, INTERLACE rows (h*2) / columns (w*2) on size intersection; size mismatch → max size with transparent-black fill; all outputs opaque. Lane F PR-1."
+
+[entries.pixel_inspector]
+ours = "—"
+status = "missing"
+notes = "Zoom/pan/fit/1:1, pixel coordinates, RGBA + hex value, ROI selection feeding barcode/extraction/analysis. GUI lane (Stego Lab viewport), backed by Rust ops."
+
+# ------------------------------------------------------- performance ----
+
+[entries.image_performance_model]
+ours = "job coalescing for recipes; image lanes planned"
+status = "partial"
+notes = "decode-once, flat arrays, bounded caches, superseded-job discard, no UI-thread blocking; criterion benches for 4K transform stepping, bit planes, LSB Fast/Deep, QR, structure parse, multiframe load. Lane A/F benches."
+
+[entries.hostile_input_bounds]
+ours = "existing resource-bounds policy engine-wide"
+status = "covered"
+notes = "Upstream treats image input as hostile (pre-decode caps, bounded reports/previews). Our typed-error + bounds policy applies to the new crates: file-size cap, pixel-count cap before decode, bounded reports/previews/metadata, no panic on malformed input (fuzz-style truncation tests required per PR)."
+
+# ------------------------------------------------------------- superset ----
+
+[entries.typed_errors_provenance]
+ours = "OperationError kinds, provenance, ExecutionContext deadlines"
+status = "superset"
+notes = "Upstream throws IllegalArgumentException/NullPointerException-style errors and uses thread interrupts; CyberCipher wraps everything in typed operation errors with parameter context, cost classes (Instant transforms / Solver scans / Heavy SSTV), cancellation + deadline."
+
+[entries.registry_recipe_integration]
+ours = "OperationRegistry + recipe engine + incremental cache"
+status = "superset"
+notes = "Steg/SSTV operations register like every other CyberCipher op: compose in recipes, auto-bake for Instant cost classes, audit trails. Upstream has no equivalent."
+
+[entries.cross_tool_composition]
+ours = "planned end-to-end chains"
+status = "missing"
+notes = "Image -> transform/LSB -> bytes -> Auto Decode -> flag; QR bytes -> Auto Decode; SSTV -> PNG -> Stego -> Auto LSB -> Auto Decode. This composition is the core product goal; regression fixtures per docs/design-steg-sstv.md acceptance flows A..J."
