@@ -85,9 +85,10 @@ pub(crate) fn generate() -> PkiResult<EccKeyPair> {
 /// canonical `private_hex`.
 pub(crate) fn parse_private(private_hex: &str) -> PkiResult<EccKeyPair> {
     let bytes = decode_fixed_hex("private_key", private_hex, X25519_KEY_SIZE)?;
-    let arr: [u8; X25519_KEY_SIZE] = bytes.as_slice().try_into().map_err(|_| {
-        internal("private key length invariant violated after fixed-length decode")
-    })?;
+    let arr: [u8; X25519_KEY_SIZE] = bytes
+        .as_slice()
+        .try_into()
+        .map_err(|_| internal("private key length invariant violated after fixed-length decode"))?;
     Ok(keypair_from_private(arr))
 }
 
@@ -106,9 +107,13 @@ pub(crate) fn public_material(public_hex: &str) -> PkiResult<EccPublicKeyMateria
 
 /// Raw 32-byte public key (SPKI bit-string payload) into public-key material.
 pub(crate) fn public_from_raw_bytes(bytes: &[u8]) -> PkiResult<EccPublicKeyMaterial> {
-    let arr: [u8; X25519_KEY_SIZE] = bytes
-        .try_into()
-        .map_err(|_| super::wrong_length("public_key", format!("{X25519_KEY_SIZE} bytes"), format!("{} bytes", bytes.len())))?;
+    let arr: [u8; X25519_KEY_SIZE] = bytes.try_into().map_err(|_| {
+        super::wrong_length(
+            "public_key",
+            format!("{X25519_KEY_SIZE} bytes"),
+            format!("{} bytes", bytes.len()),
+        )
+    })?;
     let hex = to_hex(&arr);
     Ok(EccPublicKeyMaterial {
         curve: EccCurve::X25519,
@@ -120,9 +125,24 @@ pub(crate) fn public_from_raw_bytes(bytes: &[u8]) -> PkiResult<EccPublicKeyMater
 /// PKCS#8 `privateKey` OCTET STRING payload (RFC 8410: the raw scalar) into
 /// a keypair. The scalar is clamped on load.
 pub(crate) fn private_from_pkcs8_octets(octets: &[u8]) -> PkiResult<EccKeyPair> {
-    let arr: [u8; X25519_KEY_SIZE] = octets
-        .try_into()
-        .map_err(|_| super::wrong_length("private_key", format!("{X25519_KEY_SIZE} bytes"), format!("{} bytes", octets.len())))?;
+    // RFC 8410 §7: the PKCS#8 privateKey OCTET STRING wraps a DER-encoded
+    // OCTET STRING containing the raw 32-byte scalar — strip the 2-byte
+    // header when present.
+    let raw: &[u8] = if octets.len() == X25519_KEY_SIZE + 2
+        && octets[0] == 0x04
+        && octets[1] == X25519_KEY_SIZE as u8
+    {
+        &octets[2..]
+    } else {
+        octets
+    };
+    let arr: [u8; X25519_KEY_SIZE] = raw.try_into().map_err(|_| {
+        super::wrong_length(
+            "private_key",
+            format!("{X25519_KEY_SIZE} bytes"),
+            format!("{} bytes", raw.len()),
+        )
+    })?;
     Ok(keypair_from_private(arr))
 }
 

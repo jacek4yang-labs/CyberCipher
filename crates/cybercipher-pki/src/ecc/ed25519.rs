@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 
 use super::curve::{EccCurve, EccKeyPair, EccPublicKeyMaterial};
 use super::{decode_fixed_hex, internal, invalid_point, wrong_encoding};
-use crate::error::{PkiResult};
+use crate::error::PkiResult;
 use crate::keys::to_hex;
 
 /// Size of every Ed25519 artifact: seed, public key, and signature.
@@ -86,9 +86,11 @@ pub(crate) fn generate() -> PkiResult<EccKeyPair> {
 /// Parse a 32-byte seed into a keypair with the derived public key.
 pub(crate) fn parse_private(private_hex: &str) -> PkiResult<EccKeyPair> {
     let seed = decode_fixed_hex("private_key", private_hex, ED25519_KEY_SIZE)?;
-    keypair_from_seed_bytes(seed.as_slice().try_into().map_err(|_| {
-        internal("seed length invariant violated after fixed-length decode")
-    })?)
+    keypair_from_seed_bytes(
+        seed.as_slice()
+            .try_into()
+            .map_err(|_| internal("seed length invariant violated after fixed-length decode"))?,
+    )
 }
 
 /// Parse a 32-byte compressed Edwards point into public-key material,
@@ -126,9 +128,19 @@ pub(crate) fn public_from_raw_bytes(bytes: &[u8]) -> PkiResult<EccPublicKeyMater
 /// keypair. The `ed25519-dalek` decode machinery has already validated the
 /// outer `PrivateKeyInfo`.
 pub(crate) fn private_from_pkcs8_octets(octets: &[u8]) -> PkiResult<EccKeyPair> {
-    let seed: [u8; ED25519_KEY_SIZE] = octets
+    // RFC 8410 §7: the PKCS#8 privateKey OCTET STRING wraps a DER-encoded
+    // OCTET STRING containing the raw 32-byte seed — strip the 2-byte header.
+    let raw: &[u8] = if octets.len() == ED25519_KEY_SIZE + 2
+        && octets[0] == 0x04
+        && octets[1] == ED25519_KEY_SIZE as u8
+    {
+        &octets[2..]
+    } else {
+        octets
+    };
+    let seed: [u8; ED25519_KEY_SIZE] = raw
         .try_into()
-        .map_err(|_| wrong_key_len(ED25519_KEY_SIZE, octets.len()))?;
+        .map_err(|_| wrong_key_len(ED25519_KEY_SIZE, raw.len()))?;
     keypair_from_seed_bytes(&seed)
 }
 
@@ -136,18 +148,20 @@ pub(crate) fn private_from_pkcs8_octets(octets: &[u8]) -> PkiResult<EccKeyPair> 
 /// point).
 pub(crate) fn parse_signing_key(private_hex: &str) -> PkiResult<SigningKey> {
     let seed = decode_fixed_hex("private_key", private_hex, ED25519_KEY_SIZE)?;
-    let arr: [u8; ED25519_KEY_SIZE] = seed.as_slice().try_into().map_err(|_| {
-        internal("seed length invariant violated after fixed-length decode")
-    })?;
+    let arr: [u8; ED25519_KEY_SIZE] = seed
+        .as_slice()
+        .try_into()
+        .map_err(|_| internal("seed length invariant violated after fixed-length decode"))?;
     Ok(SigningKey::from_bytes(&arr))
 }
 
 /// Build a `VerifyingKey` from a hex-encoded 32-byte public key.
 pub(crate) fn parse_verifying_key(public_hex: &str) -> PkiResult<VerifyingKey> {
     let bytes = decode_fixed_hex("public_key", public_hex, ED25519_KEY_SIZE)?;
-    let arr: [u8; ED25519_KEY_SIZE] = bytes.as_slice().try_into().map_err(|_| {
-        internal("public key length invariant violated after fixed-length decode")
-    })?;
+    let arr: [u8; ED25519_KEY_SIZE] = bytes
+        .as_slice()
+        .try_into()
+        .map_err(|_| internal("public key length invariant violated after fixed-length decode"))?;
     VerifyingKey::from_bytes(&arr).map_err(|e| {
         invalid_point(
             "ed25519",
@@ -169,5 +183,9 @@ fn keypair_from_seed_bytes(seed: &[u8; ED25519_KEY_SIZE]) -> PkiResult<EccKeyPai
 }
 
 fn wrong_key_len(expected: usize, actual: usize) -> crate::error::PkiError {
-    super::wrong_length("private_key", format!("{expected} bytes"), format!("{actual} bytes"))
+    super::wrong_length(
+        "private_key",
+        format!("{expected} bytes"),
+        format!("{actual} bytes"),
+    )
 }

@@ -150,8 +150,8 @@ where
         + elliptic_curve::CurveArithmetic
         + ecdsa::hazmat::DigestPrimitive,
     elliptic_curve::Scalar<C>: elliptic_curve::ops::Invert<
-        Output = elliptic_curve::subtle::CtOption<elliptic_curve::Scalar<C>>,
-    > + ecdsa::hazmat::SignPrimitive<C>,
+            Output = elliptic_curve::subtle::CtOption<elliptic_curve::Scalar<C>>,
+        > + ecdsa::hazmat::SignPrimitive<C>,
     ecdsa::SignatureSize<C>: elliptic_curve::generic_array::ArrayLength<u8>,
     ecdsa::der::MaxSize<C>: elliptic_curve::generic_array::ArrayLength<u8>,
     elliptic_curve::FieldBytesSize<C>: core::ops::Add,
@@ -195,8 +195,12 @@ pub fn ecdsa_verify(
     let public = parse_ecc_public_key(curve, public_hex)?;
     let signature_bytes = decode_hex("signature", signature_hex)?;
     let outcome = match curve {
-        EccCurve::P256 => ecdsa_verify_curve::<p256::NistP256>(curve, &public, &signature_bytes, format, data),
-        EccCurve::P384 => ecdsa_verify_curve::<p384::NistP384>(curve, &public, &signature_bytes, format, data),
+        EccCurve::P256 => {
+            ecdsa_verify_curve::<p256::NistP256>(curve, &public, &signature_bytes, format, data)
+        }
+        EccCurve::P384 => {
+            ecdsa_verify_curve::<p384::NistP384>(curve, &public, &signature_bytes, format, data)
+        }
         other => return Err(ecdsa_requires_nist(other)),
     };
     match outcome {
@@ -272,10 +276,8 @@ where
         core::ops::Add<ecdsa::der::MaxOverhead> + elliptic_curve::generic_array::ArrayLength<u8>,
 {
     match format {
-        EcdsaSignatureFormat::Der => {
-            ecdsa::Signature::<C>::from_der(bytes)
-                .map_err(|e| invalid_der("ECDSA DER signature", e).with_parameter("signature"))
-        }
+        EcdsaSignatureFormat::Der => ecdsa::Signature::<C>::from_der(bytes)
+            .map_err(|e| invalid_der("ECDSA DER signature", e).with_parameter("signature")),
         EcdsaSignatureFormat::Fixed => {
             let expected = 2 * curve.private_key_size();
             if bytes.len() != expected {
@@ -326,10 +328,8 @@ pub fn ecdsa_signature_der_to_fixed(curve: EccCurve, der_hex: &str) -> PkiResult
 pub fn ecdsa_signature_fixed_to_der(curve: EccCurve, fixed_hex: &str) -> PkiResult<String> {
     let bytes = decode_fixed_hex("signature", fixed_hex, 2 * curve.private_key_size())?;
     let to_der_error = |_: ecdsa::Error| {
-        super::wrong_encoding(
-            "invalid fixed-size ECDSA signature: r and s must both be in 1..n",
-        )
-        .with_parameter("signature")
+        super::wrong_encoding("invalid fixed-size ECDSA signature: r and s must both be in 1..n")
+            .with_parameter("signature")
     };
     match curve {
         EccCurve::P256 => Ok(to_hex(

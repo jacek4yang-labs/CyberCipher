@@ -42,8 +42,8 @@ pub fn ecdh_shared_secret(
 fn nist_ecdh<C>(curve: EccCurve, scalar: &[u8], peer_public_hex: &str) -> PkiResult<String>
 where
     C: elliptic_curve::CurveArithmetic,
-    elliptic_curve::AffinePoint<C>: elliptic_curve::sec1::FromEncodedPoint<C>
-        + elliptic_curve::sec1::ToEncodedPoint<C>,
+    elliptic_curve::AffinePoint<C>:
+        elliptic_curve::sec1::FromEncodedPoint<C> + elliptic_curve::sec1::ToEncodedPoint<C>,
     elliptic_curve::FieldBytesSize<C>: elliptic_curve::sec1::ModulusSize,
 {
     let field = elliptic_curve::FieldBytes::<C>::clone_from_slice(scalar);
@@ -57,7 +57,9 @@ where
     if peer_bytes.len() != compressed_len && peer_bytes.len() != uncompressed_len {
         return Err(wrong_length(
             "peer_public_key",
-            format!("{compressed_len} bytes (compressed) or {uncompressed_len} bytes (uncompressed)"),
+            format!(
+                "{compressed_len} bytes (compressed) or {uncompressed_len} bytes (uncompressed)"
+            ),
             format!("{} bytes", peer_bytes.len()),
         ));
     }

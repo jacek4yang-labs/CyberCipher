@@ -28,7 +28,7 @@ use serde::{Deserialize, Serialize};
 use spki::ObjectIdentifier;
 
 use super::{
-    decode_fixed_hex, decode_hex, decode_scalar_hex, invalid_key, invalid_point, internal,
+    decode_fixed_hex, decode_hex, decode_scalar_hex, internal, invalid_key, invalid_point,
     wrong_curve, wrong_encoding, wrong_length,
 };
 use crate::error::{invalid_armor, invalid_der, PkiError, PkiResult};
@@ -185,8 +185,8 @@ pub fn generate_ecc_keypair(curve: EccCurve) -> PkiResult<EccKeyPair> {
 fn nist_generate<C>(curve: EccCurve) -> PkiResult<EccKeyPair>
 where
     C: elliptic_curve::CurveArithmetic,
-    elliptic_curve::AffinePoint<C>: elliptic_curve::sec1::FromEncodedPoint<C>
-        + elliptic_curve::sec1::ToEncodedPoint<C>,
+    elliptic_curve::AffinePoint<C>:
+        elliptic_curve::sec1::FromEncodedPoint<C> + elliptic_curve::sec1::ToEncodedPoint<C>,
     elliptic_curve::FieldBytesSize<C>: elliptic_curve::sec1::ModulusSize,
 {
     let secret = elliptic_curve::SecretKey::<C>::random(&mut OsRng);
@@ -199,8 +199,8 @@ fn nist_keypair_from_secret<C>(
 ) -> PkiResult<EccKeyPair>
 where
     C: elliptic_curve::CurveArithmetic,
-    elliptic_curve::AffinePoint<C>: elliptic_curve::sec1::FromEncodedPoint<C>
-        + elliptic_curve::sec1::ToEncodedPoint<C>,
+    elliptic_curve::AffinePoint<C>:
+        elliptic_curve::sec1::FromEncodedPoint<C> + elliptic_curve::sec1::ToEncodedPoint<C>,
     elliptic_curve::FieldBytesSize<C>: elliptic_curve::sec1::ModulusSize,
 {
     let public = secret.public_key();
@@ -255,12 +255,8 @@ where
 /// validate the point is on the curve.
 pub fn parse_ecc_public_key(curve: EccCurve, public_hex: &str) -> PkiResult<EccPublicKeyMaterial> {
     match curve {
-        EccCurve::P256 => {
-            nist_public_material::<p256::NistP256>(curve, public_hex, EccCurve::P384)
-        }
-        EccCurve::P384 => {
-            nist_public_material::<p384::NistP384>(curve, public_hex, EccCurve::P256)
-        }
+        EccCurve::P256 => nist_public_material::<p256::NistP256>(curve, public_hex, EccCurve::P384),
+        EccCurve::P384 => nist_public_material::<p384::NistP384>(curve, public_hex, EccCurve::P256),
         EccCurve::Ed25519 => super::ed25519::public_material(public_hex),
         EccCurve::X25519 => super::x25519::public_material(public_hex),
     }
@@ -276,26 +272,33 @@ fn nist_public_material<C>(
 ) -> PkiResult<EccPublicKeyMaterial>
 where
     C: elliptic_curve::CurveArithmetic,
-    elliptic_curve::AffinePoint<C>: elliptic_curve::sec1::FromEncodedPoint<C>
-        + elliptic_curve::sec1::ToEncodedPoint<C>,
+    elliptic_curve::AffinePoint<C>:
+        elliptic_curve::sec1::FromEncodedPoint<C> + elliptic_curve::sec1::ToEncodedPoint<C>,
     elliptic_curve::FieldBytesSize<C>: elliptic_curve::sec1::ModulusSize,
 {
     let bytes = decode_hex("public_key", public_hex)?;
     let compressed_len = curve.public_key_compressed_size();
     let uncompressed_len = curve.public_key_uncompressed_size();
     if bytes.len() != compressed_len && bytes.len() != uncompressed_len {
-        if [sibling.public_key_compressed_size(), sibling.public_key_uncompressed_size()]
-            .contains(&bytes.len())
+        if [
+            sibling.public_key_compressed_size(),
+            sibling.public_key_uncompressed_size(),
+        ]
+        .contains(&bytes.len())
         {
-            return Err(wrong_curve(curve.label(), sibling.label()).with_details(format!(
-                "input length {} bytes matches a {} key",
-                bytes.len(),
-                sibling.label()
-            )));
+            return Err(
+                wrong_curve(curve.label(), sibling.label()).with_details(format!(
+                    "input length {} bytes matches a {} key",
+                    bytes.len(),
+                    sibling.label()
+                )),
+            );
         }
         return Err(wrong_length(
             "public_key",
-            format!("{compressed_len} bytes (compressed) or {uncompressed_len} bytes (uncompressed)"),
+            format!(
+                "{compressed_len} bytes (compressed) or {uncompressed_len} bytes (uncompressed)"
+            ),
             format!("{} bytes", bytes.len()),
         ));
     }
@@ -328,8 +331,8 @@ fn nist_public_from_key<C>(
 ) -> EccPublicKeyMaterial
 where
     C: elliptic_curve::CurveArithmetic,
-    elliptic_curve::AffinePoint<C>: elliptic_curve::sec1::FromEncodedPoint<C>
-        + elliptic_curve::sec1::ToEncodedPoint<C>,
+    elliptic_curve::AffinePoint<C>:
+        elliptic_curve::sec1::FromEncodedPoint<C> + elliptic_curve::sec1::ToEncodedPoint<C>,
     elliptic_curve::FieldBytesSize<C>: elliptic_curve::sec1::ModulusSize,
 {
     let compressed = public.to_encoded_point(true);
@@ -348,14 +351,13 @@ fn nist_public_from_material<C>(
 ) -> PkiResult<elliptic_curve::PublicKey<C>>
 where
     C: elliptic_curve::CurveArithmetic,
-    elliptic_curve::AffinePoint<C>: elliptic_curve::sec1::FromEncodedPoint<C>
-        + elliptic_curve::sec1::ToEncodedPoint<C>,
+    elliptic_curve::AffinePoint<C>:
+        elliptic_curve::sec1::FromEncodedPoint<C> + elliptic_curve::sec1::ToEncodedPoint<C>,
     elliptic_curve::FieldBytesSize<C>: elliptic_curve::sec1::ModulusSize,
 {
     let bytes = decode_hex("public_key", &material.public_uncompressed_hex)?;
-    elliptic_curve::PublicKey::<C>::from_sec1_bytes(&bytes).map_err(|e| {
-        invalid_point(material.curve.label(), format!("SEC1 point rejected: {e}"))
-    })
+    elliptic_curve::PublicKey::<C>::from_sec1_bytes(&bytes)
+        .map_err(|e| invalid_point(material.curve.label(), format!("SEC1 point rejected: {e}")))
 }
 
 // ---------------------------------------------------------------------------
@@ -367,12 +369,14 @@ where
 pub fn ecc_public_key_to_spki_der(curve: EccCurve, public_hex: &str) -> PkiResult<Vec<u8>> {
     match curve {
         EccCurve::P256 => {
-            let material = nist_public_material::<p256::NistP256>(curve, public_hex, EccCurve::P384)?;
+            let material =
+                nist_public_material::<p256::NistP256>(curve, public_hex, EccCurve::P384)?;
             let public = nist_public_from_material::<p256::NistP256>(&material)?;
             encode_spki_der(public.to_public_key_der())
         }
         EccCurve::P384 => {
-            let material = nist_public_material::<p384::NistP384>(curve, public_hex, EccCurve::P256)?;
+            let material =
+                nist_public_material::<p384::NistP384>(curve, public_hex, EccCurve::P256)?;
             let public = nist_public_from_material::<p384::NistP384>(&material)?;
             encode_spki_der(public.to_public_key_der())
         }
@@ -391,8 +395,9 @@ pub fn ecc_public_key_to_spki_der(curve: EccCurve, public_hex: &str) -> PkiResul
                     .map_err(|e| invalid_der("SPKI SubjectPublicKeyInfo", e))?,
             };
             use der::Encode as _;
-            spki.to_der()
-                .map_err(|e| internal("X25519 SPKI DER encoding failed").with_details(e.to_string()))
+            spki.to_der().map_err(|e| {
+                internal("X25519 SPKI DER encoding failed").with_details(e.to_string())
+            })
         }
     }
 }
@@ -401,12 +406,14 @@ pub fn ecc_public_key_to_spki_der(curve: EccCurve, public_hex: &str) -> PkiResul
 pub fn ecc_public_key_to_spki_pem(curve: EccCurve, public_hex: &str) -> PkiResult<String> {
     match curve {
         EccCurve::P256 => {
-            let material = nist_public_material::<p256::NistP256>(curve, public_hex, EccCurve::P384)?;
+            let material =
+                nist_public_material::<p256::NistP256>(curve, public_hex, EccCurve::P384)?;
             let public = nist_public_from_material::<p256::NistP256>(&material)?;
             encode_spki_pem(public.to_public_key_pem(der::pem::LineEnding::LF))
         }
         EccCurve::P384 => {
-            let material = nist_public_material::<p384::NistP384>(curve, public_hex, EccCurve::P256)?;
+            let material =
+                nist_public_material::<p384::NistP384>(curve, public_hex, EccCurve::P256)?;
             let public = nist_public_from_material::<p384::NistP384>(&material)?;
             encode_spki_pem(public.to_public_key_pem(der::pem::LineEnding::LF))
         }
@@ -425,8 +432,9 @@ pub fn ecc_public_key_to_spki_pem(curve: EccCurve, public_hex: &str) -> PkiResul
                     .map_err(|e| invalid_der("SPKI SubjectPublicKeyInfo", e))?,
             };
             use der::EncodePem as _;
-            spki.to_pem(der::pem::LineEnding::LF)
-                .map_err(|e| internal("X25519 SPKI PEM encoding failed").with_details(e.to_string()))
+            spki.to_pem(der::pem::LineEnding::LF).map_err(|e| {
+                internal("X25519 SPKI PEM encoding failed").with_details(e.to_string())
+            })
         }
     }
 }
@@ -507,7 +515,9 @@ fn nist_public_from_sec1(curve: EccCurve, bytes: &[u8]) -> PkiResult<EccPublicKe
     if bytes.len() != compressed_len && bytes.len() != uncompressed_len {
         return Err(wrong_length(
             "public_key",
-            format!("{compressed_len} bytes (compressed) or {uncompressed_len} bytes (uncompressed)"),
+            format!(
+                "{compressed_len} bytes (compressed) or {uncompressed_len} bytes (uncompressed)"
+            ),
             format!("{} bytes", bytes.len()),
         ));
     }
@@ -522,7 +532,9 @@ fn nist_public_from_sec1(curve: EccCurve, bytes: &[u8]) -> PkiResult<EccPublicKe
                 .map_err(|e| invalid_point(curve.label(), format!("SEC1 point rejected: {e}")))?;
             Ok(nist_public_from_key(curve, &public))
         }
-        _ => Err(internal("nist_public_from_sec1 called for a non-NIST curve")),
+        _ => Err(internal(
+            "nist_public_from_sec1 called for a non-NIST curve",
+        )),
     }
 }
 
@@ -551,9 +563,9 @@ pub fn ecc_private_key_to_pkcs8_der(curve: EccCurve, private_hex: &str) -> PkiRe
             let bytes = decode_fixed_hex("private_key", private_hex, 32)?;
             let key_info = x25519_key_info(&bytes)?;
             use der::Encode as _;
-            key_info
-                .to_der()
-                .map_err(|e| internal("X25519 PKCS#8 DER encoding failed").with_details(e.to_string()))
+            key_info.to_der().map_err(|e| {
+                internal("X25519 PKCS#8 DER encoding failed").with_details(e.to_string())
+            })
         }
     }
 }
@@ -579,9 +591,9 @@ pub fn ecc_private_key_to_pkcs8_pem(curve: EccCurve, private_hex: &str) -> PkiRe
             let bytes = decode_fixed_hex("private_key", private_hex, 32)?;
             let key_info = x25519_key_info(&bytes)?;
             use der::EncodePem as _;
-            key_info
-                .to_pem(der::pem::LineEnding::LF)
-                .map_err(|e| internal("X25519 PKCS#8 PEM encoding failed").with_details(e.to_string()))
+            key_info.to_pem(der::pem::LineEnding::LF).map_err(|e| {
+                internal("X25519 PKCS#8 PEM encoding failed").with_details(e.to_string())
+            })
         }
     }
 }
@@ -605,7 +617,9 @@ fn encode_pkcs8_der(document: Result<pkcs8::SecretDocument, pkcs8::Error>) -> Pk
         .map_err(|e| internal("PKCS#8 DER encoding failed").with_details(e.to_string()))
 }
 
-fn encode_pkcs8_pem(pem: pkcs8::Result<impl std::ops::Deref<Target = String>>) -> PkiResult<String> {
+fn encode_pkcs8_pem(
+    pem: pkcs8::Result<impl std::ops::Deref<Target = String>>,
+) -> PkiResult<String> {
     pem.map(|s| (*s).clone())
         .map_err(|e| internal("PKCS#8 PEM encoding failed").with_details(e.to_string()))
 }
@@ -695,11 +709,14 @@ fn split_pem(input: &str, expected_label: &str) -> PkiResult<EccPemBlock> {
             .with_expected("PEM with BEGIN/END armor lines"));
     }
     let begin = trimmed.lines().next().unwrap_or_default();
-    let rest = begin.trim_start().strip_prefix("-----BEGIN ").ok_or_else(|| {
-        invalid_armor("missing '-----BEGIN ...-----' armor header")
-            .with_parameter("pem")
-            .with_actual(crate::keys::preview(begin, 48))
-    })?;
+    let rest = begin
+        .trim_start()
+        .strip_prefix("-----BEGIN ")
+        .ok_or_else(|| {
+            invalid_armor("missing '-----BEGIN ...-----' armor header")
+                .with_parameter("pem")
+                .with_actual(crate::keys::preview(begin, 48))
+        })?;
     let label = rest.strip_suffix("-----").ok_or_else(|| {
         invalid_armor("BEGIN header is not terminated by '-----'")
             .with_parameter("pem")
@@ -737,10 +754,10 @@ fn split_pem(input: &str, expected_label: &str) -> PkiResult<EccPemBlock> {
         base64.push_str(line);
     }
     if !saw_end {
-        return Err(invalid_armor(format!(
-            "missing '-----END {label}-----' terminator"
-        ))
-        .with_parameter("pem"));
+        return Err(
+            invalid_armor(format!("missing '-----END {label}-----' terminator"))
+                .with_parameter("pem"),
+        );
     }
     if headers
         .iter()

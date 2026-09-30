@@ -35,13 +35,12 @@ pub mod x25519;
 pub use curve::{
     ecc_private_key_from_pkcs8_der, ecc_private_key_from_pkcs8_pem, ecc_private_key_to_pkcs8_der,
     ecc_private_key_to_pkcs8_pem, ecc_public_key_from_spki_der, ecc_public_key_from_spki_pem,
-    ecc_public_key_to_spki_der, ecc_public_key_to_spki_pem, generate_ecc_keypair,
-    parse_ecc_curve, parse_ecc_private_key, parse_ecc_public_key, EccCurve, EccKeyPair,
-    EccPublicKeyMaterial,
+    ecc_public_key_to_spki_der, ecc_public_key_to_spki_pem, generate_ecc_keypair, parse_ecc_curve,
+    parse_ecc_private_key, parse_ecc_public_key, EccCurve, EccKeyPair, EccPublicKeyMaterial,
 };
 pub use ecdh::ecdh_shared_secret;
 pub use ecdsa::{
-    ecdsa_signature_der_to_fixed, ecdsa_signature_fixed_to_der, ecdsa_sign, ecdsa_verify,
+    ecdsa_sign, ecdsa_signature_der_to_fixed, ecdsa_signature_fixed_to_der, ecdsa_verify,
     EcdsaDigest, EcdsaNonceMode, EcdsaSignatureFormat, EcdsaVerifyResult,
 };
 pub use ed25519::{ed25519_sign, ed25519_verify, Ed25519VerifyResult};
@@ -135,8 +134,9 @@ pub(crate) fn decode_scalar_hex(
         ));
     }
     if bytes.iter().all(|&b| b == 0) {
-        return Err(invalid_key("private key scalar is zero (not a valid key)")
-            .with_parameter(parameter));
+        return Err(
+            invalid_key("private key scalar is zero (not a valid key)").with_parameter(parameter)
+        );
     }
     let mut padded = vec![0u8; field_len - bytes.len()];
     padded.extend_from_slice(&bytes);
@@ -156,12 +156,10 @@ pub(crate) fn invalid_key(message: impl Into<String>) -> PkiError {
 /// The input belongs to a different curve than requested.
 /// `ErrorKind::InvalidInput` with `expected` / `actual`.
 pub(crate) fn wrong_curve(expected: &str, actual: &str) -> PkiError {
-    PkiError::invalid_input(
-        "wrong curve: the supplied key material is not for the requested curve",
-    )
-    .with_parameter("curve")
-    .with_expected(expected)
-    .with_actual(actual)
+    PkiError::invalid_input("wrong curve: the supplied key material is not for the requested curve")
+        .with_parameter("curve")
+        .with_expected(expected)
+        .with_actual(actual)
 }
 
 /// The bytes are well-formed hex but not a valid encoding of the requested
@@ -174,11 +172,9 @@ pub(crate) fn wrong_encoding(message: impl Into<String>) -> PkiError {
 /// The encoded point is not on the requested curve (or failed to decompress).
 /// `ErrorKind::KeyError` with a stable "point is not on the curve" message.
 pub(crate) fn invalid_point(curve: &str, detail: impl std::fmt::Display) -> PkiError {
-    PkiError::key(format!(
-        "point is not on the {curve} curve: {detail}"
-    ))
-    .with_parameter("public_key")
-    .with_details(detail.to_string())
+    PkiError::key(format!("point is not on the {curve} curve: {detail}"))
+        .with_parameter("public_key")
+        .with_details(detail.to_string())
 }
 
 /// A length constraint on decoded key/signature bytes is violated.
