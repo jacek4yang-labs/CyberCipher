@@ -77,3 +77,10 @@
   owner: agent/sstv-bridge
   priority: P1
   depends_on: [M10-SSTV-01]
+
+- id: GUI-SSTV-LAB-01
+  title: SSTV Lab GUI
+  status: in_progress
+  owner: agent/sstvlab
+  priority: P1
+  depends_on: [M10-SSTV-02]
