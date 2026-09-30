@@ -84,3 +84,10 @@
   owner: agent/sstvlab
   priority: P1
   depends_on: [M10-SSTV-02]
+
+- id: GUI-STEGO-LAB-01
+  title: Stego Lab GUI
+  status: in_progress
+  owner: agent/stegolab
+  priority: P1
+  depends_on: [M9-IMAGE-02]
