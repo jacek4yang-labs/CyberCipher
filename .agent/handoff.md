@@ -3,19 +3,18 @@
 ## In flight
 - Nothing. All lanes merged; worktrees cleaned up.
 
-## main = cc3239c — 32 PRs, ~125 registry ops, 413 tests.
+## main = 4ffcf12 — 37 PRs, ~125 registry ops, 485 tests.
 
-## Session 4 merged
-#29 state semantics (ancestor check), #30 PKI foundation (keygen/PEM/DER/JWK),
-#31 base families + classical misc, #32 RSA ops (OAEP/PSS).
+## Session 5 merged
+#34 Crypto Assist GUI, #35 ECC foundation, #36 Auto Decode v2, #37 SM2.
 
 ## Next ready (priority order)
-1. M8-PKI-D (ECC), M8-PKI-E (SM2), M8-PKI-F (X.509/JWT) — three independent lanes.
-2. M7-AUTO-02 (Auto Decode vocab: unicode/qp/base58-91), M6-CTF specialty encodings.
-3. GUI wiring: PKI lab + Crypto Assist panel.
-4. M9-FILE-01, M7-SIG-01, M5-SEED-01.
+1. Spawn next wave: X.509/ASN.1/JWT (M8-PKI-F), File/structured-data (M9-FILE-01).
+2. Refill: CTF specialty encodings (provenance research first), signature scanner.
+3. GUI: PKI Lab + Crypto Assist generalization (SM4/DES/RC4 profiles).
+4. First real prerelease: tag v0.1.0-alpha, verify release workflow + smoke test, publish artifacts.
 
 ## Blocked
 - Subagent concurrency = 2. Infra failures: "Captcha instance timed out",
   "exceed quota limit" — checkpoint worktrees and finish orphaned WIP as
-  coordinator (done 5x across sessions).
+  coordinator (done 6x across sessions).
