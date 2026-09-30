@@ -23,9 +23,9 @@
 //!
 //! Level mapping: 1500 Hz is level 0, 2300 Hz is level 255.
 
-use crate::dsp::{Trajectory, median};
+use crate::dsp::{median, Trajectory};
 pub use crate::modes::Palette;
-use crate::modes::{Family, Mode, hz_to_level};
+use crate::modes::{hz_to_level, Family, Mode};
 
 /// Neutral chroma value (zero colour difference), used when a channel is
 /// genuinely absent from the recording.

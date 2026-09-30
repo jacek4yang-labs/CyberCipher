@@ -11,7 +11,7 @@
 //! *candidate* that the blind path can weigh, and it gives the CLI a
 //! meaningful diagnostic when parity fails.
 
-use crate::dsp::{Trajectory, mean};
+use crate::dsp::{mean, Trajectory};
 use crate::modes::{
     Mode, VIS_BIT_ONE_HZ, VIS_BIT_SECONDS, VIS_BIT_ZERO_HZ, VIS_BREAK_SECONDS, VIS_LEADER_HZ,
     VIS_LEADER_SECONDS, VIS_SEPARATOR_HZ, VIS_TOTAL_SECONDS,

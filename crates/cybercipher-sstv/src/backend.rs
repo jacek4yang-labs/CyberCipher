@@ -18,7 +18,7 @@
 use slowrx::{SstvDecoder, SstvEvent, SstvImage};
 
 use crate::autodetect::Hypothesis;
-use crate::error::{Context, Result, anyhow};
+use crate::error::{anyhow, Context, Result};
 use crate::score::{self, Quality};
 
 /// A decoded image at full resolution.
@@ -240,7 +240,10 @@ pub fn encode_png(pixels: &[[u8; 3]], width: u32, height: u32) -> Result<Vec<u8>
     }
     let mut bytes = Vec::new();
     buffer
-        .write_to(&mut std::io::Cursor::new(&mut bytes), image::ImageFormat::Png)
+        .write_to(
+            &mut std::io::Cursor::new(&mut bytes),
+            image::ImageFormat::Png,
+        )
         .context("encode PNG")?;
     Ok(bytes)
 }

@@ -20,7 +20,7 @@ use crate::audio::{self, ChannelChoice};
 use crate::autodetect::{self, Candidate, Origin};
 use crate::backend;
 use crate::dsp::{Analyzer, Trajectory};
-use crate::error::{Context, Result, anyhow};
+use crate::error::{anyhow, Context, Result};
 use crate::modes::{self, Mode};
 use crate::report::{AudioReport, Detection, Report};
 use crate::score;

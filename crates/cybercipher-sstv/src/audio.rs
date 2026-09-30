@@ -24,8 +24,8 @@ use symphonia::core::meta::MetadataOptions;
 use symphonia::core::probe::Hint;
 use symphonia::default::{get_codecs, get_probe};
 
-use crate::dsp::{Analyzer, rms};
-use crate::error::{Context, Result, anyhow, bail};
+use crate::dsp::{rms, Analyzer};
+use crate::error::{anyhow, bail, Context, Result};
 
 /// Which audio channel to decode.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -170,8 +170,7 @@ pub fn probe_file(path: &Path) -> Result<Probe> {
         bail!("{} is empty", path.display());
     }
 
-    let bytes =
-        std::fs::read(path).with_context(|| format!("open {}", path.display()))?;
+    let bytes = std::fs::read(path).with_context(|| format!("open {}", path.display()))?;
     probe_bytes(&bytes, &path.display().to_string())
 }
 
@@ -185,7 +184,7 @@ pub fn probe_bytes(bytes: &[u8], label: &str) -> Result<Probe> {
         bail!("{label} is empty");
     }
 
-    let stream = MediaSourceStream::new(Box::new(Cursor::new(bytes)), Default::default());
+    let stream = MediaSourceStream::new(Box::new(Cursor::new(bytes.to_vec())), Default::default());
     let probed = get_probe()
         .format(
             &Hint::new(),
@@ -223,7 +222,7 @@ fn decode(bytes: &[u8], probe: &Probe, channel: ChannelChoice, label: &str) -> R
         );
     }
 
-    let stream = MediaSourceStream::new(Box::new(Cursor::new(bytes)), Default::default());
+    let stream = MediaSourceStream::new(Box::new(Cursor::new(bytes.to_vec())), Default::default());
 
     let probed = get_probe()
         .format(

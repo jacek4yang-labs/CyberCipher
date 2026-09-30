@@ -10,7 +10,7 @@
 //! it costs one pass over a small model instead of a second pass over the
 //! recording.
 
-use crate::dsp::{Trajectory, mean, median};
+use crate::dsp::{mean, median, Trajectory};
 use crate::modes::SYNC_HZ;
 
 /// Half-width of the frequency window a pulse must fall inside, Hz.

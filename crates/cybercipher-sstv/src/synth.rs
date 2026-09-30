@@ -19,7 +19,7 @@
 
 use std::f64::consts::TAU;
 
-use crate::modes::{Family, Mode, PORCH_HZ, SYNC_HZ, level_to_hz};
+use crate::modes::{level_to_hz, Family, Mode, PORCH_HZ, SYNC_HZ};
 use crate::raster::{Grid, Palette};
 
 /// One contiguous tone run inside a radio line.
@@ -267,7 +267,7 @@ pub fn wire_component(mode: &Mode, line: u32, wire_index: usize) -> Option<usize
             0 => Some(0), // Y
             // Even radio lines transmit Cr, odd lines transmit Cb. The
             // extractor reconstructs the missing one from the neighbour.
-            1 if line % 2 == 0 => Some(2),
+            1 if line.is_multiple_of(2) => Some(2),
             1 => Some(1),
             _ => None,
         },
@@ -356,7 +356,7 @@ pub fn test_grid(mode: &Mode) -> Grid {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::dsp::{Analyzer, Trajectory, median};
+    use crate::dsp::{median, Analyzer, Trajectory};
     use crate::modes::{describe, hz_to_level};
     use slowrx::SstvMode;
 

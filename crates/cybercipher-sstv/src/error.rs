@@ -89,6 +89,11 @@ where
     }
 }
 
+// Re-export the crate-root macro exports under `crate::error::` as well, so
+// the migrated modules can keep their upstream-shaped `use
+// crate::error::{anyhow, bail}` imports verbatim.
+pub use crate::{anyhow, bail};
+
 /// Drop-in replacement for `anyhow!`, producing a [`SstvError`].
 #[macro_export]
 macro_rules! anyhow {

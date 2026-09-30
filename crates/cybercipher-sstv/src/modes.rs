@@ -19,7 +19,7 @@
 //! `slowrx`'s `demod::freq_to_luminance` divisor of `3.137_254_9`
 //! (`800 / 255`).
 
-use slowrx::{ChannelLayout, SstvMode, SyncPosition, for_mode};
+use slowrx::{for_mode, ChannelLayout, SstvMode, SyncPosition};
 
 /// Tone frequency for a sync pulse.
 pub const SYNC_HZ: f64 = 1200.0;
