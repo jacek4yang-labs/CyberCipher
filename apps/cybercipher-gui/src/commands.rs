@@ -192,8 +192,8 @@ pub async fn crypto_assist(
     state: State<'_, AppState>,
     request: AssistRequest,
 ) -> Result<cybercipher_attack::assist::AssistResult, CmdError> {
-    let ciphertext =
-        decode_input(&request.ciphertext_encoding, &request.ciphertext_text).map_err(CmdError::from)?;
+    let ciphertext = decode_input(&request.ciphertext_encoding, &request.ciphertext_text)
+        .map_err(CmdError::from)?;
     let input = cybercipher_attack::assist::AssistInput {
         ciphertext,
         key_candidate: request.key_candidate,
