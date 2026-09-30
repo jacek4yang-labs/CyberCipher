@@ -17,8 +17,8 @@ use cybercipher_core::Value as CoreValue;
 use serde_json::Value;
 
 use crate::jwt::{
-    jwt_decode, jwt_sign, jwt_verify, jwt_verify_at, KeyEncoding, JwtAlg, JwtSignParams,
-    JwtVerifyParams, SecretEncoding,
+    jwt_decode, jwt_sign, jwt_verify, jwt_verify_at, JwtAlg, JwtSignParams, JwtVerifyParams,
+    KeyEncoding, SecretEncoding,
 };
 
 const JWT_TAGS: &[&str] = &["jwt", "jws", "token"];
@@ -132,6 +132,7 @@ fn p_enc(
     }
 }
 
+#[allow(clippy::too_many_arguments)] // same shape as crypto::mac::mac_spec
 fn jwt_spec(
     id: &'static str,
     name: &'static str,
@@ -305,33 +306,46 @@ pub fn register(reg: &mut OperationRegistry) {
 // Run adapters
 // ---------------------------------------------------------------------------
 
-fn decode_run(input: &CoreValue, _params: &ParamMap, _ctx: &ExecutionContext) -> OpResult<CoreValue> {
+fn decode_run(
+    input: &CoreValue,
+    _params: &ParamMap,
+    _ctx: &ExecutionContext,
+) -> OpResult<CoreValue> {
     let token = input_text(input)?;
     let decoded = jwt_decode(&token)?;
-    let json = serde_json::to_value(&decoded)
-        .map_err(|e| OperationError::internal("JWT decode report serialization failed").with_details(e.to_string()))?;
+    let json = serde_json::to_value(&decoded).map_err(|e| {
+        OperationError::internal("JWT decode report serialization failed")
+            .with_details(e.to_string())
+    })?;
     Ok(CoreValue::Json(json))
 }
 
-fn verify_run(input: &CoreValue, params: &ParamMap, _ctx: &ExecutionContext) -> OpResult<CoreValue> {
+fn verify_run(
+    input: &CoreValue,
+    params: &ParamMap,
+    _ctx: &ExecutionContext,
+) -> OpResult<CoreValue> {
     let token = input_text(input)?;
     let alg = JwtAlg::parse(params.str_or("alg", "HS256"))?;
     let key = params.require_str("key")?;
 
-    let mut vp = JwtVerifyParams::new();
-    vp.secret_encoding = SecretEncoding::parse(params.str_or("secret_encoding", "utf8"))?;
-    vp.key_encoding = KeyEncoding::parse(params.str_or("key_encoding", "pem"))?;
-    vp.validate_claims = params.bool_or("validate_claims", true);
-    vp.leeway_secs = params.int_or("leeway", 60);
-    vp.expected_iss = optional_str(params, "expected_iss");
-    vp.expected_aud = optional_str(params, "expected_aud");
+    let vp = JwtVerifyParams {
+        secret_encoding: SecretEncoding::parse(params.str_or("secret_encoding", "utf8"))?,
+        key_encoding: KeyEncoding::parse(params.str_or("key_encoding", "pem"))?,
+        validate_claims: params.bool_or("validate_claims", true),
+        leeway_secs: params.int_or("leeway", 60),
+        expected_iss: optional_str(params, "expected_iss"),
+        expected_aud: optional_str(params, "expected_aud"),
+    };
 
     let verified = match params.get_int("now_unix") {
         Some(now) if now > 0 => jwt_verify_at(&token, alg, key, &vp, now)?,
         _ => jwt_verify(&token, alg, key, &vp)?,
     };
-    let json = serde_json::to_value(&verified)
-        .map_err(|e| OperationError::internal("JWT verify report serialization failed").with_details(e.to_string()))?;
+    let json = serde_json::to_value(&verified).map_err(|e| {
+        OperationError::internal("JWT verify report serialization failed")
+            .with_details(e.to_string())
+    })?;
     Ok(CoreValue::Json(json))
 }
 
@@ -340,9 +354,10 @@ fn sign_run(input: &CoreValue, params: &ParamMap, _ctx: &ExecutionContext) -> Op
     let alg = JwtAlg::parse(params.str_or("alg", "HS256"))?;
     let key = params.require_str("key")?;
 
-    let mut sp = JwtSignParams::default();
-    sp.secret_encoding = SecretEncoding::parse(params.str_or("secret_encoding", "utf8"))?;
-    sp.key_encoding = KeyEncoding::parse(params.str_or("key_encoding", "pem"))?;
+    let sp = JwtSignParams {
+        secret_encoding: SecretEncoding::parse(params.str_or("secret_encoding", "utf8"))?,
+        key_encoding: KeyEncoding::parse(params.str_or("key_encoding", "pem"))?,
+    };
 
     let header_extra = match params.get_str("header_extra") {
         None | Some("") => Value::Null,
@@ -371,8 +386,7 @@ fn input_text(input: &CoreValue) -> OpResult<String> {
             "JWT operations expect a token string, got {}",
             other.kind().name()
         ))
-        .with_expected("text"),
-        ),
+        .with_expected("text")),
     }
 }
 
@@ -436,7 +450,11 @@ mod tests {
         let reg = registry();
         let op = reg.get("jwt-decode").unwrap();
         let out = op
-            .execute(&CoreValue::Text(JWT_IO_SAMPLE.to_string()), &ParamMap::new(), &ExecutionContext::new())
+            .execute(
+                &CoreValue::Text(JWT_IO_SAMPLE.to_string()),
+                &ParamMap::new(),
+                &ExecutionContext::new(),
+            )
             .unwrap();
         let CoreValue::Json(report) = out else {
             panic!("decode must produce JSON");
@@ -458,7 +476,11 @@ mod tests {
         let token = reg
             .get("jwt-sign")
             .unwrap()
-            .execute(&CoreValue::Json(json!({"sub": "u1", "role": "admin"})), &sign_params, &ctx)
+            .execute(
+                &CoreValue::Json(json!({"sub": "u1", "role": "admin"})),
+                &sign_params,
+                &ctx,
+            )
             .unwrap();
         let CoreValue::Text(token) = token else {
             panic!("sign must produce text");
@@ -489,7 +511,11 @@ mod tests {
         let out = reg
             .get("jwt-verify")
             .unwrap()
-            .execute(&CoreValue::Text(JWT_IO_SAMPLE.to_string()), &verify_params, &ExecutionContext::new())
+            .execute(
+                &CoreValue::Text(JWT_IO_SAMPLE.to_string()),
+                &verify_params,
+                &ExecutionContext::new(),
+            )
             .unwrap();
         let CoreValue::Json(report) = out else {
             panic!("verify must produce JSON");
@@ -523,11 +549,7 @@ mod tests {
         let err = reg
             .get("jwt-decode")
             .unwrap()
-            .execute(
-                &CoreValue::Null,
-                &ParamMap::new(),
-                &ExecutionContext::new(),
-            )
+            .execute(&CoreValue::Null, &ParamMap::new(), &ExecutionContext::new())
             .unwrap_err();
         assert_eq!(err.kind, ErrorKind::InvalidInput);
     }

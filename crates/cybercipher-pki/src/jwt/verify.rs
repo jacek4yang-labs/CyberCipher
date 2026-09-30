@@ -23,9 +23,9 @@ use subtle::ConstantTimeEq;
 
 use super::decode::jwt_decode;
 use super::{
-    alg_mismatch, hmac_secret_bytes, reject_none_alg, KeyEncoding, JwtAlg, SecretEncoding,
+    alg_mismatch, hmac_secret_bytes, reject_none_alg, JwtAlg, KeyEncoding, SecretEncoding,
 };
-use crate::ecc::{EcdsaDigest, EcdsaSignatureFormat, EccCurve};
+use crate::ecc::{EccCurve, EcdsaDigest, EcdsaSignatureFormat};
 use crate::error::{PkiError, PkiResult};
 use crate::keys::{parse_pem, ParsedKey, RsaKeypair, RsaPublicKeyMaterial};
 use crate::ops::digest::RsaDigest;
@@ -182,7 +182,10 @@ pub fn jwt_verify_at(
         });
     }
 
-    let mut verified = JwtVerified { valid: true, ..base };
+    let mut verified = JwtVerified {
+        valid: true,
+        ..base
+    };
     if params.validate_claims {
         let outcome = validate_claims(
             &decoded.payload,
@@ -228,20 +231,11 @@ fn verify_hmac(
     Ok(constant_time_eq(signature, &computed))
 }
 
-fn verify_rsa(
-    alg: JwtAlg,
-    key: &str,
-    signing_input: &str,
-    signature: &[u8],
-) -> PkiResult<bool> {
+fn verify_rsa(alg: JwtAlg, key: &str, signing_input: &str, signature: &[u8]) -> PkiResult<bool> {
     let digest = rsa_digest_for(alg)?;
     let public = rsa_public_from_key_text(key)?;
-    let result = crate::ops::rsa_verify_pkcs1v15(
-        &public,
-        digest,
-        signing_input.as_bytes(),
-        signature,
-    )?;
+    let result =
+        crate::ops::rsa_verify_pkcs1v15(&public, digest, signing_input.as_bytes(), signature)?;
     // A signature whose length differs from the modulus size already surfaced
     // as a typed error inside rsa_verify_pkcs1v15.
     Ok(result.valid)
@@ -254,9 +248,9 @@ fn verify_ecdsa(
     signing_input: &str,
     signature: &[u8],
 ) -> PkiResult<bool> {
-    let curve = alg.ecdsa_curve().ok_or_else(|| {
-        PkiError::internal("ecdsa dispatch on non-ES alg")
-    })?;
+    let curve = alg
+        .ecdsa_curve()
+        .ok_or_else(|| PkiError::internal("ecdsa dispatch on non-ES alg"))?;
     let digest = match alg {
         JwtAlg::Es256 => EcdsaDigest::Sha256,
         JwtAlg::Es384 => EcdsaDigest::Sha384,
@@ -370,7 +364,9 @@ fn validate_claims(
         match payload.get("iss") {
             Some(Value::String(iss)) if iss == expected => {}
             Some(Value::String(iss)) => {
-                return Ok(Some(format!("issuer mismatch: expected '{expected}', got '{iss}'")))
+                return Ok(Some(format!(
+                    "issuer mismatch: expected '{expected}', got '{iss}'"
+                )))
             }
             other => {
                 return Ok(Some(format!(
@@ -384,9 +380,7 @@ fn validate_claims(
         claims_checked.push("aud".to_string());
         let matches = match payload.get("aud") {
             Some(Value::String(aud)) => aud == expected,
-            Some(Value::Array(auds)) => auds
-                .iter()
-                .any(|a| a.as_str() == Some(expected)),
+            Some(Value::Array(auds)) => auds.iter().any(|a| a.as_str() == Some(expected)),
             _ => false,
         };
         if !matches {
@@ -415,7 +409,10 @@ fn numeric_date(payload: &Value, claim: &str) -> PkiResult<Option<f64>> {
                     Err(malformed_date(claim, "non-finite number"))
                 }
             } else {
-                Err(malformed_date(claim, "number outside the NumericDate range"))
+                Err(malformed_date(
+                    claim,
+                    "number outside the NumericDate range",
+                ))
             }
         }
         Some(other) => Err(malformed_date(claim, &preview_value(Some(other)))),
@@ -561,8 +558,13 @@ mod tests {
 
     #[test]
     fn verify_jwt_io_sample_with_utf8_secret() {
-        let result =
-            jwt_verify(JWT_IO_SAMPLE, JwtAlg::Hs256, "your-256-bit-secret", &params()).unwrap();
+        let result = jwt_verify(
+            JWT_IO_SAMPLE,
+            JwtAlg::Hs256,
+            "your-256-bit-secret",
+            &params(),
+        )
+        .unwrap();
         assert!(result.valid, "{:?}", result.reason);
         assert_eq!(result.alg, JwtAlg::Hs256);
         assert_eq!(result.payload["name"], json!("John Doe"));
@@ -585,22 +587,29 @@ mod tests {
         // Same claims except the name is changed: valid JSON, valid base64url,
         // but the signature no longer covers these bytes.
         use base64ct::Encoding as _;
-        let tampered_payload =
-            json!({"sub": "1234567890", "name": "John Dore", "iat": 1516239022});
+        let tampered_payload = json!({"sub": "1234567890", "name": "John Dore", "iat": 1516239022});
         let payload_b64 = base64ct::Base64UrlUnpadded::encode_string(
             serde_json::to_string(&tampered_payload).unwrap().as_bytes(),
         );
         let tampered = format!(
             "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.{payload_b64}.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
         );
-        let result = jwt_verify(&tampered, JwtAlg::Hs256, "your-256-bit-secret", &params()).unwrap();
+        let result =
+            jwt_verify(&tampered, JwtAlg::Hs256, "your-256-bit-secret", &params()).unwrap();
         assert!(!result.valid);
         assert!(
-            result.reason.as_deref().unwrap_or_default().contains("signature"),
+            result
+                .reason
+                .as_deref()
+                .unwrap_or_default()
+                .contains("signature"),
             "{:?}",
             result.reason
         );
-        assert!(result.claims_checked.is_empty(), "claims of a tampered token are not evaluated");
+        assert!(
+            result.claims_checked.is_empty(),
+            "claims of a tampered token are not evaluated"
+        );
     }
 
     #[test]
@@ -638,8 +647,13 @@ mod tests {
     fn header_alg_param_mismatch_is_typed_error() {
         // Signed as HS256, verified claiming HS384: algorithm verification
         // failure (RFC 8725 2.1), not a failed MAC.
-        let err = jwt_verify(JWT_IO_SAMPLE, JwtAlg::Hs384, "your-256-bit-secret", &params())
-            .unwrap_err();
+        let err = jwt_verify(
+            JWT_IO_SAMPLE,
+            JwtAlg::Hs384,
+            "your-256-bit-secret",
+            &params(),
+        )
+        .unwrap_err();
         assert_eq!(err.kind, cybercipher_core::ErrorKind::InvalidInput);
         assert_eq!(err.expected.as_deref(), Some("HS384"));
         assert_eq!(err.actual.as_deref(), Some("HS256"));
@@ -651,7 +665,11 @@ mod tests {
         let token = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOiIxIn0.SflKxwRJSMeKKF2QT4fwpA";
         let err = jwt_verify(token, JwtAlg::Hs256, "your-256-bit-secret", &params()).unwrap_err();
         assert_eq!(err.kind, cybercipher_core::ErrorKind::LengthMismatch);
-        assert!(err.expected.as_deref().unwrap_or_default().contains("32 bytes"));
+        assert!(err
+            .expected
+            .as_deref()
+            .unwrap_or_default()
+            .contains("32 bytes"));
     }
 
     #[test]
@@ -691,7 +709,10 @@ mod tests {
         let payload = json!({"nbf": now + 3600});
         let mut checked = Vec::new();
         let outcome = validate_claims(&payload, now, 60, None, None, &mut checked).unwrap();
-        assert!(outcome.as_deref().unwrap_or_default().contains("not yet valid"));
+        assert!(outcome
+            .as_deref()
+            .unwrap_or_default()
+            .contains("not yet valid"));
     }
 
     #[test]
@@ -701,7 +722,11 @@ mod tests {
         let err = validate_claims(&payload, 0, 60, None, None, &mut checked).unwrap_err();
         assert_eq!(err.kind, cybercipher_core::ErrorKind::Decode);
         assert_eq!(err.parameter.as_deref(), Some("exp"));
-        for bad in [json!({"exp": true}), json!({"exp": [1]}), json!({"exp": {"a": 1}})] {
+        for bad in [
+            json!({"exp": true}),
+            json!({"exp": [1]}),
+            json!({"exp": {"a": 1}}),
+        ] {
             let mut checked = Vec::new();
             assert!(validate_claims(&bad, 0, 60, None, None, &mut checked).is_err());
         }
@@ -713,21 +738,38 @@ mod tests {
     }
 
     #[test]
+    fn iss_and_aud_exact_match() {
+        let payload = json!({"iss": "issuer-1", "aud": ["a", "b"]});
+        let mut checked = Vec::new();
+        let outcome =
+            validate_claims(&payload, 0, 60, Some("issuer-1"), Some("b"), &mut checked).unwrap();
+        assert!(outcome.is_none());
+        let mut checked = Vec::new();
+        let outcome =
+            validate_claims(&payload, 0, 60, Some("issuer-2"), Some("c"), &mut checked).unwrap();
+        assert!(outcome.is_some());
+        // aud as a plain string also matches.
+        let payload = json!({"aud": "mobile-app"});
+        let mut checked = Vec::new();
+        let outcome =
+            validate_claims(&payload, 0, 60, None, Some("mobile-app"), &mut checked).unwrap();
+        assert!(outcome.is_none());
+        // Missing iss claim with expected_iss set fails validation.
+        let mut checked = Vec::new();
+        let outcome =
+            validate_claims(&json!({}), 0, 60, Some("issuer-1"), None, &mut checked).unwrap();
+        assert!(outcome.is_some());
+    }
+
+    #[test]
     fn tampered_header_rejected() {
-        // Keep the signature but rewrite the header: the signature no longer
-        // covers the new signing input.
-        let tampered = format!(
-            "{}.{}.{}",
-            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9",
-            "eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ",
-            "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
-        );
-        // Same alg (so verification proceeds) but a different header -> MAC fail.
+        // Same alg but a different header: the signature no longer covers the
+        // new signing input, so the MAC check fails.
         let other_header = "eyJhbGciOiJIUzI1NiIsImtpZCI6ImsxIn0"; // {"alg":"HS256","kid":"k1"}
-        let tampered = format!(
-            "{other_header}.eyJzdWIiOiIxIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
-        );
-        let result = jwt_verify(&tampered, JwtAlg::Hs256, "your-256-bit-secret", &params()).unwrap();
+        let tampered =
+            format!("{other_header}.eyJzdWIiOiIxIn0.SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c");
+        let result =
+            jwt_verify(&tampered, JwtAlg::Hs256, "your-256-bit-secret", &params()).unwrap();
         assert!(!result.valid);
         // Changing the header alg instead is an algorithm-verification error.
         let swapped = format!(
@@ -736,7 +778,8 @@ mod tests {
             "eyJzdWIiOiIxIn0",
             "SflKxwRJSMeKKF2QT4fwpMeJf36POk6yJV_adQssw5c"
         );
-        let err = jwt_verify(&swapped, JwtAlg::Hs256, "your-256-bit-secret", &params()).unwrap_err();
+        let err =
+            jwt_verify(&swapped, JwtAlg::Hs256, "your-256-bit-secret", &params()).unwrap_err();
         assert_eq!(err.kind, cybercipher_core::ErrorKind::InvalidInput);
         assert_eq!(err.actual.as_deref(), Some("HS512"));
     }
@@ -779,8 +822,10 @@ mod tests {
     #[test]
     fn hs384_hs512_roundtrip_with_hex_secret() {
         for alg in [JwtAlg::Hs384, JwtAlg::Hs512] {
-            let mut sp = crate::jwt::JwtSignParams::default();
-            sp.secret_encoding = SecretEncoding::Hex;
+            let sp = crate::jwt::JwtSignParams {
+                secret_encoding: SecretEncoding::Hex,
+                ..crate::jwt::JwtSignParams::default()
+            };
             let token = crate::jwt::jwt_sign(
                 json!({"sub": "hex"}),
                 Value::Null,
@@ -793,11 +838,20 @@ mod tests {
             vp.secret_encoding = SecretEncoding::Hex;
             let verified = jwt_verify(&token, alg, "00ffa1b2c3d4e5f6", &vp).unwrap();
             assert!(verified.valid, "{alg}: {:?}", verified.reason);
-            // The MAC length sanity check: truncating the signature is a
-            // typed length error, not a verification failure.
+            // The MAC length sanity check: truncating the signature b64
+            // either breaks base64 canonicity (Decode) or shortens the MAC
+            // below the digest size (LengthMismatch) — both are typed
+            // errors, never a "valid" token and never a panic.
             let truncated = &token[..token.len() - 4];
             let err = jwt_verify(truncated, alg, "00ffa1b2c3d4e5f6", &vp).unwrap_err();
-            assert_eq!(err.kind, cybercipher_core::ErrorKind::Decode, "odd/short b64 is decode");
+            assert!(
+                matches!(
+                    err.kind,
+                    cybercipher_core::ErrorKind::Decode
+                        | cybercipher_core::ErrorKind::LengthMismatch
+                ),
+                "{alg}: {err:?}"
+            );
         }
     }
 
@@ -816,15 +870,19 @@ mod tests {
         };
         // exp 100s in the past, default 60s leeway -> expired.
         let expired = make(json!({"exp": now - 100, "iat": now - 200}));
-        let result = jwt_verify_at(&expired, JwtAlg::Hs256, "clock-secret", &params(), now).unwrap();
+        let result =
+            jwt_verify_at(&expired, JwtAlg::Hs256, "clock-secret", &params(), now).unwrap();
         assert!(!result.valid);
-        assert!(result.reason.as_deref().unwrap_or_default().contains("expired"));
+        assert!(result
+            .reason
+            .as_deref()
+            .unwrap_or_default()
+            .contains("expired"));
         assert!(result.claims_checked.contains(&"exp".to_string()));
         // Same token, large leeway -> accepted.
         let mut lenient = params();
         lenient.leeway_secs = 1000;
-        let result =
-            jwt_verify_at(&expired, JwtAlg::Hs256, "clock-secret", &lenient, now).unwrap();
+        let result = jwt_verify_at(&expired, JwtAlg::Hs256, "clock-secret", &lenient, now).unwrap();
         assert!(result.valid, "{:?}", result.reason);
         // validate_claims off -> temporal claims ignored entirely.
         let mut no_claims = params();
@@ -837,7 +895,11 @@ mod tests {
         let early = make(json!({"nbf": now + 3600, "exp": now + 7200}));
         let result = jwt_verify_at(&early, JwtAlg::Hs256, "clock-secret", &params(), now).unwrap();
         assert!(!result.valid);
-        assert!(result.reason.as_deref().unwrap_or_default().contains("not yet valid"));
+        assert!(result
+            .reason
+            .as_deref()
+            .unwrap_or_default()
+            .contains("not yet valid"));
         // Leeway covers small nbf skew.
         let mut skewed = params();
         skewed.leeway_secs = 7200;
@@ -866,13 +928,21 @@ mod tests {
         p.expected_iss = Some("https://evil.example.test".to_string());
         let result = jwt_verify_at(&token, JwtAlg::Hs256, "iss-secret", &p, now).unwrap();
         assert!(!result.valid);
-        assert!(result.reason.as_deref().unwrap_or_default().contains("issuer"));
+        assert!(result
+            .reason
+            .as_deref()
+            .unwrap_or_default()
+            .contains("issuer"));
         // Wrong aud fails.
         p.expected_iss = Some("https://auth.example.test".to_string());
         p.expected_aud = Some("other".to_string());
         let result = jwt_verify_at(&token, JwtAlg::Hs256, "iss-secret", &p, now).unwrap();
         assert!(!result.valid);
-        assert!(result.reason.as_deref().unwrap_or_default().contains("audience"));
+        assert!(result
+            .reason
+            .as_deref()
+            .unwrap_or_default()
+            .contains("audience"));
     }
 
     #[test]
@@ -889,5 +959,91 @@ mod tests {
         let err = jwt_verify_at(&token, JwtAlg::Hs256, "k", &params(), now).unwrap_err();
         assert_eq!(err.kind, cybercipher_core::ErrorKind::Decode);
         assert_eq!(err.parameter.as_deref(), Some("exp"));
+    }
+
+    #[test]
+    fn rs_sig_length_must_equal_modulus() {
+        use base64ct::Encoding as _;
+        let keypair = crate::keys::generate_rsa_keypair(2048, "010001").unwrap();
+        let public_pem = keypair.to_public_spki_pem().unwrap();
+        // 128 bytes: valid base64url but half the 256-byte modulus size.
+        let short_sig = base64ct::Base64UrlUnpadded::encode_string(&[0xABu8; 128]);
+        let token = format!("eyJhbGciOiJSUzI1NiJ9.eyJhIjoxfQ.{short_sig}");
+        let err = jwt_verify(&token, JwtAlg::Rs256, &public_pem, &params()).unwrap_err();
+        assert_eq!(err.kind, cybercipher_core::ErrorKind::LengthMismatch);
+        assert!(
+            err.expected
+                .as_deref()
+                .unwrap_or_default()
+                .contains("modulus"),
+            "{:?}",
+            err.expected
+        );
+    }
+
+    #[test]
+    fn es_sig_length_typed_error_names_expected_size() {
+        use base64ct::Encoding as _;
+        let mut vp = params();
+        vp.key_encoding = KeyEncoding::Hex;
+        for (alg, curve, wrong_len, expected) in [
+            (
+                JwtAlg::Es256,
+                crate::ecc::EccCurve::P256,
+                65usize,
+                "64 bytes",
+            ),
+            (JwtAlg::Es384, crate::ecc::EccCurve::P384, 95, "96 bytes"),
+        ] {
+            let kp = crate::ecc::generate_ecc_keypair(curve).unwrap();
+            let bad_sig = base64ct::Base64UrlUnpadded::encode_string(&vec![0x11u8; wrong_len]);
+            let header = match alg {
+                JwtAlg::Es256 => "eyJhbGciOiJFUzI1NiJ9",
+                _ => "eyJhbGciOiJFUzM4NCJ9",
+            };
+            let token = format!("{header}.eyJhIjoxfQ.{bad_sig}");
+            let err = jwt_verify(&token, alg, &kp.public_uncompressed_hex, &vp).unwrap_err();
+            assert_eq!(
+                err.kind,
+                cybercipher_core::ErrorKind::LengthMismatch,
+                "{alg}"
+            );
+            let expected_msg = format!("{expected} (r||s for {alg})");
+            assert_eq!(
+                err.expected.as_deref(),
+                Some(expected_msg.as_str()),
+                "{alg}"
+            );
+        }
+    }
+
+    #[test]
+    fn eddsa_sig_length_typed_error() {
+        use base64ct::Encoding as _;
+        let kp = crate::ecc::generate_ecc_keypair(crate::ecc::EccCurve::Ed25519).unwrap();
+        let mut vp = params();
+        vp.key_encoding = KeyEncoding::Hex;
+        let short = base64ct::Base64UrlUnpadded::encode_string(&[0x22u8; 63]);
+        let token = format!("eyJhbGciOiJFZERTQSJ9.eyJhIjoxfQ.{short}");
+        let err = jwt_verify(&token, JwtAlg::EdDsa, &kp.public_compressed_hex, &vp).unwrap_err();
+        assert_eq!(err.kind, cybercipher_core::ErrorKind::LengthMismatch);
+        assert_eq!(err.expected.as_deref(), Some("64 bytes (R||S for EdDSA)"));
+    }
+
+    #[test]
+    fn verify_accepts_private_pem_and_reduces_to_public_half() {
+        let keypair = crate::keys::generate_rsa_keypair(2048, "010001").unwrap();
+        let private_pem = keypair.to_pkcs8_pem().unwrap();
+        let token = crate::jwt::jwt_sign(
+            json!({"sub": "pem-reduce"}),
+            Value::Null,
+            JwtAlg::Rs256,
+            &private_pem,
+            &crate::jwt::JwtSignParams::default(),
+        )
+        .unwrap();
+        // Verifying with the *private* PEM works: it carries the public half.
+        let result = jwt_verify(&token, JwtAlg::Rs256, &private_pem, &params()).unwrap();
+        assert!(result.valid, "{:?}", result.reason);
     }
 }

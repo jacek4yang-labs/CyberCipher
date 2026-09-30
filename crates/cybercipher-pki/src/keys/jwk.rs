@@ -239,10 +239,12 @@ pub fn ecc_jwk_to_public_material(jwk: &EccJwk) -> PkiResult<crate::ecc::EccPubl
         "P-256" => crate::ecc::EccCurve::P256,
         "P-384" => crate::ecc::EccCurve::P384,
         other => {
-            return Err(PkiError::unsupported(format!("unsupported EC curve crv = '{other}'"))
-                .with_parameter("crv")
-                .with_expected("P-256 or P-384")
-                .with_actual(other.to_string()))
+            return Err(
+                PkiError::unsupported(format!("unsupported EC curve crv = '{other}'"))
+                    .with_parameter("crv")
+                    .with_expected("P-256 or P-384")
+                    .with_actual(other.to_string()),
+            )
         }
     };
     let field_len = curve.private_key_size();
@@ -258,9 +260,9 @@ pub fn ecc_jwk_to_public_material(jwk: &EccJwk) -> PkiResult<crate::ecc::EccPubl
     }
     let mut point = Vec::with_capacity(1 + 2 * field_len);
     point.push(0x04);
-    point.extend(std::iter::repeat(0u8).take(field_len - x.len()));
+    point.extend(std::iter::repeat_n(0u8, field_len - x.len()));
     point.extend_from_slice(&x);
-    point.extend(std::iter::repeat(0u8).take(field_len - y.len()));
+    point.extend(std::iter::repeat_n(0u8, field_len - y.len()));
     point.extend_from_slice(&y);
     crate::ecc::parse_ecc_public_key(curve, &to_hex(&point))
 }

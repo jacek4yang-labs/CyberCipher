@@ -37,7 +37,7 @@ pub mod verify;
 pub use decode::{jwt_decode, JwtDecoded};
 pub use registry::register;
 pub use sign::{jwt_sign, JwtSignParams};
-pub use verify::{jwt_verify, jwt_verify_at, JwtVerifyParams, JwtVerified};
+pub use verify::{jwt_verify, jwt_verify_at, JwtVerified, JwtVerifyParams};
 
 use crate::error::{PkiError, PkiResult};
 
@@ -256,10 +256,12 @@ pub(crate) fn b64url_decode_strict(segment: &str, parameter: &str) -> PkiResult<
         .with_actual(crate::keys::preview(segment, 32)));
     }
     base64ct::Base64UrlUnpadded::decode_vec(segment).map_err(|e| {
-        PkiError::decode(format!("JWS {parameter} segment is not valid unpadded base64url"))
-            .with_parameter(parameter)
-            .with_expected("base64url characters [A-Za-z0-9_-]")
-            .with_details(e.to_string())
+        PkiError::decode(format!(
+            "JWS {parameter} segment is not valid unpadded base64url"
+        ))
+        .with_parameter(parameter)
+        .with_expected("base64url characters [A-Za-z0-9_-]")
+        .with_details(e.to_string())
     })
 }
 
@@ -326,16 +328,14 @@ pub(crate) fn reject_unsigned_token() -> PkiError {
 /// Typed mismatch error when the JOSE header `alg` differs from the
 /// caller-selected algorithm.
 pub(crate) fn alg_mismatch(expected: &JwtAlg, actual: &str) -> PkiError {
-    PkiError::invalid_input(
-        "JOSE header 'alg' does not match the requested verification algorithm",
-    )
-    .with_parameter("alg")
-    .with_expected(expected.label())
-    .with_actual(actual)
-    .with_details(
-        "RFC 8725 (JOSE Best Current Practices, section 2.1): verify that the \
+    PkiError::invalid_input("JOSE header 'alg' does not match the requested verification algorithm")
+        .with_parameter("alg")
+        .with_expected(expected.label())
+        .with_actual(actual)
+        .with_details(
+            "RFC 8725 (JOSE Best Current Practices, section 2.1): verify that the \
          algorithm in the token is the algorithm you expect",
-    )
+        )
 }
 
 #[cfg(test)]
@@ -372,7 +372,10 @@ mod tests {
         assert_eq!(JwtAlg::Es384.fixed_signature_size(), Some(96));
         assert_eq!(JwtAlg::EdDsa.fixed_signature_size(), Some(64));
         assert_eq!(JwtAlg::Rs256.fixed_signature_size(), None);
-        assert_eq!(JwtAlg::Es384.ecdsa_curve(), Some(crate::ecc::EccCurve::P384));
+        assert_eq!(
+            JwtAlg::Es384.ecdsa_curve(),
+            Some(crate::ecc::EccCurve::P384)
+        );
         assert_eq!(JwtAlg::EdDsa.ecdsa_curve(), None);
     }
 
@@ -394,7 +397,9 @@ mod tests {
         let pem = "-----BEGIN PUBLIC KEY-----\nMFww\n-----END PUBLIC KEY-----";
         let err = hmac_secret_bytes(pem, SecretEncoding::Utf8).unwrap_err();
         assert_eq!(err.kind, cybercipher_core::ErrorKind::KeyError);
-        assert!(hmac_secret_bytes("plain secret", SecretEncoding::Utf8).unwrap() == b"plain secret");
+        assert!(
+            hmac_secret_bytes("plain secret", SecretEncoding::Utf8).unwrap() == b"plain secret"
+        );
         assert_eq!(
             hmac_secret_bytes("4142", SecretEncoding::Hex).unwrap(),
             vec![0x41, 0x42]

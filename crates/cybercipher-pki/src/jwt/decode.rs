@@ -91,11 +91,11 @@ pub fn jwt_decode(token: &str) -> PkiResult<JwtDecoded> {
             if name == "signature" {
                 return Err(super::reject_unsigned_token());
             }
-            return Err(PkiError::invalid_input(format!(
-                "JWT {name} segment is empty"
-            ))
-            .with_parameter("token")
-            .with_expected("three non-empty base64url segments"));
+            return Err(
+                PkiError::invalid_input(format!("JWT {name} segment is empty"))
+                    .with_parameter("token")
+                    .with_expected("three non-empty base64url segments"),
+            );
         }
     }
 
@@ -110,9 +110,7 @@ pub fn jwt_decode(token: &str) -> PkiResult<JwtDecoded> {
             .with_expected("a JSON object with a string 'alg' member")
             .with_actual(preview_json(&header)));
     }
-    let alg = header
-        .get("alg")
-        .ok_or_else(|| missing_alg())?;
+    let alg = header.get("alg").ok_or_else(missing_alg)?;
     if !alg.is_string() {
         return Err(PkiError::decode("JWT header 'alg' is not a string")
             .with_parameter("alg")
@@ -134,12 +132,11 @@ pub fn jwt_decode(token: &str) -> PkiResult<JwtDecoded> {
 }
 
 fn parse_json(bytes: &[u8], name: &str) -> PkiResult<Value> {
-    serde_json::from_slice(bytes)
-        .map_err(|e| {
-            PkiError::decode(format!("JWT {name} segment is not valid JSON"))
-                .with_parameter(name)
-                .with_details(e.to_string())
-        })
+    serde_json::from_slice(bytes).map_err(|e| {
+        PkiError::decode(format!("JWT {name} segment is not valid JSON"))
+            .with_parameter(name)
+            .with_details(e.to_string())
+    })
 }
 
 fn missing_alg() -> PkiError {
@@ -179,12 +176,15 @@ mod tests {
             json!({"sub": "1234567890", "name": "John Doe", "iat": 1516239022}),
             "payload exact values"
         );
-        assert_eq!(decoded.signature_hex, "49f94ac7044948c78a285d904f87f0a4c7897f7e8f3a4eb2255fda750b2cc397");
-        assert_eq!(decoded.signing_input, format!("{}.{}", decoded.header_b64, decoded.payload_b64));
         assert_eq!(
-            decoded.header_b64,
-            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9"
+            decoded.signature_hex,
+            "49f94ac7044948c78a285d904f87f0a4c7897f7e8f3a4eb2255fda750b2cc397"
         );
+        assert_eq!(
+            decoded.signing_input,
+            format!("{}.{}", decoded.header_b64, decoded.payload_b64)
+        );
+        assert_eq!(decoded.header_b64, "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9");
         assert_eq!(
             decoded.payload_b64,
             "eyJzdWIiOiIxMjM0NTY3ODkwIiwibmFtZSI6IkpvaG4gRG9lIiwiaWF0IjoxNTE2MjM5MDIyfQ"
@@ -219,7 +219,11 @@ mod tests {
     #[test]
     fn decode_rejects_bad_base64_chars() {
         // '!' is not in the base64url alphabet; '+' and '/' are not URL-safe.
-        for bad in ["eyJhbGc!.eyJhIjoxfQ.c2ln", "eyJhbGc+.eyJhIjoxfQ.c2ln", "a.b.c2!n"] {
+        for bad in [
+            "eyJhbGc!.eyJhIjoxfQ.c2ln",
+            "eyJhbGc+.eyJhIjoxfQ.c2ln",
+            "a.b.c2!n",
+        ] {
             let err = jwt_decode(bad).unwrap_err();
             assert_eq!(err.kind, cybercipher_core::ErrorKind::Decode, "{bad}");
             assert!(err.message.contains("base64url"), "{bad}");
@@ -304,7 +308,10 @@ mod tests {
         let token = format!("{header_b64}.eyJhIjoxfQ.c2ln");
         let result = jwt_decode(&token);
         assert!(result.is_err());
-        assert_eq!(result.unwrap_err().kind, cybercipher_core::ErrorKind::Decode);
+        assert_eq!(
+            result.unwrap_err().kind,
+            cybercipher_core::ErrorKind::Decode
+        );
     }
 
     #[test]

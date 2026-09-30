@@ -14,7 +14,7 @@
 
 use serde_json::Value;
 
-use super::{b64url_encode, hmac_secret_bytes, KeyEncoding, JwtAlg, SecretEncoding};
+use super::{b64url_encode, hmac_secret_bytes, JwtAlg, KeyEncoding, SecretEncoding};
 use crate::ecc::{ecdsa_sign, EcdsaDigest, EcdsaNonceMode, EcdsaSignatureFormat};
 use crate::error::{PkiError, PkiResult};
 use crate::ops::rsa_sign_pkcs1v15;
@@ -46,11 +46,11 @@ pub fn jwt_sign(
     params: &JwtSignParams,
 ) -> PkiResult<String> {
     if !claims.is_object() {
-        return Err(PkiError::invalid_input(
-            "JWT payload (claims) must be a JSON object",
-        )
-        .with_expected("a JSON object of claims")
-        .with_actual(preview(&claims)));
+        return Err(
+            PkiError::invalid_input("JWT payload (claims) must be a JSON object")
+                .with_expected("a JSON object of claims")
+                .with_actual(preview(&claims)),
+        );
     }
 
     let mut header = serde_json::Map::new();
@@ -84,8 +84,9 @@ pub fn jwt_sign(
     let header_json = serde_json::to_string(&Value::Object(header)).map_err(|e| {
         PkiError::internal("JOSE header serialization failed").with_details(e.to_string())
     })?;
-    let claims_json = serde_json::to_string(&claims)
-        .map_err(|e| PkiError::internal("claims serialization failed").with_details(e.to_string()))?;
+    let claims_json = serde_json::to_string(&claims).map_err(|e| {
+        PkiError::internal("claims serialization failed").with_details(e.to_string())
+    })?;
     let header_b64 = b64url_encode(header_json.as_bytes());
     let payload_b64 = b64url_encode(claims_json.as_bytes());
     let signing_input = format!("{header_b64}.{payload_b64}");
@@ -163,7 +164,10 @@ fn ed_private_hex(key: &str, encoding: KeyEncoding) -> PkiResult<String> {
         KeyEncoding::Pem => {
             let keypair = crate::ecc::ecc_private_key_from_pkcs8_pem(key)?;
             if keypair.curve != crate::ecc::EccCurve::Ed25519 {
-                return Err(key_curve_mismatch(crate::ecc::EccCurve::Ed25519, keypair.curve));
+                return Err(key_curve_mismatch(
+                    crate::ecc::EccCurve::Ed25519,
+                    keypair.curve,
+                ));
             }
             Ok(keypair.private_hex)
         }
@@ -225,8 +229,14 @@ mod tests {
             json!({"alg": "HS256", "crit": ["url"], "kid": "key-1", "typ": "JOSE"})
         );
 
-        let err =
-            jwt_sign(claims(), json!({"alg": "RS256"}), JwtAlg::Hs256, "k", &params()).unwrap_err();
+        let err = jwt_sign(
+            claims(),
+            json!({"alg": "RS256"}),
+            JwtAlg::Hs256,
+            "k",
+            &params(),
+        )
+        .unwrap_err();
         assert_eq!(err.kind, cybercipher_core::ErrorKind::InvalidParam);
         assert_eq!(err.parameter.as_deref(), Some("header_extra"));
     }
@@ -296,7 +306,10 @@ mod tests {
 
     #[test]
     fn ec_all_curves_roundtrip_pem_and_hex() {
-        for (alg, curve) in [(JwtAlg::Es256, EccCurve::P256), (JwtAlg::Es384, EccCurve::P384)] {
+        for (alg, curve) in [
+            (JwtAlg::Es256, EccCurve::P256),
+            (JwtAlg::Es384, EccCurve::P384),
+        ] {
             let keypair = generate_ecc_keypair(curve).unwrap();
             let private_pem = ecc_private_key_to_pkcs8_pem(curve, &keypair.private_hex).unwrap();
             let public_pem =
@@ -309,8 +322,14 @@ mod tests {
 
             let mut hex_params = params();
             hex_params.key_encoding = KeyEncoding::Hex;
-            let token_hex =
-                jwt_sign(claims(), Value::Null, alg, &keypair.private_hex, &hex_params).unwrap();
+            let token_hex = jwt_sign(
+                claims(),
+                Value::Null,
+                alg,
+                &keypair.private_hex,
+                &hex_params,
+            )
+            .unwrap();
             let mut vp = JwtVerifyParams::new();
             vp.key_encoding = KeyEncoding::Hex;
             let verified =
@@ -320,7 +339,14 @@ mod tests {
             // Deterministic (RFC 6979): same claims -> same token.
             assert_eq!(
                 token_hex,
-                jwt_sign(claims(), Value::Null, alg, &keypair.private_hex, &hex_params).unwrap()
+                jwt_sign(
+                    claims(),
+                    Value::Null,
+                    alg,
+                    &keypair.private_hex,
+                    &hex_params
+                )
+                .unwrap()
             );
         }
     }
@@ -331,8 +357,14 @@ mod tests {
         let keypair = generate_ecc_keypair(EccCurve::P384).unwrap();
         let private_pem =
             ecc_private_key_to_pkcs8_pem(EccCurve::P384, &keypair.private_hex).unwrap();
-        let err =
-            jwt_sign(claims(), Value::Null, JwtAlg::Es256, &private_pem, &params()).unwrap_err();
+        let err = jwt_sign(
+            claims(),
+            Value::Null,
+            JwtAlg::Es256,
+            &private_pem,
+            &params(),
+        )
+        .unwrap_err();
         assert_eq!(err.kind, cybercipher_core::ErrorKind::InvalidInput);
     }
 
@@ -342,23 +374,45 @@ mod tests {
         let private_pem =
             ecc_private_key_to_pkcs8_pem(EccCurve::Ed25519, &keypair.private_hex).unwrap();
         let public_pem =
-            ecc_public_key_to_spki_pem(EccCurve::Ed25519, &keypair.public_uncompressed_hex).unwrap();
+            ecc_public_key_to_spki_pem(EccCurve::Ed25519, &keypair.public_uncompressed_hex)
+                .unwrap();
 
-        let token_pem =
-            jwt_sign(claims(), Value::Null, JwtAlg::EdDsa, &private_pem, &params()).unwrap();
-        let verified =
-            jwt_verify(&token_pem, JwtAlg::EdDsa, &public_pem, &JwtVerifyParams::new()).unwrap();
+        let token_pem = jwt_sign(
+            claims(),
+            Value::Null,
+            JwtAlg::EdDsa,
+            &private_pem,
+            &params(),
+        )
+        .unwrap();
+        let verified = jwt_verify(
+            &token_pem,
+            JwtAlg::EdDsa,
+            &public_pem,
+            &JwtVerifyParams::new(),
+        )
+        .unwrap();
         assert!(verified.valid, "{:?}", verified.reason);
 
         let mut hex_params = params();
         hex_params.key_encoding = KeyEncoding::Hex;
-        let token_hex =
-            jwt_sign(claims(), Value::Null, JwtAlg::EdDsa, &keypair.private_hex, &hex_params)
-                .unwrap();
+        let token_hex = jwt_sign(
+            claims(),
+            Value::Null,
+            JwtAlg::EdDsa,
+            &keypair.private_hex,
+            &hex_params,
+        )
+        .unwrap();
         let mut vp = JwtVerifyParams::new();
         vp.key_encoding = KeyEncoding::Hex;
-        let verified =
-            jwt_verify(&token_hex, JwtAlg::EdDsa, &keypair.public_compressed_hex, &vp).unwrap();
+        let verified = jwt_verify(
+            &token_hex,
+            JwtAlg::EdDsa,
+            &keypair.public_compressed_hex,
+            &vp,
+        )
+        .unwrap();
         assert!(verified.valid, "{:?}", verified.reason);
         // Ed25519 is deterministic by construction: PEM path and hex path of
         // the same key produce the same signature.
@@ -368,7 +422,10 @@ mod tests {
     #[test]
     fn no_invented_fields_and_unpadded_output() {
         let token = jwt_sign(json!({"a": 1}), Value::Null, JwtAlg::Hs256, "s", &params()).unwrap();
-        assert!(!token.contains('='), "JWS base64url segments must be unpadded");
+        assert!(
+            !token.contains('='),
+            "JWS base64url segments must be unpadded"
+        );
         assert_eq!(token.split('.').count(), 3);
         let decoded = jwt_decode(&token).unwrap();
         // Header has exactly alg + typ: no kid/jku/x5c invented server-side.
