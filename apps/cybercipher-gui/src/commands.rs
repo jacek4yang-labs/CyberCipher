@@ -175,6 +175,41 @@ pub async fn auto_analyze(
         .map_err(|e| CmdError::internal(format!("auto decode task failed: {e}")))
 }
 
+#[derive(Debug, Deserialize)]
+pub struct AssistRequest {
+    pub ciphertext_text: String,
+    #[serde(default = "default_input_encoding")]
+    pub ciphertext_encoding: String,
+    pub key_candidate: String,
+    #[serde(default)]
+    pub iv_hex: Option<String>,
+    #[serde(default)]
+    pub hint: Option<String>,
+}
+
+#[tauri::command]
+pub async fn crypto_assist(
+    state: State<'_, AppState>,
+    request: AssistRequest,
+) -> Result<cybercipher_attack::assist::AssistResult, CmdError> {
+    let ciphertext =
+        decode_input(&request.ciphertext_encoding, &request.ciphertext_text).map_err(CmdError::from)?;
+    let input = cybercipher_attack::assist::AssistInput {
+        ciphertext,
+        key_candidate: request.key_candidate,
+        iv_hex: request.iv_hex.filter(|s| !s.trim().is_empty()),
+        hint: request.hint.filter(|s| !s.is_empty()),
+    };
+    let registry = state.registry.clone();
+    let handle = tauri::async_runtime::spawn_blocking(move || {
+        cybercipher_attack::assist::aes_assist(&registry, &input, &ExecutionContext::new())
+    });
+    handle
+        .await
+        .map_err(|e| CmdError::internal(format!("assist task failed: {e}")))?
+        .map_err(CmdError::from)
+}
+
 #[tauri::command]
 pub fn cancel_run(state: State<'_, AppState>, run_id: String) {
     if let Some(flag) = state.runs.lock().get(&run_id) {
