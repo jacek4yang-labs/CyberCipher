@@ -1,19 +1,33 @@
 # CyberCipher durable work queue (authoritative order)
-# Session 5 end: 37 PRs merged, main = 4ffcf12.
-# COMPLETED AND MERGED: all M0-M7 foundations, M5 complete, M6 complete,
-# M8-PKI-A/B/C/D/E (RSA keygen/formats/OAEP/PSS + ECC + SM2), Auto Decode v2,
-# Crypto Assist GUI, tar.gz release, compat matrices, state guard, benches.
+# Session 6 end: 40 PRs merged, main = 884cf03.
+# COMPLETED AND MERGED: all M0-M7, M8-PKI-A/B/C/D/E/F (key formats, RSA ops,
+# ECC, SM2, X.509/CSR/CRL/ASN.1 inspection), M9-FILE-01 (compression/archive/
+# structured/fileinfo), Crypto Assist + GUI, tar.gz release, compat matrices.
 
-- id: M8-PKI-F
-  title: X.509/ASN.1/JWT — PEM object ID, cert inspection (subject/issuer/serial/validity/SAN/key-usage), CSR/CRL parse, ASN.1 tree, OID rendering, JWK/JWKS (ECC/OKP generalization), JWT decode/JWS verify/sign
+- id: M8-PKI-F-JWT
+  title: JWT/JWS — decode header/payload, sign, verify (RS256/ES256/EdDSA via existing primitives), reject alg=none, preserve arbitrary claims
   status: ready
   priority: P1
   depends_on: []
   owner: pki
 
-- id: M9-FILE-01
-  title: File/structured-data breadth — zip/bzip2/xz/lz4/zstd/brotli/tar; CBOR/MsgPack/TLV/VarInt; magic/carve/PNG/EXIF/LSB; gzip/zlib/deflate encode symmetry
+- id: CTF-SPECIALTY-01
+  title: Brainfuck interpreter (bounded) + Ook translation + brainfuck-encode; AAEncode; JJEncode; Chinese encodings (佛曰/与佛论禅, 新佛曰, 兽音, 熊曰, 社会主义核心价值观) — provenance research required
   status: ready
+  priority: P1
+  depends_on: []
+  owner: classical
+
+- id: GUI-PKI-LAB-01
+  title: GUI PKI Lab — PEM inspect, RSA encrypt/decrypt/sign/verify, ECC keygen/sign/verify/derive, SM2 ops, X.509 cert inspect (RSA Lab pattern)
+  status: ready
+  priority: P1
+  depends_on: []
+  owner: gui
+
+- id: M9-IMAGE-01
+  title: Image/QR/stego — PNG chunk inspector, EXIF parse, QR decode/encode, channel extraction, bit planes, LSB helpers, palette inspection
+  status: pending
   priority: P2
   depends_on: []
   owner: file
@@ -25,12 +39,12 @@
   depends_on: []
   owner: analysis
 
-- id: CTF-SPECIALTY-01
-  title: CTF specialty encodings — 佛曰/与佛论禅, 新佛曰, 兽音, 熊曰, Brainfuck/Ook (bounded interpreter), AAEncode, JJEncode — provenance research required
+- id: M5-SEED-01
+  title: SEED cipher + HC-256/Rabbit/ZUC + KMAC + bcrypt compat (trustworthy crates only)
   status: pending
-  priority: P2
+  priority: P3
   depends_on: []
-  owner: classical
+  owner: crypto
 
 - id: M8-ECDSA-ATTACK-01
   title: ECDSA attack helpers — nonce reuse, known/small k, duplicate-r detection (reuse lattice infra)
@@ -39,16 +53,9 @@
   depends_on: [M8-PKI-D]
   owner: pki
 
-- id: M5-SEED-01
-  title: SEED cipher + HC-256/Rabbit/ZUC + KMAC + bcrypt compat (trustworthy crates only)
-  status: pending
-  priority: P3
-  depends_on: []
-  owner: crypto
-
-- id: GUI-PKI-LAB-01
-  title: GUI PKI Lab — PEM inspect, RSA encrypt/decrypt/sign/verify, ECC ops, SM2 ops (RSA Lab pattern)
+- id: ASSIST-GENERALIZE-01
+  title: Crypto Assist profile generalization — SM4, DES, 3DES, Serpent, Twofish, Camellia, RC4 profiles
   status: pending
   priority: P2
-  depends_on: [M8-PKI-F]
-  owner: gui
+  depends_on: []
+  owner: analysis
