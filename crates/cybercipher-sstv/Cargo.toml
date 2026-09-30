@@ -1,0 +1,32 @@
+[package]
+name = "cybercipher-sstv"
+version.workspace = true
+edition.workspace = true
+# The migrated SSTV core is derived from MIT-licensed `sstv-auto` code and
+# therefore stays MIT; see NOTICE for the upstream license and provenance.
+license = "MIT"
+repository.workspace = true
+description = "Automatic SSTV detection and decoding for CyberCipher (migrated from sstv-auto)"
+
+[dependencies]
+image.workspace = true
+rustfft.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+slowrx.workspace = true
+symphonia.workspace = true
+
+[dev-dependencies]
+# Used by the integration tests to write synthetic SSTV fixtures as WAV.
+hound.workspace = true
+
+[lints.rust]
+unsafe_code = "forbid"
+
+[lints.clippy]
+unwrap_used = "deny"
+expect_used = "deny"
+dbg_macro = "deny"
+todo = "deny"
+unimplemented = "deny"
+panic = "deny"
