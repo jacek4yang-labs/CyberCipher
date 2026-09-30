@@ -5,6 +5,7 @@
 #![allow(clippy::result_large_err)]
 
 mod commands;
+mod pki_commands;
 mod state;
 
 use std::sync::Arc;
@@ -35,6 +36,25 @@ fn main() {
             commands::load_recipe,
             commands::list_saved_recipes,
             commands::delete_recipe,
+            pki_commands::pki_inspect_key,
+            pki_commands::pki_rsa_keygen,
+            pki_commands::pki_rsa_encrypt,
+            pki_commands::pki_rsa_decrypt,
+            pki_commands::pki_rsa_sign,
+            pki_commands::pki_rsa_verify,
+            pki_commands::pki_ecc_keygen,
+            pki_commands::pki_ecdsa_sign,
+            pki_commands::pki_ecdsa_verify,
+            pki_commands::pki_ecdh,
+            pki_commands::pki_ed25519_sign,
+            pki_commands::pki_ed25519_verify,
+            pki_commands::pki_x25519,
+            pki_commands::pki_sm2_keygen,
+            pki_commands::pki_sm2_sign,
+            pki_commands::pki_sm2_verify,
+            pki_commands::pki_sm2_encrypt,
+            pki_commands::pki_sm2_decrypt,
+            pki_commands::pki_cert_inspect,
         ])
         .run(tauri::generate_context!())
         .expect("error while running CyberCipher");

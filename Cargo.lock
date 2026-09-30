@@ -1242,6 +1242,7 @@ dependencies = [
  "cybercipher-codec",
  "cybercipher-core",
  "cybercipher-engine",
+ "cybercipher-pki",
  "dirs 6.0.0",
  "parking_lot",
  "serde",
