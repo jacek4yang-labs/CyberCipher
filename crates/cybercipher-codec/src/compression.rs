@@ -6,7 +6,7 @@ use cybercipher_core::prelude::*;
 use std::io::Read;
 
 /// Decompressed-output cap for interactive use (64 MiB).
-const DECOMPRESS_LIMIT: usize = 64 * 1024 * 1024;
+pub(crate) const DECOMPRESS_LIMIT: usize = 64 * 1024 * 1024;
 
 /// Maximum tolerated expansion ratio. Once the compressed payload is at
 /// least [`RATIO_FLOOR`] bytes, an output larger than this multiple of the

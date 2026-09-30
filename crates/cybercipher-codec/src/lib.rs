@@ -9,6 +9,7 @@
 //! relaxed modes are explicit, documented, and produce diagnostics rather
 //! than silently guessing.
 
+mod archives;
 mod basefamilies;
 mod byteops;
 mod classical_misc;
@@ -25,6 +26,7 @@ use cybercipher_core::OperationRegistry;
 /// Register every codec operation into the registry.
 pub fn register_all(reg: &mut OperationRegistry) {
     compression::register(reg);
+    archives::register(reg);
     integer::register(reg);
     encoding::register(reg);
     basefamilies::register(reg);
