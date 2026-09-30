@@ -78,6 +78,12 @@
   priority: P1
   depends_on: [M10-SSTV-01]
 
+- id: GUI-SSTV-LAB-01
+  title: SSTV Lab GUI
+  status: done
+  owner: agent/sstvlab
+  priority: P1
+  depends_on: [M10-SSTV-02]
 - id: M9-IMAGE-03
   title: structural analysis + carving
   status: in_progress

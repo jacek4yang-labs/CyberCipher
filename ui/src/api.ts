@@ -377,6 +377,13 @@ export const api = {
 
   pkiCertInspect: (material: string) =>
     invoke<PkiCertReport>("pki_cert_inspect", { request: { material } }),
+
+  // ------------------------------------------------------------- SSTV lab ----
+
+  sstvDecodeAudio: (bytes: number[], options: SstvDecodeOptions) =>
+    invoke<SstvDecodeResult>("sstv_decode_audio", { bytes, options }),
+
+  sstvModes: () => invoke<SstvModeInfo[]>("sstv_modes"),
 };
 
 // -------------------------------------------------------------- PKI lab ----
@@ -723,6 +730,121 @@ export interface Asn1Node {
   value?: Asn1Value;
   children: Asn1Node[];
   hex_preview?: string;
+}
+
+// -------------------------------------------------------------- SSTV lab ----
+// Mirrors the serde types in apps/cybercipher-gui/src/sstv_commands.rs and the
+// engine structs in crates/cybercipher-sstv (report.rs); keep them in sync.
+
+/** Mirrors sstv_commands.rs SstvDecodeOptions (serde field names, snake_case). */
+export interface SstvDecodeOptions {
+  /** auto | mono | left | right | zero-based channel index (as a string). */
+  channel: string;
+  /** Slug or display name; null/blank means automatic detection. */
+  forced_mode?: string | null;
+  /** Allow blind sync-period inference when the VIS header is absent. */
+  blind: boolean;
+  /** Reject audio longer than this (engine clamps to 1..=300 s). */
+  max_duration_seconds: number;
+  /** Ranked candidates decoded at full resolution (engine clamps to 1..=20). */
+  max_candidates: number;
+}
+
+/** Mirrors sstv_commands.rs SstvImage. */
+export interface SstvImage {
+  /** Index into report.detections. */
+  detection_index: number;
+  mode_slug: string;
+  mode_name: string;
+  width: number;
+  height: number;
+  /** PNG byte count before base64. */
+  size: number;
+  /** Base64-encoded PNG bytes, data-URL ready. */
+  png_base64: string;
+}
+
+/** Mirrors sstv_commands.rs SstvDecodeResult. */
+export interface SstvDecodeResult {
+  /** The complete run report (crates/cybercipher-sstv/src/report.rs). */
+  report: SstvReport;
+  /** Decoded images, best first, aligned with report.detections. */
+  images: SstvImage[];
+  /** Always null: decoded bytes never touch disk in the command layer. */
+  report_path: string | null;
+}
+
+/** Mirrors sstv_commands.rs SstvModeInfo. */
+export interface SstvModeInfo {
+  slug: string;
+  name: string;
+  vis_code: number;
+  family: string;
+  palette: string;
+  width: number;
+  height: number;
+  /** Total transmitted image duration, seconds (excludes the VIS header). */
+  image_seconds: number;
+}
+
+/**
+ * The engine's full run report (crates/cybercipher-sstv/src/report.rs), as a
+ * loose shape: every documented field is optional so the UI degrades
+ * gracefully when the engine omits one.
+ */
+export interface SstvReport {
+  tool_version?: string;
+  audio?: SstvReportAudio;
+  hypotheses_evaluated?: number;
+  detections?: SstvReportDetection[];
+  warnings?: string[];
+  /** Image metadata appended by decode_bounded (aligned with detections). */
+  images?: SstvReportImageMeta[];
+  [key: string]: unknown;
+}
+
+/** Mirrors report.rs AudioReport. */
+export interface SstvReportAudio {
+  input?: string;
+  duration_seconds?: number;
+  analysis_rate_hz?: number;
+  source_channels?: number;
+  selected_channel?: string;
+  normalized_peak?: number;
+}
+
+/** Mirrors report.rs Detection. */
+export interface SstvReportDetection {
+  mode?: string;
+  mode_slug?: string;
+  vis_code?: number;
+  /** vis | vis-parity-failed | sync-period | forced. */
+  detected_by?: string;
+  confidence?: number;
+  signal_agreement?: number;
+  coverage?: number;
+  complete?: boolean;
+  image_start_seconds?: number;
+  frequency_offset_hz?: number;
+  clock_rate?: number;
+  clock_error_percent?: number;
+  matched_syncs?: number;
+  width?: number;
+  height?: number;
+  image_quality?: number;
+  evidence?: string[];
+  /** Other modes that would decode identically without a VIS header. */
+  ambiguous_with?: string[];
+  output_png?: string;
+}
+
+/** Image metadata inside report.images. */
+export interface SstvReportImageMeta {
+  detection_index?: number;
+  format?: string;
+  width?: number;
+  height?: number;
+  bytes?: number;
 }
 
 /**
