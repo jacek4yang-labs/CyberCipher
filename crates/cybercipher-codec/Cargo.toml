@@ -25,6 +25,11 @@ tar = "0.4"
 zip = { version = "2", default-features = false, features = ["deflate"] }
 ciborium = "0.2"
 rmp-serde = "1"
+# CTF specialty codecs (specialty.rs): AES-256-CBC for the Buddha codecs
+# (与佛论禅/新佛曰) and MD5 for the OpenSSL EVP_BytesToKey schedule. Both
+# were already in the workspace lockfile via cybercipher-crypto.
+aes = "0.9"
+md-5 = "0.10"
 
 [dev-dependencies]
 cybercipher-engine.workspace = true
