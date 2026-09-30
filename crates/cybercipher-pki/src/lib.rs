@@ -13,10 +13,12 @@
 // cybercipher-core/src/lib.rs.)
 #![allow(clippy::result_large_err)]
 
+pub mod ecc;
 pub mod error;
 pub mod keys;
 pub mod ops;
 
+pub use ecc::*;
 pub use error::{PkiError, PkiResult};
 pub use keys::*;
 pub use ops::{PssSaltLength, RsaDigest, SignatureVerifyResult};
