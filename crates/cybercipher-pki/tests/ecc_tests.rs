@@ -4,7 +4,6 @@
 
 use cybercipher_core::ErrorKind;
 use cybercipher_pki::ecc::curve::{EccCurve, EccKeyPair};
-use cybercipher_pki::ecc::ecdsa::{EcdsaDigest, EcdsaNonceMode, EcdsaSignatureFormat};
 use cybercipher_pki::error::PkiError;
 
 // ---------------------------------------------------------------------------
