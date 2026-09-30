@@ -208,3 +208,192 @@ fn hex_decode(hex: &str) -> Vec<u8> {
 fn default_user_id_constant_is_standard() {
     assert_eq!(SM2_DEFAULT_USER_ID, "1234567812345678");
 }
+
+// ---------------------------------------------------------------------------
+// SM2 sign / verify
+// ---------------------------------------------------------------------------
+
+use cybercipher_pki::sm2::{
+    sm2_sign, sm2_signature_from_bytes, sm2_signature_to_bytes, sm2_verify, SM2_SIGNATURE_LEN,
+};
+
+#[test]
+fn sign_verify_round_trip_default_user_id() {
+    let kp = generate_sm2_keypair().unwrap();
+    let msg = b"attack at dawn";
+
+    let sig_hex = sm2_sign(&kp.private_hex, msg, None).unwrap();
+    assert_eq!(sig_hex.len(), SM2_SIGNATURE_LEN * 2);
+
+    let result = sm2_verify(&kp.public_uncompressed_hex, msg, &sig_hex, None).unwrap();
+    assert!(
+        result.valid,
+        "default-ID verify failed: {:?}",
+        result.reason
+    );
+    assert_eq!(result.user_id, SM2_DEFAULT_USER_ID);
+    assert_eq!(result.reason, None);
+
+    // The compressed public encoding must verify identically.
+    let result = sm2_verify(&kp.public_compressed_hex, msg, &sig_hex, None).unwrap();
+    assert!(result.valid);
+
+    // `Some("")` selects the default ID as well.
+    let result = sm2_verify(&kp.public_uncompressed_hex, msg, &sig_hex, Some("")).unwrap();
+    assert!(result.valid);
+}
+
+#[test]
+fn sign_verify_round_trip_custom_user_id() {
+    // The GB/T 32918.2-2016 A.2 example ID.
+    let user_id = "ALICE123@YAHOO.COM";
+    let kp = generate_sm2_keypair().unwrap();
+    let msg = b"message digest";
+
+    let sig_hex = sm2_sign(&kp.private_hex, msg, Some(user_id)).unwrap();
+    let result = sm2_verify(&kp.public_uncompressed_hex, msg, &sig_hex, Some(user_id)).unwrap();
+    assert!(result.valid, "custom-ID verify failed: {:?}", result.reason);
+    assert_eq!(result.user_id, user_id);
+}
+
+#[test]
+fn signing_is_deterministic_rfc6979() {
+    let kp = generate_sm2_keypair().unwrap();
+    let a = sm2_sign(&kp.private_hex, b"deterministic", None).unwrap();
+    let b = sm2_sign(&kp.private_hex, b"deterministic", None).unwrap();
+    assert_eq!(a, b, "same key + same message must repeat the signature");
+}
+
+#[test]
+fn default_and_explicit_default_id_agree() {
+    let kp = generate_sm2_keypair().unwrap();
+    let implicit = sm2_sign(&kp.private_hex, b"id check", None).unwrap();
+    let explicit = sm2_sign(&kp.private_hex, b"id check", Some(SM2_DEFAULT_USER_ID)).unwrap();
+    assert_eq!(implicit, explicit);
+}
+
+#[test]
+fn sign_wrong_user_id_verify_fails() {
+    let kp = generate_sm2_keypair().unwrap();
+    let msg = b"ZA depends on the ID";
+    let sig_hex = sm2_sign(&kp.private_hex, msg, Some("signer@example.com")).unwrap();
+
+    let result = sm2_verify(
+        &kp.public_uncompressed_hex,
+        msg,
+        &sig_hex,
+        Some("other@example.com"),
+    )
+    .unwrap();
+    assert!(!result.valid);
+    assert!(result
+        .reason
+        .as_deref()
+        .unwrap_or_default()
+        .contains("user ID"));
+
+    // The default ID must not verify a custom-ID signature either.
+    let result = sm2_verify(&kp.public_uncompressed_hex, msg, &sig_hex, None).unwrap();
+    assert!(!result.valid);
+}
+
+#[test]
+fn verify_wrong_key_and_tampered_message_fail() {
+    let kp = generate_sm2_keypair().unwrap();
+    let other = generate_sm2_keypair().unwrap();
+    let msg = b"authenticated content";
+    let sig_hex = sm2_sign(&kp.private_hex, msg, None).unwrap();
+
+    // Wrong public key: valid: false, not an error.
+    let result = sm2_verify(&other.public_uncompressed_hex, msg, &sig_hex, None).unwrap();
+    assert!(!result.valid);
+
+    // Tampered message.
+    let result = sm2_verify(
+        &kp.public_uncompressed_hex,
+        b"authenticated contenT",
+        &sig_hex,
+        None,
+    )
+    .unwrap();
+    assert!(!result.valid);
+
+    // Tampered signature: flip one hex char of r.
+    let mut tampered = sig_hex.clone();
+    let flip = if tampered.starts_with('0') { '1' } else { '0' };
+    tampered.replace_range(0..1, flip.to_string().as_str());
+    let result = sm2_verify(&kp.public_uncompressed_hex, msg, &tampered, None).unwrap();
+    assert!(!result.valid);
+}
+
+#[test]
+fn sign_rejects_bad_private_key() {
+    let err = sm2_sign(&"00".repeat(32), b"x", None).unwrap_err();
+    assert_eq!(kind_of(&err), "KeyError");
+    let err = sm2_sign("nothex", b"x", None).unwrap_err();
+    assert_eq!(kind_of(&err), "Decode");
+}
+
+#[test]
+fn verify_malformed_signature_inputs_are_typed_errors() {
+    let kp = generate_sm2_keypair().unwrap();
+    let msg = b"typed errors";
+
+    // Wrong length (63 and 65 bytes).
+    let err = sm2_verify(&kp.public_uncompressed_hex, msg, &"ab".repeat(63), None).unwrap_err();
+    assert_eq!(kind_of(&err), "LengthMismatch");
+    let err = sm2_verify(&kp.public_uncompressed_hex, msg, &"ab".repeat(65), None).unwrap_err();
+    assert_eq!(kind_of(&err), "LengthMismatch");
+
+    // r = 0 is outside 1..n.
+    let mut zero_r = vec![0u8; 32];
+    zero_r.extend_from_slice(&[1u8; 32]);
+    let err = sm2_verify(&kp.public_uncompressed_hex, msg, &hex_encode(&zero_r), None).unwrap_err();
+    assert_eq!(kind_of(&err), "Decode");
+
+    // s = n is non-canonical.
+    let mut sig = vec![1u8; 32];
+    sig.extend_from_slice(&hex_decode(
+        "fffffffeffffffffffffffffffffffff7203df6b21c6052b53bbf40939d54123",
+    ));
+    let err = sm2_verify(&kp.public_uncompressed_hex, msg, &hex_encode(&sig), None).unwrap_err();
+    assert_eq!(kind_of(&err), "Decode");
+
+    // Off-curve public key (P-256 generator): KeyError at parse time.
+    let p256_generator = "04\
+        6b17d1f2e12c4247f8bce6e563a440f277037d812deb33a0f4a13945d898c296\
+        4fe342e2fe1a7f9b8ee7eb4a7c0f9e162bce33576b315ececbb6406837bf51f5";
+    let err = sm2_verify(p256_generator, msg, &"ab".repeat(64), None).unwrap_err();
+    assert_eq!(kind_of(&err), "KeyError");
+}
+
+#[test]
+fn oversized_user_id_is_a_typed_error() {
+    let kp = generate_sm2_keypair().unwrap();
+    // 8192 bytes would overflow the 16-bit ENTLa bit-length field.
+    let too_long = "A".repeat(8192);
+    let err = sm2_sign(&kp.private_hex, b"x", Some(too_long.as_str())).unwrap_err();
+    assert_eq!(kind_of(&err), "InvalidParam");
+    assert!(err.message.contains("ENTLa"));
+}
+
+#[test]
+fn signature_byte_conversions_round_trip() {
+    let kp = generate_sm2_keypair().unwrap();
+    let sig_hex = sm2_sign(&kp.private_hex, b"bytes round trip", None).unwrap();
+
+    let bytes = sm2_signature_to_bytes(&sig_hex).unwrap();
+    assert_eq!(bytes.len(), SM2_SIGNATURE_LEN);
+    assert_eq!(hex_encode(&bytes), sig_hex);
+    assert_eq!(sm2_signature_from_bytes(&bytes).unwrap(), sig_hex);
+
+    // Wrong length and non-canonical components are typed errors.
+    assert_eq!(
+        kind_of(&sm2_signature_from_bytes(&[0u8; 63]).unwrap_err()),
+        "LengthMismatch"
+    );
+    assert_eq!(
+        kind_of(&sm2_signature_to_bytes(&"00".repeat(64)).unwrap_err()),
+        "Decode"
+    );
+}
