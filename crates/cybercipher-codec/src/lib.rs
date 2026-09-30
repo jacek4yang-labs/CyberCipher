@@ -18,6 +18,7 @@ mod encoding;
 mod helpers;
 mod inspect;
 mod integer;
+mod structured;
 
 pub use encoding::decode_input;
 
@@ -33,4 +34,5 @@ pub fn register_all(reg: &mut OperationRegistry) {
     classical_misc::register(reg);
     byteops::register(reg);
     inspect::register(reg);
+    structured::register(reg);
 }
