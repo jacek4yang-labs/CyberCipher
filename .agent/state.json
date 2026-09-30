@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "phase": "M8/M9 completion + pre-1.0",
-  "last_reconciled_sha": "884cf03",
+  "phase": "M8-PKI-F-JWT / GUI-PKI-Lab / M9-image",
+  "last_reconciled_sha": "4064a78",
   "active_branch": null,
   "active_pr": null,
   "current_task": null,
@@ -37,13 +37,14 @@
     "M8-PKI-C",
     "M8-PKI-D",
     "M8-PKI-E",
-    "M8-PKI-F",
+    "M8-PKI-F-X509",
     "M9-FILE-01",
     "RELEASE-TAR-01",
     "QA-COVERAGE",
     "QA-CONSISTENCY-01",
     "BENCH-01",
-    "RECONCILE-01"
+    "RECONCILE-01",
+    "CI-FIX-SM2-LEFTPAD"
   ],
   "blocked": [],
   "agent_lanes": {},
@@ -53,5 +54,5 @@
     "cargo_test": "pass",
     "frontend": "pass"
   },
-  "notes": "Session 6 end: 40 PRs merged, main=884cf03. New: X.509/CSR/CRL inspection, ASN.1 tree inspector, 31 codec ops (compression symmetry, bzip2/xz/zstd/lz4/brotli/tar/zip, CBOR/MsgPack/TLV/VarInt, file-magic/UTF-16/entropy). Registry ~187 ops, 515+ tests. Remaining: M8-PKI-F JWT/JWS half, CTF specialty (Brainfuck/Ook/AAEncode/JJEncode/Chinese), PKI Lab GUI, Crypto Assist generalization, M9 image/QR/stego, signature scanner, compatibility closure."
+  "notes": "Session 7: CI fix merged (#42). Registry ~187 ops, 545 tests. Remaining: JWT/JWS, PKI Lab GUI, image/QR/stego, CTF specialty, signature scanner, Auto Decode expansion, Crypto Assist generalization. Compatibility matrices stale \u2014 live audit needed."
 }

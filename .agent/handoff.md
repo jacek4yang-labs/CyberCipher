@@ -1,25 +1,17 @@
 # Handoff
 
-## In flight
-- Nothing. All lanes merged; worktrees cleaned up.
+## main = 4064a78 — 42 PRs, ~187 ops, 545 tests. CI green.
 
-## main = 884cf03 — 40 PRs, ~187 registry ops, 515+ tests.
+## Session 7 merged
+#42 CI fix (SM2 left-pad scalar parsing). All prior lanes complete.
 
-## Session 6 merged
-#39 file/compression/archive/structured/fileinfo (31 ops), #40 X.509/CSR/CRL/ASN.1 inspection.
+## Remaining gaps
+JWT/JWS, PKI Lab GUI, image/QR/stego, CTF specialty, signature scanner,
+Auto Decode expansion, Crypto Assist generalization, SEED/KMAC,
+ECDSA attacks, compatibility closure.
 
-## All milestones through M8-PKI-F (except JWT half) and M9-FILE-01 are complete.
-
-## Next ready (priority order)
-1. JWT/JWS module (M8-PKI-F second half — all crypto primitives exist)
-2. CTF specialty encodings (Brainfuck/Ook/AAEncode/JJEncode + Chinese — needs provenance research)
-3. GUI PKI Lab (RSA Lab pattern)
-4. Auto Decode vocabulary for new base/archive formats
-5. Image/QR/stego (M9)
-6. Crypto Assist generalization (SM4/DES/RC4 profiles)
-7. ECDSA attack helpers, signature scanner, SEED/KMAC
-
-## Blocked
-- Subagent concurrency = 2. Infra failures: "Captcha instance timed out",
-  "exceed quota limit" — checkpoint worktrees and finish orphaned WIP as
-  coordinator (done 7x across sessions).
+## Next ready
+1. JWT/JWS (M8-PKI-F-JWT)
+2. PKI Lab GUI (GUI-PKI-LAB-01)
+3. Image/QR/stego (M9-IMAGE-01)
+4. CTF specialty (CTF-SPECIALTY-01)

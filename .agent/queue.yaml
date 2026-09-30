@@ -1,60 +1,64 @@
-# CyberCipher durable work queue (authoritative order)
-# Session 6 end: 40 PRs merged, main = 884cf03.
-# COMPLETED AND MERGED: all M0-M7, M8-PKI-A/B/C/D/E/F (key formats, RSA ops,
-# ECC, SM2, X.509/CSR/CRL/ASN.1 inspection), M9-FILE-01 (compression/archive/
-# structured/fileinfo), Crypto Assist + GUI, tar.gz release, compat matrices.
+# CyberCipher durable work queue
+# Session 7: main = 4064a78. 42 PRs merged. ~187 ops. 545 tests.
 
 - id: M8-PKI-F-JWT
-  title: JWT/JWS — decode header/payload, sign, verify (RS256/ES256/EdDSA via existing primitives), reject alg=none, preserve arbitrary claims
+  title: JWT/JWS — decode, sign, verify (RS256/ES256/EdDSA), reject alg=none, PEM wrappers
   status: ready
   priority: P1
   depends_on: []
   owner: pki
 
-- id: CTF-SPECIALTY-01
-  title: Brainfuck interpreter (bounded) + Ook translation + brainfuck-encode; AAEncode; JJEncode; Chinese encodings (佛曰/与佛论禅, 新佛曰, 兽音, 熊曰, 社会主义核心价值观) — provenance research required
-  status: ready
-  priority: P1
-  depends_on: []
-  owner: classical
-
 - id: GUI-PKI-LAB-01
-  title: GUI PKI Lab — PEM inspect, RSA encrypt/decrypt/sign/verify, ECC keygen/sign/verify/derive, SM2 ops, X.509 cert inspect (RSA Lab pattern)
+  title: PKI Lab GUI — Inspect/RSA/ECC/SM2/Certificate/JWT tabs (RSA Lab pattern)
   status: ready
   priority: P1
   depends_on: []
   owner: gui
 
 - id: M9-IMAGE-01
-  title: Image/QR/stego — PNG chunk inspector, EXIF parse, QR decode/encode, channel extraction, bit planes, LSB helpers, palette inspection
+  title: PNG chunk inspector, EXIF, QR, channel extraction, bit planes, LSB helpers
   status: pending
   priority: P2
   depends_on: []
   owner: file
 
+- id: CTF-SPECIALTY-01
+  title: Brainfuck/Ook bounded interpreter, AAEncode, JJEncode, Chinese encodings (provenance first)
+  status: pending
+  priority: P2
+  depends_on: []
+  owner: classical
+
 - id: M7-SIG-01
-  title: Crypto signature scanner — TEA delta, AES S-box, SM4 FK/CK, SHA/MD5 constants, ChaCha constants, RC4 KSA patterns
+  title: Crypto signature scanner (TEA delta, AES S-box, SM4, SHA/MD5, ChaCha, RC4 KSA)
   status: pending
   priority: P2
   depends_on: []
   owner: analysis
 
 - id: M5-SEED-01
-  title: SEED cipher + HC-256/Rabbit/ZUC + KMAC + bcrypt compat (trustworthy crates only)
+  title: SEED + HC-256/Rabbit/ZUC + KMAC + bcrypt compat
   status: pending
   priority: P3
   depends_on: []
   owner: crypto
 
 - id: M8-ECDSA-ATTACK-01
-  title: ECDSA attack helpers — nonce reuse, known/small k, duplicate-r detection (reuse lattice infra)
+  title: ECDSA attack helpers — nonce reuse, duplicate-r, known/small k
   status: pending
   priority: P2
   depends_on: [M8-PKI-D]
   owner: pki
 
 - id: ASSIST-GENERALIZE-01
-  title: Crypto Assist profile generalization — SM4, DES, 3DES, Serpent, Twofish, Camellia, RC4 profiles
+  title: Crypto Assist profiles — SM4/DES/3DES/Serpent/Twofish/Camellia/RC4
+  status: pending
+  priority: P2
+  depends_on: []
+  owner: analysis
+
+- id: AUTO-V3-01
+  title: Auto Decode expansion — unicode escapes, HTML entities, QP, punycode, new base/archive formats
   status: pending
   priority: P2
   depends_on: []
