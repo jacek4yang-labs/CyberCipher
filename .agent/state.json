@@ -1,7 +1,7 @@
 {
   "schema": 1,
   "phase": "M8/M9",
-  "last_reconciled_sha": "cc3239c",
+  "last_reconciled_sha": "4ffcf12",
   "active_branch": null,
   "active_pr": null,
   "current_task": null,
@@ -31,9 +31,12 @@
     "M6-CLASSICAL-MISC-01",
     "M7-AUTO-01-XOR",
     "M7-ASSIST-01",
+    "M7-AUTO-02",
     "M8-PKI-A",
     "M8-PKI-B",
     "M8-PKI-C",
+    "M8-PKI-D",
+    "M8-PKI-E",
     "RELEASE-TAR-01",
     "QA-COVERAGE",
     "QA-CONSISTENCY-01",
@@ -48,5 +51,5 @@
     "cargo_test": "pass",
     "frontend": "pass"
   },
-  "notes": "Session 4 end: 32 PRs merged, main=cc3239c. New: PKI crate (RSA keygen/PEM/DER/JWK + OAEP/PSS ops), base families (36/45/58Check/62/Ascii85/Z85/91), classical misc (Morse/A1Z26/Tap/Bacon/Braille), state semantics fix (ancestor check). Registry ~125 ops, 413 tests. Next ready: M8-PKI-D (ECC), M8-PKI-E (SM2), M8-PKI-F (X.509/JWT), M7-AUTO-02, M9-FILE-01, M7-SIG-01, M5-SEED-01, specialty encodings."
+  "notes": "Session 5 end: 37 PRs merged, main=4ffcf12. New: ECC foundation (ECDSA/ECDH/Ed25519/X25519), Crypto Assist GUI, Auto Decode v2 (base58/62/85/91/36 candidates), SM2 (keygen/sign/verify/encrypt/decrypt + SM3). Registry ~125 ops, 485 tests. Remaining: M8-PKI-F (X.509/JWT), M9-FILE-01, M7-SIG-01, M5-SEED-01, CTF specialty, ECDSA attacks, GUI PKI lab."
 }
