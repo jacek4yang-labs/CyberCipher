@@ -40,6 +40,7 @@ use rxing::{
     multi::{qrcode::detector::MultiDetector, GenericMultipleBarcodeReader},
     qrcode::decoder::QRCodeDecoderMetaData,
     BinaryBitmap, DecodeHints, LuminanceSource, MultiFormatReader, RGBLuminanceSource, RXingResult,
+    RXingResultMetadataValue,
 };
 
 use crate::payload::{self, PayloadInfo};
@@ -551,7 +552,7 @@ struct RawDecoded {
 /// stock multi reader would merge even unrelated sequences (upstream
 /// `decodeQrParts`).
 fn decode_qr_parts<B: rxing::Binarizer>(
-    bitmap: &mut BinaryBitmap<B>,
+    bitmap: &BinaryBitmap<B>,
     hints: &DecodeHints,
 ) -> Vec<RawDecoded> {
     let mut out = Vec::new();
@@ -759,7 +760,7 @@ fn to_hit(
         .points
         .iter()
         .map(|(x, y)| map_back(*x, *y, info, area))
-        .collect();
+        .collect::<Vec<(f32, f32)>>();
     let bounds = bounds_of(&points, image_width, image_height);
     let payload_info = payload::detect(payload.as_deref().unwrap_or(&[]));
     BarcodeHit {
@@ -853,10 +854,10 @@ fn bounds_of(points: &[(f32, f32)], image_width: u32, image_height: u32) -> Opti
     if points.is_empty() {
         return None;
     }
-    let min_x = points.iter().map(|(x, _)| x).fold(f32::MAX, f32::min);
-    let min_y = points.iter().map(|(_, y)| y).fold(f32::MAX, f32::min);
-    let max_x = points.iter().map(|(x, _)| x).fold(f32::MIN, f32::max);
-    let max_y = points.iter().map(|(_, y)| y).fold(f32::MIN, f32::max);
+    let min_x = points.iter().map(|(x, _)| *x).fold(f32::MAX, f32::min);
+    let min_y = points.iter().map(|(_, y)| *y).fold(f32::MAX, f32::min);
+    let max_x = points.iter().map(|(x, _)| *x).fold(f32::MIN, f32::max);
+    let max_y = points.iter().map(|(_, y)| *y).fold(f32::MIN, f32::max);
     let x0 = (min_x - BOUNDS_PADDING).max(0.0).floor() as u32;
     let y0 = (min_y - BOUNDS_PADDING).max(0.0).floor() as u32;
     let x1 = (max_x + BOUNDS_PADDING).ceil() as u32;
@@ -1422,8 +1423,8 @@ mod tests {
 
     /// Renders a `BitMatrix` (black modules on white) as an ARGB image.
     fn matrix_image(matrix: &BitMatrix) -> RgbaImage {
-        let width = matrix.get_width() as u32;
-        let height = matrix.get_height() as u32;
+        let width = matrix.width();
+        let height = matrix.height();
         let mut argb = Vec::with_capacity((width as usize) * (height as usize));
         for y in 0..height {
             for x in 0..width {
@@ -2116,12 +2117,12 @@ mod tests {
     #[test]
     fn registered_ops_expose_expected_spec() {
         let reg = registry();
-        let scan_spec = reg.get("image_scan_qr").expect("registered");
+        let scan_spec = reg.get("image_scan_qr").expect("registered").spec();
         assert_eq!(scan_spec.id, "image_scan_qr");
         assert_eq!(scan_spec.output_kind, cybercipher_core::ValueKind::Json);
         assert_eq!(scan_spec.cost, cybercipher_core::CostClass::Interactive);
         assert_eq!(scan_spec.category, cybercipher_core::Category::Analysis);
-        let bytes_spec = reg.get("image_scan_qr_bytes").expect("registered");
+        let bytes_spec = reg.get("image_scan_qr_bytes").expect("registered").spec();
         assert_eq!(bytes_spec.output_kind, cybercipher_core::ValueKind::Bytes);
         assert_eq!(bytes_spec.cost, cybercipher_core::CostClass::Interactive);
     }
