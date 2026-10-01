@@ -663,45 +663,6 @@ pub(crate) fn register(reg: &mut OperationRegistry) {
         ),
         image_gif_frame_op,
     );
-
-    reg.add_simple(
-        spec(
-            "auto_lsb_scan",
-            "Auto LSB Scan",
-            "Bounded automatic LSB steganography scan: enumerates the StegSolver Fast (or Deep) extraction configurations, extracts a bounded prefix (default 64 KiB) per configuration, scores each extract with deterministic evidence (CTF flag syntax, file signatures, text tiers, base64, entropy), deduplicates equivalent configurations and returns ranked candidates. Apply a candidate with Extract Bits using its settings.",
-            A,
-            &[B],
-            J,
-            CostClass::Solver,
-            false,
-            vec![
-                p_bool(
-                    "deep",
-                    "Deep scan",
-                    false,
-                    "Adds rarer configurations (3-bit LSB across all six orders, 4-bit LSB, MSB bit 7, single-channel bit 2/7) to the Fast enumeration.",
-                ),
-                p_text("roi", "Region", "", "Optional 'x,y,width,height' region; defaults to the whole image."),
-                p_int(
-                    "max_candidates",
-                    "Max candidates",
-                    50,
-                    "Maximum number of ranked candidates returned. Hard cap 200.",
-                ),
-                p_int(
-                    "prefix_bytes",
-                    "Prefix bytes",
-                    65_536,
-                    "Bounded prefix extracted per configuration. Hard cap 1 MiB; the full extraction is Phase 2, available via Extract Bits with the candidate's settings.",
-                ),
-            ],
-            &["steg", "image", "ctf", "lsb", "auto"],
-            &[],
-            "Semantics ported from StegSolve via StegSolver c14bfa9 (MIT): AutoLsbScanner enumeration, PayloadDetector classification and the deterministic scoring table",
-            "Enumeration-count fixtures against the upstream option lists; scoring and end-to-end fixtures over synthetic images",
-        ),
-        auto_lsb_scan_op,
-    );
 }
 
 #[cfg(test)]
