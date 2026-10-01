@@ -225,7 +225,13 @@ pub fn decode_frame(
         ctx.check()?;
         if frame_index == index {
             draw_frame(&mut canvas, sw, sh, frame)?;
-            return RgbaImage::new(screen_width, screen_height, canvas, true).map_err(|e| {
+            return RgbaImage::new(
+                u32::from(screen_width),
+                u32::from(screen_height),
+                canvas,
+                true,
+            )
+            .map_err(|e| {
                 OperationError::decode("decoded frame is inconsistent").with_details(e.to_string())
             });
         }
@@ -347,25 +353,27 @@ mod tests {
     /// 2: [transparent, green] 2x1 at (0, 0) (keep)
     fn three_frame_gif() -> Vec<u8> {
         let mut out = Vec::new();
-        let mut encoder = gif::Encoder::new(&mut out, 4, 2, &PALETTE).unwrap();
-        let f0 = gif::Frame {
-            delay: 5,
-            dispose: gif::DisposalMethod::Keep,
-            ..frame(4, 2, 0, 0, vec![RED; 8])
-        };
-        encoder.write_frame(&f0).unwrap();
-        let f1 = gif::Frame {
-            delay: 10,
-            dispose: gif::DisposalMethod::Background,
-            ..frame(2, 1, 1, 0, vec![BLUE; 2])
-        };
-        encoder.write_frame(&f1).unwrap();
-        let f2 = gif::Frame {
-            transparent: Some(RED),
-            dispose: gif::DisposalMethod::Keep,
-            ..frame(2, 1, 0, 0, vec![RED, GREEN])
-        };
-        encoder.write_frame(&f2).unwrap();
+        {
+            let mut encoder = gif::Encoder::new(&mut out, 4, 2, &PALETTE).unwrap();
+            let f0 = gif::Frame {
+                delay: 5,
+                dispose: gif::DisposalMethod::Keep,
+                ..frame(4, 2, 0, 0, vec![RED; 8])
+            };
+            encoder.write_frame(&f0).unwrap();
+            let f1 = gif::Frame {
+                delay: 10,
+                dispose: gif::DisposalMethod::Background,
+                ..frame(2, 1, 1, 0, vec![BLUE; 2])
+            };
+            encoder.write_frame(&f1).unwrap();
+            let f2 = gif::Frame {
+                transparent: Some(RED),
+                dispose: gif::DisposalMethod::Keep,
+                ..frame(2, 1, 0, 0, vec![RED, GREEN])
+            };
+            encoder.write_frame(&f2).unwrap();
+        }
         out
     }
 
@@ -399,9 +407,11 @@ mod tests {
     fn index_frames_is_bounded_by_the_frame_cap() {
         // 4097 one-pixel frames: the index stops at 4096 and reports the cut.
         let mut out = Vec::new();
-        let mut encoder = gif::Encoder::new(&mut out, 1, 1, &PALETTE).unwrap();
-        for _ in 0..=MAX_FRAMES_INDEXED {
-            encoder.write_frame(&frame(1, 1, 0, 0, vec![RED])).unwrap();
+        {
+            let mut encoder = gif::Encoder::new(&mut out, 1, 1, &PALETTE).unwrap();
+            for _ in 0..=MAX_FRAMES_INDEXED {
+                encoder.write_frame(&frame(1, 1, 0, 0, vec![RED])).unwrap();
+            }
         }
         let index = index_frames(&out, &limits()).unwrap();
         assert_eq!(index.frames.len(), MAX_FRAMES_INDEXED);
@@ -474,8 +484,10 @@ mod tests {
         // canvas cap: indexing still works (no canvas is allocated), frame
         // decoding is refused before any allocation.
         let mut out = Vec::new();
-        let mut encoder = gif::Encoder::new(&mut out, 0xFFFF, 0xFFFF, &PALETTE).unwrap();
-        encoder.write_frame(&frame(1, 1, 0, 0, vec![RED])).unwrap();
+        {
+            let mut encoder = gif::Encoder::new(&mut out, 0xFFFF, 0xFFFF, &PALETTE).unwrap();
+            encoder.write_frame(&frame(1, 1, 0, 0, vec![RED])).unwrap();
+        }
         let index = index_frames(&out, &limits()).unwrap();
         assert_eq!(index.frames.len(), 1);
         assert_eq!((index.screen_width, index.screen_height), (0xFFFF, 0xFFFF));

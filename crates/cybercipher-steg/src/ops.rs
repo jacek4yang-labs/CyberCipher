@@ -1067,35 +1067,37 @@ mod tests {
         const GREEN: u8 = 2;
         let palette: [u8; 9] = [0xFF, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x00, 0xC0, 0x00];
         let mut out = Vec::new();
-        let mut encoder = gif::Encoder::new(&mut out, 4, 2, &palette).unwrap();
-        let base = |width: u16, height: u16, left: u16, top: u16, pixels: Vec<u8>| gif::Frame {
-            width,
-            height,
-            left,
-            top,
-            buffer: Cow::Owned(pixels),
-            ..gif::Frame::default()
-        };
-        encoder
-            .write_frame(&gif::Frame {
-                delay: 5,
-                dispose: gif::DisposalMethod::Keep,
-                ..base(4, 2, 0, 0, vec![RED; 8])
-            })
-            .unwrap();
-        encoder
-            .write_frame(&gif::Frame {
-                delay: 10,
-                dispose: gif::DisposalMethod::Background,
-                ..base(2, 1, 1, 0, vec![BLUE; 2])
-            })
-            .unwrap();
-        encoder
-            .write_frame(&gif::Frame {
-                transparent: Some(RED),
-                ..base(2, 1, 0, 0, vec![RED, GREEN])
-            })
-            .unwrap();
+        {
+            let mut encoder = gif::Encoder::new(&mut out, 4, 2, &palette).unwrap();
+            let base = |width: u16, height: u16, left: u16, top: u16, pixels: Vec<u8>| gif::Frame {
+                width,
+                height,
+                left,
+                top,
+                buffer: Cow::Owned(pixels),
+                ..gif::Frame::default()
+            };
+            encoder
+                .write_frame(&gif::Frame {
+                    delay: 5,
+                    dispose: gif::DisposalMethod::Keep,
+                    ..base(4, 2, 0, 0, vec![RED; 8])
+                })
+                .unwrap();
+            encoder
+                .write_frame(&gif::Frame {
+                    delay: 10,
+                    dispose: gif::DisposalMethod::Background,
+                    ..base(2, 1, 1, 0, vec![BLUE; 2])
+                })
+                .unwrap();
+            encoder
+                .write_frame(&gif::Frame {
+                    transparent: Some(RED),
+                    ..base(2, 1, 0, 0, vec![RED, GREEN])
+                })
+                .unwrap();
+        }
         out
     }
 

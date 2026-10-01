@@ -543,7 +543,7 @@ mod tests {
 
     #[test]
     fn inputs_are_never_mutated() {
-        let a_snapshot = vec![0x11_2233_44u32, 0xFF7F_01FF, 0x0000_0000, 0x8080_8080];
+        let a_snapshot = vec![0x1122_3344u32, 0xFF7F_01FF, 0x0000_0000, 0x8080_8080];
         let b_snapshot = vec![0x0000_00FFu32, 0x7FFF_FFFF, 0xFF00_0000, 0x0000_0001];
         let a = RgbaImage::new(2, 2, a_snapshot.clone(), true).unwrap();
         let b = RgbaImage::new(2, 2, b_snapshot.clone(), true).unwrap();
