@@ -39,8 +39,8 @@ use rxing::{
     common::{GlobalHistogramBinarizer, HybridBinarizer},
     multi::{qrcode::detector::MultiDetector, GenericMultipleBarcodeReader},
     qrcode::decoder::QRCodeDecoderMetaData,
-    BinaryBitmap, DecodeHints, LuminanceSource, MultiFormatReader, RGBLuminanceSource, RXingResult,
-    RXingResultMetadataValue,
+    BinaryBitmap, DecodeHints, Luma8LuminanceSource, LuminanceSource, MultiFormatReader,
+    RXingResult, RXingResultMetadataValue,
 };
 
 use crate::payload::{self, PayloadInfo};
@@ -425,9 +425,13 @@ fn run_attempt(
         return Ok(());
     }
     ctx.check()?;
-    let Ok(source) =
-        RGBLuminanceSource::new_with_width_height_pixels(width as usize, height as usize, pixels)
-    else {
+    // The luminance buffer is computed with the same green-favouring average
+    // the reference's `RGBLuminanceSource` uses, then wrapped in rxing's
+    // `Luma8LuminanceSource`: unlike that source it implements column access
+    // (the 1D readers' TRY_HARDER vertical scan needs it) and its crop is a
+    // sound view (the generic multi reader crops recursively), so no decode
+    // path trips an internal `unimplemented!()` or an out-of-bounds crop.
+    let Ok(source) = Luma8LuminanceSource::new(argb_to_luma8(pixels), width, height) else {
         return Ok(());
     };
     let mut inverted_source = source.clone();
@@ -503,6 +507,29 @@ fn run_attempt(
     Ok(())
 }
 
+/// Converts ARGB pixels into the luma8 buffer the decoders consume, using the
+/// same green-favouring average as the reference's `RGBLuminanceSource`
+/// (`(r + 2g + b) / 4`).
+fn argb_to_luma8(pixels: &[u32]) -> Vec<u8> {
+    pixels
+        .iter()
+        .map(|pixel| {
+            let r = (pixel >> 16) & 0xff;
+            let g2 = (pixel >> 7) & 0x1fe; // 2 * green, computed cheaply
+            let b = pixel & 0xff;
+            ((r + g2 + b) / 4) as u8
+        })
+        .collect()
+}
+
+/// Runs one decode pass, converting an rxing panic (an internal
+/// `unimplemented!()` corner or a binarizer edge case) into "nothing found":
+/// a decode is pure over its bitmap, and a hostile image must never crash the
+/// scan.
+fn catch_decode<T>(decode: impl FnOnce() -> T) -> Option<T> {
+    std::panic::catch_unwind(std::panic::AssertUnwindSafe(decode)).ok()
+}
+
 /// Runs every decode pass (QR multi-symbol, generic multi-format, single) on
 /// one bitmap polarity and merges the results into `hits`.
 #[allow(clippy::too_many_arguments)]
@@ -517,13 +544,15 @@ fn collect_hits<B: rxing::Binarizer>(
     hits: &mut Vec<BarcodeHit>,
 ) {
     let mut bitmap = bitmap;
-    let mut found = decode_qr_parts(&bitmap, hints);
-    found.extend(decode_multiple_generic(&mut bitmap, hints));
+    let mut found = catch_decode(|| decode_qr_parts(&bitmap, hints)).unwrap_or_default();
+    found.extend(catch_decode(|| decode_multiple_generic(&mut bitmap, hints)).unwrap_or_default());
     if found.is_empty() {
         // The single symbol reader is both faster and more forgiving on very
         // small images.
-        let mut reader = MultiFormatReader::default();
-        if let Ok(result) = reader.decode_with_hints(&mut bitmap, hints) {
+        if let Some(Ok(result)) = catch_decode(|| {
+            let mut reader = MultiFormatReader::default();
+            reader.decode_with_hints(&mut bitmap, hints)
+        }) {
             found.push(rxing_result_to_raw(&result));
         }
     }
