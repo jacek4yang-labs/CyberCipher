@@ -614,7 +614,10 @@ fn is_cbor_like(data: &[u8]) -> bool {
     let mut items = 0usize;
     stack.push(1);
     let mut pos = 0usize;
-    while let Some(remaining) = stack.last_mut() {
+    loop {
+        let Some(&remaining) = stack.last() else {
+            break;
+        };
         items += 1;
         if items > MAX_ITEMS || stack.len() > MAX_DEPTH || pos >= data.len() {
             return false;
@@ -651,37 +654,38 @@ fn is_cbor_like(data: &[u8]) -> bool {
         let Some(length) = length else {
             return false;
         };
+        let mut children: Option<u64> = None;
         match major {
-            0 | 1 | 7 => {
-                *remaining -= 1;
-            }
+            0 | 1 | 7 => {}
             2 | 3 => {
                 let end = pos.checked_add(usize::try_from(length).unwrap_or(usize::MAX));
                 let Some(end) = end.filter(|&end| end <= data.len()) else {
                     return false;
                 };
                 pos = end;
-                *remaining -= 1;
             }
             4 => {
-                *remaining -= 1;
                 if length > 0 {
-                    stack.push(length);
+                    children = Some(length);
                 }
             }
             5 => {
-                *remaining -= 1;
                 if length > 0 {
-                    stack.push(length.saturating_mul(2));
+                    children = Some(length.saturating_mul(2));
                 }
             }
             6 => {
                 // Tag: the tag itself consumes one parent slot and wraps one
                 // child item.
-                *remaining -= 1;
-                stack.push(1);
+                children = Some(1);
             }
             _ => return false,
+        }
+        // Consume one parent slot, then register the children.
+        let top = stack.len() - 1;
+        stack[top] -= 1;
+        if let Some(children) = children {
+            stack.push(children);
         }
         while let Some(top) = stack.last() {
             if *top == 0 {
@@ -718,7 +722,10 @@ fn is_msgpack_like(data: &[u8]) -> bool {
     let mut items = 0usize;
     stack.push(1);
     let mut pos = 0usize;
-    while let Some(remaining) = stack.last_mut() {
+    loop {
+        let Some(&remaining) = stack.last() else {
+            break;
+        };
         items += 1;
         if items > MAX_ITEMS || stack.len() > MAX_DEPTH || pos >= data.len() {
             return false;
@@ -742,7 +749,9 @@ fn is_msgpack_like(data: &[u8]) -> bool {
                     0xC5 | 0xDA => 2,
                     _ => 4,
                 };
-                let length = read_len(data, &mut pos, len_bytes)?;
+                let Some(length) = read_len(data, &mut pos, len_bytes) else {
+                    return false;
+                };
                 (usize::try_from(length).unwrap_or(usize::MAX), 0)
             }
             // float32/64
@@ -775,7 +784,9 @@ fn is_msgpack_like(data: &[u8]) -> bool {
                     0xC8 => 2,
                     _ => 4,
                 };
-                let length = read_len(data, &mut pos, len_bytes)?;
+                let Some(length) = read_len(data, &mut pos, len_bytes) else {
+                    return false;
+                };
                 (
                     usize::try_from(length)
                         .unwrap_or(usize::MAX)
@@ -785,12 +796,16 @@ fn is_msgpack_like(data: &[u8]) -> bool {
             }
             // array16/32
             0xDC | 0xDD => {
-                let length = read_len(data, &mut pos, if b == 0xDC { 2 } else { 4 })?;
+                let Some(length) = read_len(data, &mut pos, if b == 0xDC { 2 } else { 4 }) else {
+                    return false;
+                };
                 (0, length)
             }
             // map16/32
             0xDE | 0xDF => {
-                let length = read_len(data, &mut pos, if b == 0xDE { 2 } else { 4 })?;
+                let Some(length) = read_len(data, &mut pos, if b == 0xDE { 2 } else { 4 }) else {
+                    return false;
+                };
                 (0, length.saturating_mul(2))
             }
             _ => return false,
@@ -802,7 +817,9 @@ fn is_msgpack_like(data: &[u8]) -> bool {
             return false;
         }
         pos = end;
-        *remaining -= 1;
+        // Consume one parent slot, then register the children.
+        let top = stack.len() - 1;
+        stack[top] -= 1;
         if children > 0 {
             stack.push(children);
         }
