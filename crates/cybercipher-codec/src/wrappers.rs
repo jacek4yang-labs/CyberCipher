@@ -678,7 +678,7 @@ fn encode_quoted_printable(bytes: &[u8]) -> String {
                 out.truncate(out.len() - trailing);
                 line_len -= trailing;
                 for &t in &bytes[i - trailing..i] {
-                    if line_len + 3 > LINE_MAX {
+                    if line_len + 3 > LINE_MAX - 1 {
                         out.push_str("=\r\n");
                         line_len = 0;
                     }
@@ -700,7 +700,7 @@ fn encode_quoted_printable(bytes: &[u8]) -> String {
         } else {
             (b as char).to_string()
         };
-        if line_len + token.len() > LINE_MAX {
+        if line_len + token.len() > LINE_MAX - 1 {
             out.push_str("=\r\n");
             line_len = 0;
         }
@@ -920,12 +920,15 @@ pub fn punycode_encode_body(text: &str) -> OpResult<String> {
         .with_actual(format!("{} characters", chars.len())));
     }
     let mut output = String::new();
-    // (numeric value used for the delta arithmetic, case flag)
-    let mut values: Vec<(u32, bool)> = Vec::new();
+    // Every input code point, in order: basic ones carry their own value
+    // (they only ever increment delta), extended ones the case-folded value
+    // plus the case flag. RFC 3492's delta sweep walks ALL of them.
+    let mut items: Vec<(Option<u32>, u32, bool)> = Vec::new();
     for &c in &chars {
         let cp = c as u32;
         if cp < 0x80 {
             output.push(c);
+            items.push((Some(cp), 0, false));
         } else {
             let flag = c.is_uppercase();
             let value = if flag {
@@ -933,7 +936,7 @@ pub fn punycode_encode_body(text: &str) -> OpResult<String> {
             } else {
                 cp
             };
-            values.push((value, flag));
+            items.push((None, value, flag));
         }
     }
     let basic_len = output.chars().count() as u32;
@@ -966,7 +969,15 @@ pub fn punycode_encode_body(text: &str) -> OpResult<String> {
             .checked_add(step)
             .ok_or_else(|| OperationError::decode("punycode encode overflow"))?;
         n = m;
-        for &(value, flag) in &values {
+        for &(basic, value, flag) in &items {
+            if let Some(cp) = basic {
+                if cp < n {
+                    delta = delta
+                        .checked_add(1)
+                        .ok_or_else(|| OperationError::decode("punycode encode overflow"))?;
+                }
+                continue;
+            }
             if value < n {
                 delta = delta
                     .checked_add(1)
@@ -1272,13 +1283,6 @@ fn decode_uu_lines(
 /// Encode bytes with the given 6-bit table and length-character mapping.
 fn encode_uu_lines(data: &[u8], table: &dyn Fn(u8) -> u8, len_char: &dyn Fn(u8) -> u8) -> String {
     let mut out = String::new();
-    if data.is_empty() {
-        // Classic uu/xx encoders emit a zero-length data line for empty
-        // input; the decoder treats length 0 as end-of-data.
-        out.push(len_char(0) as char);
-        out.push('\n');
-        return out;
-    }
     for chunk in data.chunks(45) {
         out.push(len_char(chunk.len() as u8) as char);
         for group in chunk.chunks(3) {
@@ -1339,9 +1343,9 @@ fn to_uuencode_op(v: &Value, _: &ParamMap, _: &ExecutionContext) -> OpResult<Val
         &|v| (0x20u32 + v as u32) as u8,
         &|n| (0x20u32 + n as u32) as u8,
     ));
-    if !bytes.is_empty() {
-        out.push_str("`\n");
-    }
+    // The zero-length data line (the classic ` backtick for uuencode) is
+    // emitted even for empty input so the decode roundtrip reconstructs it.
+    out.push_str("`\n");
     out.push_str("end\n");
     Ok(Value::Text(out))
 }
@@ -1355,9 +1359,8 @@ fn to_xxencode_op(v: &Value, _: &ParamMap, _: &ExecutionContext) -> OpResult<Val
         &|v| XX_ALPHABET[v as usize],
         &|n| XX_ALPHABET[(n & 0x3F) as usize],
     ));
-    if !bytes.is_empty() {
-        out.push_str("+\n");
-    }
+    // xxencode's zero-length data line is alphabet[0] ('+').
+    out.push_str("+\n");
     out.push_str("end\n");
     Ok(Value::Text(out))
 }
@@ -1503,7 +1506,8 @@ fn from_yenc_op(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<Val
     let bytes = input_bytes(v, "From Yenc")?;
     check_budget(bytes.len(), "yEnc decode")?;
     let strict = map.bool_or("strict", true);
-    Ok(Value::from_bytes(decode_yenc(bytes.as_ref(), strict)?))
+    // Byte-oriented decoder: Bytes even when the payload happens to be UTF-8.
+    Ok(Value::Bytes(decode_yenc(bytes.as_ref(), strict)?))
 }
 
 fn to_yenc_op(v: &Value, _: &ParamMap, _: &ExecutionContext) -> OpResult<Value> {
