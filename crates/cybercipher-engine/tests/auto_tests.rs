@@ -725,10 +725,14 @@ fn uuencode_inside_multilayer_chain() {
         )
         .unwrap();
     assert!(report.error.is_none());
-    let Value::Text(replayed) = report.output.unwrap() else {
-        panic!("uu replay must produce text");
+    // from-uuencode declares a Bytes output; the payload must roundtrip
+    // byte-exact either way.
+    let replayed = match report.output.unwrap() {
+        Value::Text(text) => text.into_bytes(),
+        Value::Bytes(bytes) => bytes,
+        other => panic!("uu replay must produce text/bytes, got {}", other.kind().name()),
     };
-    assert!(replayed.contains("flag{uu_over_b64}"));
+    assert!(String::from_utf8_lossy(&replayed).contains("flag{uu_over_b64}"));
 }
 
 #[test]

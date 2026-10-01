@@ -1187,6 +1187,17 @@ fn collect_candidate(
         score = (score + 0.30).min(0.99);
         evidence.push("valid JSON".to_string());
     }
+    // Strict syntax decodes (ACE label, qp envelope, uu envelope) are strong
+    // evidence like JSON/PEM: a successful decode lifts confidence.
+    if node.path.last().is_some_and(|p| {
+        matches!(
+            p.as_str(),
+            "from-punycode" | "from-quoted-printable" | "from-uuencode" | "from-xxencode"
+        )
+    }) {
+        score = (score + 0.15).min(0.99);
+        evidence.push("strict syntax decode".to_string());
+    }
     if looks_like_pem(&bytes) {
         score = (score + 0.25).min(0.99);
         evidence.push("PEM structure".to_string());
