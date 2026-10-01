@@ -80,7 +80,20 @@
 
 - id: GUI-SSTV-LAB-01
   title: SSTV Lab GUI
-  status: in_progress
+  status: done
   owner: agent/sstvlab
   priority: P1
   depends_on: [M10-SSTV-02]
+- id: M9-IMAGE-03
+  title: structural analysis + carving
+  status: done
+  owner: agent/structure
+  priority: P1
+  depends_on: [M9-IMAGE-01]
+
+- id: GUI-STEGO-LAB-01
+  title: Stego Lab GUI
+  status: done
+  owner: agent/stegolab
+  priority: P1
+  depends_on: [M9-IMAGE-02]

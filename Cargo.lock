@@ -1336,8 +1336,10 @@ dependencies = [
 name = "cybercipher-steg"
 version = "0.1.0"
 dependencies = [
+ "cybercipher-codec",
  "cybercipher-core",
  "cybercipher-media",
+ "flate2",
  "serde_json",
  "xxhash-rust",
 ]

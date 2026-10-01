@@ -126,29 +126,29 @@ notes = "Engine + registry surface complete and tested end-to-end (scan ranks a 
 # ------------------------------------------------ structure/carving ----
 
 [entries.png_structure]
-ours = "— (planned)"
-status = "missing"
-notes = "Chunk list with offsets/lengths/CRC status, palette, text/compressed-text/iTXt comments, trailing data. Strict bounds, truncation-tested, hostile-input fuzzed. Lane C PR-1."
+ours = "steg::structure::analyze_png + png_structure op"
+status = "covered"
+notes = "Chunk walk over raw file bytes: per-chunk offset/declared-length/data-offset/CRC-validity, chunk-type flags (critical/public/reserved/safe-to-copy) + description table, IHDR geometry with validity warnings, palette entry count + capped sample, bounded tEXt/zTXt/iTXt comment extraction (zTXt/iTXt zlib-inflated with a 1 KiB cap), tIME/pHYs decode, logical EOF at IEND with appended-data detection. 512-chunk cap, 64-warning cap, checked reads throughout. Lane C PR-1."
 
 [entries.jpeg_structure]
-ours = "—"
-status = "missing"
-notes = "Segment markers with offsets/lengths, APPn/EXIF visibility, trailing bytes. Lane C PR-1."
+ours = "steg::structure::analyze_jpeg + jpeg_structure op"
+status = "covered"
+notes = "Marker walk with 0xFF fill handling: segment offsets/lengths (offsets reported at the marker code byte), APPn identifier sniffing (JFIF/JFXX/Exif/ICC/Photoshop/XMP/Adobe), SOFn geometry + component list, DRI/DNL fields, COM comments (bounded), entropy-coded scan walked with FF00/RST semantics plus a step cap, logical EOF at EOI with appended-data detection. Lane C PR-1."
 
 [entries.gif_structure]
-ours = "—"
-status = "missing"
-notes = "Blocks/extensions, comment extensions, frame count, trailing data. Lane C PR-1."
+ours = "steg::structure::analyze_gif + gif_structure op"
+status = "covered"
+notes = "Logical screen descriptor, global/local colour tables (capped sample + adjacent-duplicate note), image descriptors with LZW minimum-code-size offsets and sub-block byte counts, graphic control/comment/plain-text/application extensions, bounded comment extraction, frame count, trailer offset as logical EOF with appended-data detection. One deliberate upstream deviation: the graphic-control sub-block skip starts after the block proper (the reference could mis-skip when the transparent index was non-zero). Lane C PR-1."
 
 [entries.bmp_structure]
-ours = "—"
-status = "missing"
-notes = "Header fields, palette, pixel-array offset/layout, trailing data. Lane C PR-1."
+ours = "steg::structure::analyze_bmp + bmp_structure op"
+status = "covered"
+notes = "BITMAPFILEHEADER + DIB header variants (OS/2 BITMAPCOREHEADER 12 .. BITMAPV5HEADER 124): dims/top-down/planes/bpp, compression names, colour-table size/offset/entry-size with capped sample, header-to-pixels gap dump, row-stride and pixel-array math in checked u64 (impossible geometry is a warning, never an overflow), validated against the real file size; logical EOF at the pixel-array end (carving disabled for compressed layouts). Lane C PR-1."
 
 [entries.appended_data_carving]
-ours = "— (superset planned: detected magic reuse)"
-status = "missing"
-notes = "Explicit end-of-file detection for PNG(JPEG EOI/GIF trailer/BMP array end) with offset/size/preview/detected magic + Extract/Send-to-Workbench/Send-to-Auto-Analyze. Lane C PR-1."
+ours = "steg::carving + image_extract_appended op (superset: detected magic via the codec's file-magic table)"
+status = "covered"
+notes = "Per-format expected_end (IEND/EOI/trailer/pixel-array end); appended section reports offset/size, detected magic via the shared cybercipher-codec::sniff_magic detector (same table the file-magic op uses), 256-byte hex preview and a bounded printable-string snippet. image_extract_appended (CostClass::Interactive) emits the JSON header line plus the raw appended bytes (bounded, default 64 KiB, cap 16 MiB) for chaining into Auto Decode. Carving only inspects — never unpacks or executes. Lane C PR-1."
 
 [entries.frame_animation_support]
 ours = "—"

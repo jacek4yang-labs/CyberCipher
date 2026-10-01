@@ -27,6 +27,7 @@ export function TopBar() {
             ["rsa-lab", "RSA Lab"],
             ["pki-lab", "PKI Lab"],
             ["sstv-lab", "SSTV Lab"],
+            ["stego-lab", "Stego Lab"],
             ["auto", "Auto Analyze"],
             ["recipes", "Recipes"],
             ["settings", "Settings"],
