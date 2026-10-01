@@ -957,7 +957,12 @@ pub fn punycode_encode_body(text: &str) -> OpResult<String> {
         // The smallest non-basic value >= n. handled < total implies at
         // least one value remains un-emitted, and un-emitted values are
         // always >= n, so this cannot fail.
-        let Some(m) = values.iter().map(|&(v, _)| v).filter(|&v| v >= n).min() else {
+        let Some(m) = items
+            .iter()
+            .filter_map(|&(basic, value, _)| if basic.is_none() { Some(value) } else { None })
+            .filter(|&v| v >= n)
+            .min()
+        else {
             return Err(OperationError::internal(
                 "punycode encode invariant violated: no remaining value",
             ));
