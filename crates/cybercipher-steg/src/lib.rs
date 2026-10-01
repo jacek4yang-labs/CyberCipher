@@ -12,7 +12,10 @@
 //! walks over raw file bytes) with appended-data carving; `stereo` and
 //! `combine` port the stereogram solver and the 13-mode combiner bit for
 //! bit; `frames` adds lazy GIF frame indexing and disposal-aware frame
-//! decoding. See `compatibility/stegsolver.toml` and
+//! decoding; and the `qr` module ports the barcode scanner (bytes-first
+//! payloads, multi-symbol, Structured Append merge, inverted/rotated/rescaled
+//! fallbacks) onto the `rxing` (ZXing) decoder. See
+//! `compatibility/stegsolver.toml` and
 //! `docs/design-steg-sstv.md`.
 
 #![allow(clippy::result_large_err)]
@@ -25,6 +28,7 @@ pub mod frames;
 pub mod java_random;
 pub mod ops;
 pub mod payload;
+pub mod qr;
 pub mod stereo;
 pub mod structure;
 pub mod transforms;
@@ -35,4 +39,5 @@ use cybercipher_core::OperationRegistry;
 pub fn register_all(reg: &mut OperationRegistry) {
     ops::register(reg);
     structure::register(reg);
+    qr::register(reg);
 }

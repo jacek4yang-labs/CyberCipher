@@ -47,6 +47,14 @@ rustfft = "6.2"
 # Pinned exact per docs/design-steg-sstv.md (hard invariant 2): slowrx stays a
 # pinned crates.io dependency, re-evaluated for vendoring at 1.0.
 slowrx = "=0.5.3"
+# QR/barcode scanning (cybercipher-steg, Lane D): rxing is the maintained Rust
+# port of the same ZXing base the StegSolver reference builds on (1D+2D format
+# breadth, byte segments, Structured Append, mirrored-QR correction). Pinned
+# exactly: the rxing API surface still moves between releases and CI is the
+# only validation loop for this workspace. Default features are trimmed to the
+# decoder core (no `image`/`client_support`/`serde`); the `encoders` feature is
+# enabled by cybercipher-steg's dev-dependencies for the in-test QR fixtures.
+rxing = { version = "=0.9.3", default-features = false, features = ["decoders", "multi_barcode_readers", "encoding_rs", "full_barcode_format_support"] }
 symphonia = { version = "0.5.4", features = ["aac", "adpcm", "alac", "flac", "isomp4", "mkv", "mp1", "mp2", "mp3", "ogg", "pcm", "vorbis", "wav", "aiff", "caf"] }
 # Dev-dependency of cybercipher-sstv: synthetic WAV fixtures in tests only.
 hound = "3.5"

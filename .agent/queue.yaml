@@ -85,4 +85,63 @@
   status: ready
   priority: P3
   depends_on: []
-  owner: docs
+  owner: crypto
+
+- id: M8-ECDSA-ATTACK-01
+  title: ECDSA attack helpers — nonce reuse, duplicate-r, known/small k
+  status: pending
+  priority: P2
+  depends_on: [M8-PKI-D]
+  owner: pki
+
+- id: ASSIST-GENERALIZE-01
+  title: Crypto Assist profiles — SM4/DES/3DES/Serpent/Twofish/Camellia/RC4
+  status: pending
+  priority: P2
+  depends_on: []
+  owner: analysis
+
+- id: AUTO-V3-01
+  title: Auto Decode expansion — unicode escapes, HTML entities, QP, punycode, new base/archive formats
+  status: pending
+  priority: P2
+  depends_on: []
+  owner: analysis
+
+- id: M10-SSTV-02
+  title: SSTV registry op + blob/Tauri/CLI bridge
+  status: in_progress
+  owner: agent/sstv-bridge
+  priority: P1
+  depends_on: [M10-SSTV-01]
+
+- id: GUI-SSTV-LAB-01
+  title: SSTV Lab GUI
+  status: done
+  owner: agent/sstvlab
+  priority: P1
+  depends_on: [M10-SSTV-02]
+- id: M9-IMAGE-03
+  title: structural analysis + carving
+  status: done
+  owner: agent/structure
+  priority: P1
+  depends_on: [M9-IMAGE-01]
+
+- id: GUI-STEGO-LAB-01
+  title: Stego Lab GUI
+  status: done
+  owner: agent/stegolab
+  priority: P1
+  depends_on: [M9-IMAGE-02]
+
+- id: M9-IMAGE-05
+  title: stereo + combine + frames
+  status: done
+  owner: agent/stereo
+- id: M9-IMAGE-04
+  title: QR/barcode scanning
+  status: in_progress
+  owner: agent/qr
+  priority: P1
+  depends_on: [M9-IMAGE-01]

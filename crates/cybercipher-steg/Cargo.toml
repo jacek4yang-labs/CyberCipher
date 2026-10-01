@@ -11,6 +11,13 @@ cybercipher-core.workspace = true
 cybercipher-codec.workspace = true
 cybercipher-media.workspace = true
 flate2.workspace = true
+rxing.workspace = true
 gif.workspace = true
 serde_json.workspace = true
 xxhash-rust.workspace = true
+
+[dev-dependencies]
+# The library never encodes barcodes; the synthetic QR fixtures in tests are
+# produced with rxing's encoder, enabled only for test builds (features are
+# unified across the dependency graph for the same target).
+rxing = { workspace = true, features = ["encoders"] }
