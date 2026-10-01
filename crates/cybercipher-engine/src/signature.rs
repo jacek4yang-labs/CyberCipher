@@ -826,6 +826,11 @@ fn find_all(haystack: &[u8], needle: &[u8], limit: usize) -> Vec<usize> {
             break;
         };
         let pos = start + rel;
+        if pos + needle.len() > haystack.len() {
+            // First-byte match too close to the end: no room for a full
+            // needle, and later positions are further right.
+            break;
+        }
         if haystack[pos..pos + needle.len()] == *needle {
             out.push(pos);
             if out.len() >= limit {
