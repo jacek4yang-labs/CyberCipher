@@ -14,7 +14,7 @@
 - id: M7-SIG-01
   title: Crypto signature scanner — TEA/XTEA delta, AES S-box/Rcon, SM4 FK/CK/S-box,
     SHA/MD5 constants, ChaCha, RC4 KSA structure; confidence + evidence + location
-  status: ready
+  status: done
   priority: P1
   depends_on: []
   owner: analysis
