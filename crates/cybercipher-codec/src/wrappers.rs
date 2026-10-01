@@ -514,6 +514,17 @@ pub fn decode_html_entities(text: &str, strict: bool) -> OpResult<String> {
             i += c.len_utf8();
             continue;
         }
+        // An unknown *named* reference (well-formed `&name;` not in the
+        // table) stays verbatim in both modes; only malformed syntax and
+        // non-scalar numerics are strict errors.
+        let well_formed_named = {
+            let rest = &bytes[i + 1..];
+            let end = rest
+                .iter()
+                .position(|b| !b.is_ascii_alphanumeric())
+                .unwrap_or(rest.len());
+            (2..=10).contains(&end) && rest.get(end) == Some(&b';')
+        };
         match parse_entity(&bytes[i + 1..]) {
             Some((Entity::Scalar(cp), consumed)) => {
                 match char::from_u32(cp) {
@@ -539,7 +550,7 @@ pub fn decode_html_entities(text: &str, strict: bool) -> OpResult<String> {
                 out.push_str(s);
                 i += 1 + consumed;
             }
-            None if strict => {
+            None if strict && !well_formed_named => {
                 let peek: String = text[i..].chars().take(12).collect();
                 return Err(
                     OperationError::decode("malformed HTML entity reference at `&`")
@@ -664,8 +675,15 @@ fn encode_quoted_printable(bytes: &[u8]) -> String {
             let trailing = out.len() - out.trim_end_matches([' ', '\t']).len();
             if trailing > 0 {
                 out.truncate(out.len() - trailing);
+                line_len -= trailing;
                 for &t in &bytes[i - trailing..i] {
+                    if line_len + 3 > LINE_MAX {
+                        out.push_str("=
+");
+                        line_len = 0;
+                    }
                     out.push_str(&format!("={t:02X}"));
+                    line_len += 3;
                 }
             }
             out.push('\n');
@@ -980,6 +998,11 @@ pub fn punycode_encode_body(text: &str) -> OpResult<String> {
                 handled += 1;
             }
         }
+        // RFC 3492 main-encode step: scale the accumulator after each full
+        // sweep over the input (missing here, which produced wrong labels).
+        delta = delta
+            .checked_mul(handled + 1)
+            .ok_or_else(|| OperationError::decode("punycode encode overflow"))?;
         n += 1;
     }
     Ok(output)
@@ -1247,6 +1270,14 @@ fn decode_uu_lines(
 /// Encode bytes with the given 6-bit table and length-character mapping.
 fn encode_uu_lines(data: &[u8], table: &dyn Fn(u8) -> u8, len_char: &dyn Fn(u8) -> u8) -> String {
     let mut out = String::new();
+    if data.is_empty() {
+        // Classic uu/xx encoders emit a zero-length data line for empty
+        // input; the decoder treats length 0 as end-of-data.
+        out.push(len_char(0) as char);
+        out.push('
+');
+        return out;
+    }
     for chunk in data.chunks(45) {
         out.push(len_char(chunk.len() as u8) as char);
         for group in chunk.chunks(3) {
@@ -1285,7 +1316,9 @@ fn decode_uu_op(
     let strict = map.bool_or("strict", true);
     let data_lines = find_envelope(text, strict, what)?;
     let decoded = decode_uu_lines(&data_lines, value, strict, what)?;
-    Ok(Value::from_bytes(decoded))
+    // Byte-oriented decoder: the result stays Bytes even when it happens to
+    // be valid UTF-8 (the spec declares a Bytes output).
+    Ok(Value::Bytes(decoded))
 }
 
 fn from_uuencode_op(v: &Value, map: &ParamMap, _ctx: &ExecutionContext) -> OpResult<Value> {
@@ -1994,9 +2027,13 @@ mod tests {
                 "strict must reject {bad}"
             );
         }
-        // Relaxed keeps them verbatim.
+        // Relaxed keeps malformed constructs verbatim (including non-scalar
+        // numeric references).
         assert_eq!(decode_html_entities("a & b", false).unwrap(), "a & b");
-        assert_eq!(decode_html_entities("&#xD800; x", false).unwrap(), " x");
+        assert_eq!(
+            decode_html_entities("&#xD800; x", false).unwrap(),
+            "&#xD800; x"
+        );
     }
 
     // --------------------------------------------------- quoted printable ----
