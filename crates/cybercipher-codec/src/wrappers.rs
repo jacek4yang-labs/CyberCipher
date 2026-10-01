@@ -1125,7 +1125,7 @@ fn find_envelope(text: &str, strict: bool, what: &str) -> OpResult<Vec<String>> 
     // (a zero byte encodes to spaces).
     let lines: Vec<&str> = text
         .lines()
-        .map(|l| l.strip_suffix('').unwrap_or(l))
+        .map(|l| l.strip_suffix('\r').unwrap_or(l))
         .collect();
     let first = lines.iter().position(|l| !l.is_empty());
     let last = lines.iter().rposition(|l| !l.is_empty());
