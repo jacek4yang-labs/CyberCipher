@@ -1,51 +1,88 @@
 # CyberCipher durable work queue
-# Session 7: main = 4064a78. 42 PRs merged. ~187 ops. 545 tests.
+# Reconciled session 9: main = 3a5254f, 58 merged PRs. Git is history — only
+# unfinished work is listed. Validation is CI-only (no local cargo/npm).
 
-- id: M8-PKI-F-JWT
-  title: JWT/JWS — decode, sign, verify (RS256/ES256/EdDSA), reject alg=none, PEM wrappers
-  status: in_progress
+- id: AUTO-V3-01
+  title: Auto Decode v3 — evidence-gated wrappers (Unicode escapes, HTML entities,
+    quoted-printable, punycode, UU/XXEncode, yEnc, new base variants, compression
+    and structured wrappers, specialty codecs where identifiable)
+  status: ready
   priority: P1
   depends_on: []
-  owner: agent/jwt
+  owner: analysis
 
-- id: GUI-PKI-LAB-01
-  title: PKI Lab GUI — Inspect/RSA/ECC/SM2/Certificate/JWT tabs (RSA Lab pattern)
-  status: in_progress
+- id: M7-SIG-01
+  title: Crypto signature scanner — TEA/XTEA delta, AES S-box/Rcon, SM4 FK/CK/S-box,
+    SHA/MD5 constants, ChaCha, RC4 KSA structure; confidence + evidence + location
+  status: ready
   priority: P1
   depends_on: []
-  owner: agent/pkilab
+  owner: analysis
 
-- id: M9-IMAGE-01
-  title: PNG chunk inspector, EXIF, QR, channel extraction, bit planes, LSB helpers
-  status: pending
+- id: ASSIST-GENERALIZE-01
+  title: Crypto Assist profiles — SM4/DES/3DES/Serpent/Twofish/Camellia/RC4 on the
+    existing AssistProfile architecture
+  status: ready
+  priority: P1
+  depends_on: []
+  owner: analysis
+
+- id: M8-ECDSA-ATTACK-01
+  title: ECDSA attacks — duplicate-r detection, nonce-reuse recovery, known-k,
+    bounded small-k; verify recovered keys; HNP only if LLL reuses cleanly
+  status: ready
+  priority: P2
+  depends_on: []
+  owner: pki
+
+- id: CRYPTO-PARITY-01
+  title: Live-audited crypto parity mop-up — residual hashes/MACs/KDFs/checksums,
+    SEED/HC-256/Rabbit/ZUC/KMAC/bcrypt, mode/padding closure (CTS/XTS/EAX/OCB/SIV),
+    codec transforms (UU/XXEncode, yEnc, quoted-printable, punycode, COBS, ModHex,
+    BCD, hexdump, radix)
+  status: ready
+  priority: P2
+  depends_on: []
+  owner: crypto
+
+- id: PKI-RESIDUAL-01
+  title: PKI residual parity — secp256k1 + ETH address, DSA, Ed448/X448, key-format
+    conversions; auto-ctf matrix rebuild (dp+dq, Rabin e=2, NT/NetNTLM)
+  status: ready
+  priority: P2
+  depends_on: []
+  owner: pki
+
+- id: FILE-DATA-01
+  title: File/data closure — JSON pretty/minify, YAML, XML, BSON, protobuf wire
+    inspection (no schema claims), archive member metadata + bounded nested inspection
+  status: ready
   priority: P2
   depends_on: []
   owner: file
 
-- id: M9-IMAGE-02
-  title: bounded Auto LSB scanner
-  status: in_progress
-  owner: agent/autolsb
+- id: GUI-COMPOSE-01
+  title: Cross-tool composition + UX hardening — Stego Lab structure/QR/stereo/frames
+    tabs once wired to merged ops; SSTV -> Stego Lab handoff; utilities (BigInt calc,
+    radix, timestamp, UUID, random bytes, codepoint inspector, text stats);
+    parameter interpretation labels; stale-control sweep
+  status: ready
   priority: P1
-  depends_on: [M9-IMAGE-01]
-
-- id: CTF-SPECIALTY-01
-  title: Brainfuck/Ook bounded interpreter, AAEncode, JJEncode, Chinese encodings (provenance first)
-  status: in_progress
-  priority: P2
   depends_on: []
-  owner: agent/ctf
+  owner: gui
 
-- id: M7-SIG-01
-  title: Crypto signature scanner (TEA delta, AES S-box, SM4, SHA/MD5, ChaCha, RC4 KSA)
-  status: pending
-  priority: P2
-  depends_on: []
-  owner: analysis
+- id: RELEASE-01
+  title: First prerelease — version metadata consistency, tar.gz + sha256 build,
+    extract dogfood of every lab, release notes
+  status: ready
+  priority: P1
+  depends_on: [AUTO-V3-01, M7-SIG-01]
+  owner: release
 
-- id: M5-SEED-01
-  title: SEED + HC-256/Rabbit/ZUC + KMAC + bcrypt compat
-  status: pending
+- id: DOCS-TRUTH-01
+  title: Documentation truth pass — README/CAPABILITIES/ROADMAP/PROVENANCE match
+    implemented reality; no stale planned-features statements
+  status: ready
   priority: P3
   depends_on: []
   owner: crypto
