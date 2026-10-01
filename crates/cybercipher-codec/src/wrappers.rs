@@ -206,8 +206,7 @@ fn decode_fixed_escape(
                     .collect::<String>()
             })
             .filter(|tail| tail.chars().count() == 4 && tail.chars().all(|h| h.is_ascii_hexdigit()))
-            .map(|tail| u32::from_str_radix(&tail, 16).ok())
-            .flatten()
+            .and_then(|tail| u32::from_str_radix(&tail, 16).ok())
             .filter(|v| (0xDC00..=0xDFFF).contains(v));
         match low {
             Some(low) => {
