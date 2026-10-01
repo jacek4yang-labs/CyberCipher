@@ -1340,6 +1340,7 @@ dependencies = [
  "cybercipher-core",
  "cybercipher-media",
  "flate2",
+ "gif",
  "serde_json",
  "xxhash-rust",
 ]

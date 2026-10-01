@@ -175,14 +175,14 @@ notes = "X11 ScreenGrabber is desktop integration, not engine. Per product decis
 # ------------------------------------------------------- stego tools ----
 
 [entries.stereogram_solver]
-ours = "— (planned Lane F)"
-status = "missing"
-notes = "shiftedXor with right-edge wrap (out(x,y)=in(x,y)^in((x+offset) mod w, y)), edgeHold variant, bestOffset scan (sampling step, offsets 1..w/2, smallest offset wins ties, cancellation), normalize/next/prev offset. Lane F PR-1."
+ours = "cybercipher-steg::stereo + registry ops image_stereo_shift / image_stereo_auto"
+status = "covered"
+notes = "shiftedXor with right-edge wrap (out(x,y)=in(x,y)^in((x+offset) mod w, y)), edgeHold variant, bestOffset scan (sampling step, offsets 1..w/2, smallest offset wins ties via strict >, ExecutionContext cancellation per offset), normalize/next/prev offset. Offset-0 shortcut -> opaque black image. Shipped in Lane F PR-1."
 
 [entries.image_combine_13_modes]
-ours = "— (planned Lane F)"
-status = "missing"
-notes = "Exact modes: XOR/OR/AND/ADD/SUB/MUL whole-pixel (Java int wraparound semantics pinned by tests), per-channel ADD/SUB/MUL with channel masks, LIGHTEST/DARKEST per-channel, INTERLACE rows (h*2) / columns (w*2) on size intersection; size mismatch → max size with transparent-black fill; all outputs opaque. Lane F PR-1."
+ours = "cybercipher-steg::combine + registry op image_combine (mode 0..12, List input [A, B])"
+status = "covered"
+notes = "Exact modes: XOR/OR/AND/ADD/SUB/MUL whole-pixel (Java int wraparound via u32 wrapping ops, pinned by tests), per-channel ADD/SUB/MUL with channel masks (8-bit lane wrap), LIGHTEST/DARKEST per-channel (R,G,B only), INTERLACE rows (h*2) / columns (w*2) on size intersection; size mismatch -> max size with transparent-black fill; all outputs opaque; inputs never mutated. Shipped in Lane F PR-1."
 
 [entries.pixel_inspector]
 ours = "—"

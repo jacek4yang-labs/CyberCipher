@@ -97,3 +97,10 @@
   owner: agent/stegolab
   priority: P1
   depends_on: [M9-IMAGE-02]
+
+- id: M9-IMAGE-05
+  title: stereo + combine + frames
+  status: in_progress
+  owner: agent/stereo
+  priority: P1
+  depends_on: [M9-IMAGE-01]
