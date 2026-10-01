@@ -1444,8 +1444,7 @@ fn jj_decode_text(input: &str) -> OpResult<String> {
             let mut matched_literals = 0usize;
             loop {
                 if data.is_empty() {
-                    let tail = original_data
-                        [original_data.len().saturating_sub(24)..]
+                    let tail = original_data[original_data.len().saturating_sub(24)..]
                         .escape_debug()
                         .to_string();
                     return Err(
