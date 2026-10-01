@@ -1448,10 +1448,10 @@ fn jj_decode_text(input: &str) -> OpResult<String> {
                         [original_data.len().saturating_sub(24)..]
                         .escape_debug()
                         .to_string();
-                    return Err(OperationError::decode(
-                        "JJEncode quoted run ends unexpectedly",
-                    )
-                    .with_details(format!("last 24 payload bytes: {tail}")));
+                    return Err(
+                        OperationError::decode("JJEncode quoted run ends unexpectedly")
+                            .with_details(format!("last 24 payload bytes: {tail}")),
+                    );
                 }
                 if data.starts_with(str_quote.as_str()) {
                     data = &data[str_quote.len()..];
