@@ -677,7 +677,7 @@ fn describe_metadata(value: &RXingResultMetadataValue) -> Option<(String, String
             ("symbology_identifier", text.clone())
         }
         RXingResultMetadataValue::ContentType(text) => ("content_type", text.clone()),
-        RXingResultMetadataValue::Other(text) => ("other", text.clone()),
+        RXingResultMetadataValue::OTHER(text) => ("other", text.clone()),
         RXingResultMetadataValue::Orientation(degrees) => ("orientation", degrees.to_string()),
         RXingResultMetadataValue::IsMirrored(flag) => ("is_mirrored", flag.to_string()),
         RXingResultMetadataValue::IsInverted(flag) => ("is_inverted", flag.to_string()),
