@@ -89,6 +89,34 @@ export interface StegoAppendedResult {
   data: Uint8Array;
 }
 
+/**
+ * One QR/barcode hit (qr.rs hit_json; bytes-first: the exact raw payload bytes
+ * travel as hex, the decoded text only when the decoder produced one).
+ */
+export interface QrHit {
+  format: string;
+  raw_payload_bytes: string;
+  decoded_text?: string;
+  position?: {
+    points?: [number, number][];
+    bounds?: { x: number; y: number; width: number; height: number } | null;
+  };
+  metadata: Record<string, unknown>;
+  payload_type: number;
+  payload_length: number;
+  preview_hex: string;
+}
+
+/** image_scan_qr JSON report (qr.rs image_scan_qr_op). */
+export interface QrScanResult {
+  scanned_area: { x: number; y: number; width: number; height: number };
+  symbol_count: number;
+  merged_count: number;
+  notes: string[];
+  hits: QrHit[];
+  merged: QrHit[];
+}
+
 /** One catalog entry, hard-coded to match transforms::catalog() exactly. */
 export interface StegoTransformDef {
   index: number;
@@ -159,7 +187,7 @@ export const RGB_ORDERS: { code: number; label: string }[] = [
 const DEFAULT_PLANE_MASK = 0x01010100;
 
 /** Tabs of the Stego Lab page. */
-export type StegoTab = "transform" | "extract" | "autolsb" | "structure";
+export type StegoTab = "transform" | "extract" | "autolsb" | "structure" | "qr";
 
 let bakeCounter = 0;
 
@@ -343,6 +371,25 @@ export interface StegoStore {
   appendedResult: StegoAppendedResult | null;
   runAppended: () => Promise<void>;
 
+  // QR tab (image_scan_qr op: whole image or ROI, fallback stages).
+  qrRoiX: string;
+  qrRoiY: string;
+  qrRoiW: string;
+  qrRoiH: string;
+  qrTryInverted: boolean;
+  qrTryRotations: boolean;
+  qrTryRescale: boolean;
+  qrMaxSymbols: number;
+  setQrRoi: (field: "x" | "y" | "w" | "h", value: string) => void;
+  setQrTryInverted: (v: boolean) => void;
+  setQrTryRotations: (v: boolean) => void;
+  setQrTryRescale: (v: boolean) => void;
+  setQrMaxSymbols: (v: number) => void;
+  qrBusy: boolean;
+  qrError: string | null;
+  qrResult: QrScanResult | null;
+  runQrScan: () => Promise<void>;
+
   // Handoff to the Workbench (binary travels as base64 input).
   sendToWorkbench: (base64: string) => void;
   /** Handoff to Auto Analyze (binary travels as base64 input, scan auto-runs). */
@@ -376,6 +423,9 @@ export const useStegoStore = create<StegoStore>((set, get) => {
       appendedBusy: false,
       appendedError: null,
       appendedResult: null,
+      qrBusy: false,
+      qrError: null,
+      qrResult: null,
     });
 
   /**
@@ -730,6 +780,75 @@ export const useStegoStore = create<StegoStore>((set, get) => {
       } catch (e) {
         if (superseded(fileBase64)) return;
         set({ appendedBusy: false, appendedError: e instanceof Error ? e.message : String(e) });
+      }
+    },
+
+    qrRoiX: "",
+    qrRoiY: "",
+    qrRoiW: "",
+    qrRoiH: "",
+    qrTryInverted: true,
+    qrTryRotations: true,
+    qrTryRescale: false,
+    // Op default (qr.rs DEFAULT_MAX_SYMBOLS); the engine hard-caps at 64.
+    qrMaxSymbols: 16,
+    setQrRoi: (field, value) =>
+      set(
+        field === "x"
+          ? { qrRoiX: value }
+          : field === "y"
+            ? { qrRoiY: value }
+            : field === "w"
+              ? { qrRoiW: value }
+              : { qrRoiH: value },
+      ),
+    setQrTryInverted: (qrTryInverted) => set({ qrTryInverted }),
+    setQrTryRotations: (qrTryRotations) => set({ qrTryRotations }),
+    setQrTryRescale: (qrTryRescale) => set({ qrTryRescale }),
+    setQrMaxSymbols: (qrMaxSymbols) => set({ qrMaxSymbols }),
+    qrBusy: false,
+    qrError: null,
+    qrResult: null,
+    runQrScan: async () => {
+      const {
+        fileBase64,
+        qrBusy,
+        qrRoiX,
+        qrRoiY,
+        qrRoiW,
+        qrRoiH,
+        qrTryInverted,
+        qrTryRotations,
+        qrTryRescale,
+        qrMaxSymbols,
+      } = get();
+      if (qrBusy || !fileBase64) return;
+      set({ qrBusy: true, qrError: null, qrResult: null });
+      try {
+        const resp = await runSingleOp(
+          "image_scan_qr",
+          {
+            roi: roiString(qrRoiX, qrRoiY, qrRoiW, qrRoiH),
+            try_inverted: qrTryInverted,
+            try_rotations: qrTryRotations,
+            try_rescale: qrTryRescale,
+            max_symbols: Math.min(Math.max(Math.trunc(qrMaxSymbols) || 1, 1), 64),
+          },
+          fileBase64,
+        );
+        if (superseded(fileBase64)) return;
+        if (resp.report.error) throw new Error(formatInvokeError(resp.report.error));
+        if (resp.blocked_at !== null) {
+          throw new Error(`run stopped at stage ${resp.blocked_at}`);
+        }
+        const out = resp.output;
+        if (out === null || out.kind !== "json") {
+          throw new Error("image_scan_qr returned no report");
+        }
+        set({ qrBusy: false, qrResult: out.value as QrScanResult });
+      } catch (e) {
+        if (superseded(fileBase64)) return;
+        set({ qrBusy: false, qrError: e instanceof Error ? e.message : String(e) });
       }
     },
 

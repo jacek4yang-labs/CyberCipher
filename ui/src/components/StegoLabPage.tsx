@@ -9,6 +9,7 @@ import {
   useStegoStore,
   type StegoAppendedResult,
   type StegoCandidate,
+  type QrHit,
   type StegoExtractResult,
   type StegoTab,
 } from "../stegoStore";
@@ -89,20 +90,33 @@ function downloadPng(pngBase64: string, fileName: string) {
 }
 
 /** Copy button with the transient "copied ✓" feedback used by DataPanel. */
-function CopyHexButton({ bytes }: { bytes: Uint8Array }) {
+function CopyButton({
+  text,
+  label = "Copy Hex",
+  disabled = false,
+  disabledTitle,
+  title,
+}: {
+  text: string;
+  label?: string;
+  disabled?: boolean;
+  disabledTitle?: string;
+  title?: string;
+}) {
   const [copied, setCopied] = useState(false);
   return (
     <button
       className="tool-btn"
+      disabled={disabled}
       onClick={() => {
-        void navigator.clipboard.writeText(toHex(bytes)).then(() => {
+        void navigator.clipboard.writeText(text).then(() => {
           setCopied(true);
           setTimeout(() => setCopied(false), 1200);
         });
       }}
-      title="Copy the full payload as lowercase hex"
+      title={disabled ? disabledTitle : title ?? `Copy ${label.toLowerCase()}`}
     >
-      {copied ? "Copied ✓" : "Copy Hex"}
+      {copied ? "Copied ✓" : label}
     </button>
   );
 }
@@ -439,7 +453,7 @@ function ExtractReport({ result }: { result: StegoExtractResult }) {
         >
           → Auto Decode
         </button>
-        <CopyHexButton bytes={result.data} />
+        <CopyButton text={toHex(result.data)} label="Copy Hex" />
       </div>
       <BytePreview bytes={result.data} />
     </div>
@@ -683,7 +697,7 @@ function AppliedView({ applied }: { applied: StegoExtractResult }) {
         >
           → Auto Decode
         </button>
-        <CopyHexButton bytes={applied.data} />
+        <CopyButton text={toHex(applied.data)} label="Copy Hex" />
       </div>
       <BytePreview bytes={applied.data} />
     </div>
@@ -804,7 +818,7 @@ function AppendedView({ result }: { result: StegoAppendedResult }) {
             >
               → Auto Decode
             </button>
-            <CopyHexButton bytes={result.data} />
+            <CopyButton text={toHex(result.data)} label="Copy Hex" />
           </>
         ) : (
           <span className="dim">no data after the container's logical end of file</span>
@@ -957,6 +971,264 @@ function StructureTab() {
   );
 }
 
+// -------------------------------------------------------------------- qr ----
+
+function QrHitCard({ hit }: { hit: QrHit }) {
+  const sendToWorkbench = useStegoStore((s) => s.sendToWorkbench);
+  const sendToAutoDecode = useStegoStore((s) => s.sendToAutoDecode);
+  const payloadBytes = useMemo(() => hexToBytes(hit.raw_payload_bytes), [hit.raw_payload_bytes]);
+  const hasPayload = payloadBytes.length > 0;
+  const bounds = hit.position?.bounds ?? null;
+  return (
+    <div className="sstv-candidate">
+      <div className="sstv-cand-head">
+        <span className="pki-kind-chip">{hit.format}</span>
+        <span className="pki-kind-chip">{formatSize(hit.payload_length)} payload</span>
+        {!hasPayload && (
+          <span className="pki-kind-chip" title="A text-only symbol: the decoder emitted no raw payload bytes, so none are invented">
+            text-only
+          </span>
+        )}
+        {bounds && (
+          <span className="pki-kind-chip">
+            at {bounds.x},{bounds.y} · {bounds.width}×{bounds.height}
+          </span>
+        )}
+        <span className="spacer" />
+        <CopyButton
+          text={hit.decoded_text ?? ""}
+          label="Copy Text"
+          disabled={hit.decoded_text === undefined}
+          disabledTitle="The decoder produced no decoded text for this symbol"
+        />
+        <CopyButton
+          text={toHex(payloadBytes)}
+          label="Copy Hex"
+          disabled={!hasPayload}
+          disabledTitle="No raw payload bytes — text-only symbols carry none"
+        />
+        <button
+          className="tool-btn"
+          disabled={!hasPayload}
+          onClick={() => sendToWorkbench(bytesToBase64(payloadBytes))}
+          title={
+            hasPayload
+              ? "Put the payload bytes into the Workbench input (base64)"
+              : "No raw payload bytes — text-only symbols carry none"
+          }
+        >
+          → Workbench
+        </button>
+        <button
+          className="tool-btn"
+          disabled={!hasPayload}
+          onClick={() => sendToAutoDecode(bytesToBase64(payloadBytes))}
+          title={
+            hasPayload
+              ? "Run Auto Analyze on the payload bytes"
+              : "No raw payload bytes — text-only symbols carry none"
+          }
+        >
+          → Auto Decode
+        </button>
+      </div>
+      {hit.decoded_text !== undefined && (
+        <pre className="sstv-cand-preview">{hit.decoded_text}</pre>
+      )}
+      {hasPayload && <BytePreview bytes={payloadBytes} cap={256} />}
+    </div>
+  );
+}
+
+function QrTab() {
+  const fileBase64 = useStegoStore((s) => s.fileBase64);
+  const qrRoiX = useStegoStore((s) => s.qrRoiX);
+  const qrRoiY = useStegoStore((s) => s.qrRoiY);
+  const qrRoiW = useStegoStore((s) => s.qrRoiW);
+  const qrRoiH = useStegoStore((s) => s.qrRoiH);
+  const qrTryInverted = useStegoStore((s) => s.qrTryInverted);
+  const qrTryRotations = useStegoStore((s) => s.qrTryRotations);
+  const qrTryRescale = useStegoStore((s) => s.qrTryRescale);
+  const qrMaxSymbols = useStegoStore((s) => s.qrMaxSymbols);
+  const setQrRoi = useStegoStore((s) => s.setQrRoi);
+  const setQrTryInverted = useStegoStore((s) => s.setQrTryInverted);
+  const setQrTryRotations = useStegoStore((s) => s.setQrTryRotations);
+  const setQrTryRescale = useStegoStore((s) => s.setQrTryRescale);
+  const setQrMaxSymbols = useStegoStore((s) => s.setQrMaxSymbols);
+  const qrBusy = useStegoStore((s) => s.qrBusy);
+  const qrError = useStegoStore((s) => s.qrError);
+  const qrResult = useStegoStore((s) => s.qrResult);
+  const runQrScan = useStegoStore((s) => s.runQrScan);
+
+  const roiPartiallyFilled =
+    [qrRoiX, qrRoiY, qrRoiW, qrRoiH].some((v) => v.trim() !== "") &&
+    [qrRoiX, qrRoiY, qrRoiW, qrRoiH].some((v) => v.trim() === "");
+
+  return (
+    <Section title="QR / barcode scan">
+      {!fileBase64 ? (
+        <div className="rsa-empty dim">
+          Load an image to scan it for QR codes and 1D/2D barcodes: every hit reports the exact
+          raw payload bytes, the decoded text when printable, its position and metadata — with
+          inverted, rotated and rescaled fallback stages.
+        </div>
+      ) : (
+        <>
+          <div className="pki-run-row">
+            <label className="pki-select-label" title="Region x (0-based, whole image when blank)">
+              ROI x
+              <input
+                type="number"
+                min={0}
+                value={qrRoiX}
+                onChange={(e) => setQrRoi("x", e.target.value)}
+              />
+            </label>
+            <label className="pki-select-label" title="Region y">
+              y
+              <input
+                type="number"
+                min={0}
+                value={qrRoiY}
+                onChange={(e) => setQrRoi("y", e.target.value)}
+              />
+            </label>
+            <label className="pki-select-label" title="Region width">
+              w
+              <input
+                type="number"
+                min={0}
+                value={qrRoiW}
+                onChange={(e) => setQrRoi("w", e.target.value)}
+              />
+            </label>
+            <label className="pki-select-label" title="Region height">
+              h
+              <input
+                type="number"
+                min={0}
+                value={qrRoiH}
+                onChange={(e) => setQrRoi("h", e.target.value)}
+              />
+            </label>
+            <label
+              className="pki-select-label"
+              title="Maximum number of reported symbols (engine hard cap 64)"
+            >
+              max symbols
+              <input
+                type="number"
+                min={1}
+                max={64}
+                step={1}
+                value={qrMaxSymbols}
+                onChange={(e) => setQrMaxSymbols(Number(e.target.value))}
+              />
+            </label>
+          </div>
+          {roiPartiallyFilled && (
+            <div className="dim sstv-busy-note">
+              region incomplete — all four values (x, y, w, h) make a region; using the whole image
+            </div>
+          )}
+
+          <div className="pki-run-row">
+            <label
+              className="pki-select-label"
+              title="Also scans an inverted copy, for light symbols on a dark background"
+            >
+              try inverted
+              <input
+                type="checkbox"
+                checked={qrTryInverted}
+                onChange={(e) => setQrTryInverted(e.target.checked)}
+              />
+            </label>
+            <label
+              className="pki-select-label"
+              title="Also tries quarter turns when nothing decoded upright"
+            >
+              try rotations
+              <input
+                type="checkbox"
+                checked={qrTryRotations}
+                onChange={(e) => setQrTryRotations(e.target.checked)}
+              />
+            </label>
+            <label
+              className="pki-select-label"
+              title="Adds rescaled copies (for very small/very large images) and the alternate binarizer when everything else failed"
+            >
+              try rescale
+              <input
+                type="checkbox"
+                checked={qrTryRescale}
+                onChange={(e) => setQrTryRescale(e.target.checked)}
+              />
+            </label>
+          </div>
+
+          <div className="pki-run-row">
+            <button
+              className="bake-btn"
+              onClick={() => void runQrScan()}
+              disabled={qrBusy}
+              title="Run image_scan_qr on the original image bytes"
+            >
+              {qrBusy ? "Scanning…" : "Scan"}
+            </button>
+            {qrBusy && (
+              <span className="dim sstv-busy-note">
+                the scan runs to completion on the engine side — not cancellable
+              </span>
+            )}
+          </div>
+          <ErrorBanner error={qrError} />
+
+          {qrResult && (
+            <>
+              <Chips
+                items={[
+                  `${qrResult.symbol_count} symbol${qrResult.symbol_count === 1 ? "" : "s"}`,
+                  qrResult.merged_count > 0
+                    ? `${qrResult.merged_count} merged Structured Append sequence${qrResult.merged_count === 1 ? "" : "s"}`
+                    : null,
+                  `scanned ${qrResult.scanned_area.width}×${qrResult.scanned_area.height} at ${qrResult.scanned_area.x},${qrResult.scanned_area.y}`,
+                ]}
+              />
+              {qrResult.notes.length > 0 && (
+                <div className="pki-alternatives">notes: {qrResult.notes.join(" · ")}</div>
+              )}
+              {qrResult.symbol_count === 0 && (
+                <div className="dim">
+                  no symbol found in the scanned region — for very small or very large images try
+                  the rescale fallback
+                </div>
+              )}
+              {qrResult.merged.length > 0 && (
+                <>
+                  <div className="pki-subhead dim">merged Structured Append sequences</div>
+                  {qrResult.merged.map((hit, i) => (
+                    <QrHitCard key={`merged-${i}`} hit={hit} />
+                  ))}
+                </>
+              )}
+              {qrResult.hits.length > 0 && (
+                <>
+                  <div className="pki-subhead dim">symbols</div>
+                  {qrResult.hits.map((hit, i) => (
+                    <QrHitCard key={`hit-${i}`} hit={hit} />
+                  ))}
+                </>
+              )}
+            </>
+          )}
+        </>
+      )}
+    </Section>
+  );
+}
+
 // ----------------------------------------------------------------- page ----
 
 const TABS: [StegoTab, string][] = [
@@ -964,6 +1236,7 @@ const TABS: [StegoTab, string][] = [
   ["extract", "Extract"],
   ["autolsb", "Auto LSB"],
   ["structure", "Structure"],
+  ["qr", "QR"],
 ];
 
 export function StegoLabPage() {
@@ -1001,6 +1274,7 @@ export function StegoLabPage() {
             {tab === "extract" && <ExtractTab />}
             {tab === "autolsb" && <AutoLsbTab />}
             {tab === "structure" && <StructureTab />}
+            {tab === "qr" && <QrTab />}
           </div>
         </div>
       </div>
