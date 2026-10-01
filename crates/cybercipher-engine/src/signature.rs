@@ -1862,8 +1862,8 @@ mod tests {
     fn aes_inv_sbox_inverts_sbox() {
         let sbox = unhex(AES_SBOX_HEX);
         let inv = unhex(AES_INV_SBOX_HEX);
-        for i in 0..256 {
-            assert_eq!(inv[sbox[i] as usize], i);
+        for (i, &v) in sbox.iter().enumerate() {
+            assert_eq!(inv[v as usize], i as u8);
         }
     }
 
@@ -1879,9 +1879,9 @@ mod tests {
         assert_eq!(&sbox[..4], &unhex("d690e9fe")[..]);
         let ck = unhex(SM4_CK_HEX);
         assert_eq!(&ck[..4], &unhex("00070e15")[..]);
-        for i in 0..32 {
-            for j in 0..4 {
-                assert_eq!(ck[i * 4 + j], ((4 * i + j) * 7) % 256, "CK[{i}][{j}]");
+        for i in 0..32usize {
+            for j in 0..4usize {
+                assert_eq!(ck[i * 4 + j], ((4 * i + j) * 7 % 256) as u8, "CK[{i}][{j}]");
             }
         }
         assert_eq!(unhex(SM4_FK_HEX), unhex("a3b1bac656aa3350677d9197b27022dc"));
@@ -1921,7 +1921,7 @@ mod tests {
     fn md5_t_table_matches_sine_derivation() {
         let t = unhex(MD5_K_HEX);
         assert_eq!(t.len(), 256);
-        for i in 0..64 {
+        for i in 0..64usize {
             let expect = (f64::sin((i + 1) as f64).abs() * 4294967296.0).floor() as u32;
             assert_eq!(u32_be(&t, i), expect, "T[{i}]");
         }
