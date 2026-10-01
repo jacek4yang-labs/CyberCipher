@@ -1781,7 +1781,10 @@ mod tests {
         let hit = &result.hits[0];
         assert_eq!(hit.format, "QR_CODE");
         assert_eq!(hit.text.as_deref(), Some("ROTATED-OK"));
-        assert_eq!(hit.payload.as_deref(), Some(b"ROTATED-OK".as_slice()));
+        // ROTATED-OK rides QR alphanumeric mode, which carries no byte
+        // segments: the bytes-first model reports no invented payload (see
+        // alphanumeric_symbol_reports_no_invented_payload).
+        assert_eq!(hit.payload, None);
         assert!(!hit.inverted);
     }
 
