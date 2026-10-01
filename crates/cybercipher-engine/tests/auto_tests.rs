@@ -730,10 +730,7 @@ fn uuencode_inside_multilayer_chain() {
     let replayed = match report.output.unwrap() {
         Value::Text(text) => text.into_bytes(),
         Value::Bytes(bytes) => bytes,
-        other => panic!(
-            "uu replay must produce text/bytes, {}",
-            other.kind().name()
-        ),
+        other => panic!("uu replay must produce text/bytes, {}", other.kind().name()),
     };
     assert!(String::from_utf8_lossy(&replayed).contains("flag{uu_over_b64}"));
 }
