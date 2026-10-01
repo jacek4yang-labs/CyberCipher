@@ -20,12 +20,14 @@ fn encode_with_op(reg: &OperationRegistry, op_id: &str, data: &[u8]) -> String {
     let op = reg
         .get(op_id)
         .unwrap_or_else(|| panic!("{op_id} must be registered"));
+    // Text-oriented encoder ops reject bytes; feed Text when the payload is
+    // valid UTF-8 and Bytes otherwise.
+    let input = match std::str::from_utf8(data) {
+        Ok(text) => Value::Text(text.to_owned()),
+        Err(_) => Value::Bytes(data.to_vec()),
+    };
     match op
-        .execute(
-            &Value::Bytes(data.to_vec()),
-            &ParamMap::new(),
-            &ExecutionContext::new(),
-        )
+        .execute(&input, &ParamMap::new(), &ExecutionContext::new())
         .expect("{op_id} must encode")
     {
         Value::Text(text) => text,
@@ -460,4 +462,590 @@ fn large_random_alnum_stays_bounded() {
             "random data produced a confident candidate: {c:?}"
         );
     }
+}
+
+// ================================================ v3 wrapper vocabulary ----
+
+/// Like `encode_with_op`, for ops whose output is bytes (to-yenc, to-cbor,
+/// to-msgpack, the compression encoders).
+fn encode_bytes_with_op(reg: &OperationRegistry, op_id: &str, data: &[u8]) -> Vec<u8> {
+    let op = reg
+        .get(op_id)
+        .unwrap_or_else(|| panic!("{op_id} must be registered"));
+    // Text-oriented encoder ops reject bytes; feed Text when the payload is
+    // valid UTF-8 and Bytes otherwise.
+    let input = match std::str::from_utf8(data) {
+        Ok(text) => Value::Text(text.to_owned()),
+        Err(_) => Value::Bytes(data.to_vec()),
+    };
+    match op
+        .execute(&input, &ParamMap::new(), &ExecutionContext::new())
+        .expect("{op_id} must encode")
+    {
+        Value::Bytes(bytes) => bytes,
+        other => panic!("{op_id} must produce bytes, got {}", other.kind().name()),
+    }
+}
+
+fn find_candidate(
+    reg: &OperationRegistry,
+    input: &[u8],
+    needle: &str,
+) -> Option<cybercipher_engine::AutoCandidate> {
+    let candidates = auto_decode(reg, input, &ExecutionContext::new());
+    candidates
+        .into_iter()
+        .find(|c| c.path.iter().any(|p| p == needle))
+}
+
+fn assert_no_candidate_with(reg: &OperationRegistry, input: &[u8], needle: &str) {
+    let candidates = auto_decode(reg, input, &ExecutionContext::new());
+    for c in &candidates {
+        assert!(
+            !c.path.iter().any(|p| p == needle),
+            "must not produce a `{needle}` candidate: {c:?}"
+        );
+    }
+}
+
+// ------------------------------------------------------ unicode escapes ----
+
+#[test]
+fn single_layer_unicode_escapes_u4() {
+    let reg = registry();
+    let input = br"flag{\u0061\u0062\u0063\u0064}";
+    let c = find_candidate(&reg, input, "from-unicode-escapes").expect("unicode candidate");
+    assert_eq!(c.path.first().unwrap(), "from-unicode-escapes");
+    assert!(c.preview.contains("flag{abcd}"), "preview {}", c.preview);
+    assert!(c.confident, "score {}", c.score);
+}
+
+#[test]
+fn single_layer_unicode_escapes_braced_and_x() {
+    let reg = registry();
+    let braced = br"flag{\u{61}\u{62}\u{63}\u{64}}";
+    let c = find_candidate(&reg, braced, "from-unicode-escapes").expect("braced candidate");
+    assert!(c.preview.contains("flag{abcd}"), "preview {}", c.preview);
+
+    let x2 = br"flag{\x61\x62\x63\x64}";
+    let c = find_candidate(&reg, x2, "from-unicode-escapes").expect("x2 candidate");
+    assert!(c.preview.contains("flag{abcd}"), "preview {}", c.preview);
+}
+
+#[test]
+fn unicode_escapes_inside_multilayer_chain() {
+    let reg = registry();
+    use base64::Engine as _;
+    let inner = br"flag{\u00e9\u00e8\u00ea\u00e0}";
+    let input = base64::engine::general_purpose::STANDARD.encode(inner);
+    let candidates = auto_decode(&reg, input.as_bytes(), &ExecutionContext::new());
+    let chained = candidates
+        .iter()
+        .find(|c| c.path == vec!["from-base64", "from-unicode-escapes"])
+        .expect("base64->unicode chain must be discovered");
+    assert!(
+        chained.preview.contains("flag{éèêà}"),
+        "preview {}",
+        chained.preview
+    );
+    assert!(chained.confident, "score {}", chained.score);
+}
+
+#[test]
+fn lone_unicode_escapes_do_not_fire() {
+    let reg = registry();
+    let input = br"Read \u0041 in the docs and compare with \u0042 there.";
+    assert_no_candidate_with(&reg, input, "from-unicode-escapes");
+}
+
+// --------------------------------------------------------- html entities ----
+
+#[test]
+fn single_layer_html_named_entities() {
+    let reg = registry();
+    let input = b"flag{&amp;&lt;entities&gt;}";
+    let c = find_candidate(&reg, input, "from-html-entities").expect("html candidate");
+    assert_eq!(c.path.first().unwrap(), "from-html-entities");
+    // &amp; decodes to a literal &, so the preview keeps it.
+    assert!(
+        c.preview.contains("flag{&<entities>}"),
+        "preview {}",
+        c.preview
+    );
+    assert!(c.confident, "score {}", c.score);
+}
+
+#[test]
+fn single_layer_html_numeric_entities() {
+    let reg = registry();
+    let input = b"&#72;&#101;&#108;&#108;&#111; &#x77;o&#x72;ld";
+    let c = find_candidate(&reg, input, "from-html-entities").expect("html numeric candidate");
+    assert!(c.preview.contains("Hello world"), "preview {}", c.preview);
+}
+
+#[test]
+fn html_entities_inside_multilayer_chain() {
+    let reg = registry();
+    use base64::Engine as _;
+    let inner = b"flag{&amp;ctf&amp;}";
+    let input = base64::engine::general_purpose::STANDARD.encode(inner);
+    let candidates = auto_decode(&reg, input.as_bytes(), &ExecutionContext::new());
+    let chained = candidates
+        .iter()
+        .find(|c| c.path == vec!["from-base64", "from-html-entities"])
+        .expect("base64->html chain must be discovered");
+    assert!(
+        chained.preview.contains("flag{&ctf&}"),
+        "preview {}",
+        chained.preview
+    );
+    assert!(chained.confident, "score {}", chained.score);
+}
+
+#[test]
+fn lone_amp_entity_does_not_fire() {
+    let reg = registry();
+    assert_no_candidate_with(&reg, b"Fish &amp; Chips", "from-html-entities");
+    assert_no_candidate_with(&reg, b"R&D and Q&A", "from-html-entities");
+}
+
+// ------------------------------------------------------ quoted printable ----
+
+#[test]
+fn single_layer_quoted_printable() {
+    let reg = registry();
+    let encoded = encode_with_op(&reg, "to-quoted-printable", b"flag{quoted}=FF=\xFE tail");
+    let c =
+        find_candidate(&reg, encoded.as_bytes(), "from-quoted-printable").expect("qp candidate");
+    assert_eq!(c.path.first().unwrap(), "from-quoted-printable");
+    assert!(c.preview.contains("flag{quoted}"), "preview {}", c.preview);
+    assert!(c.confident, "score {}", c.score);
+}
+
+#[test]
+fn quoted_printable_soft_breaks() {
+    let reg = registry();
+    let input = b"flag{soft=\r\nbreaks} A=3D=42=43=44";
+    let c = find_candidate(&reg, input, "from-quoted-printable").expect("qp soft break candidate");
+    assert!(
+        c.preview.contains("flag{softbreaks}"),
+        "preview {}",
+        c.preview
+    );
+}
+
+#[test]
+fn plain_equals_signs_do_not_fire_qp() {
+    let reg = registry();
+    assert_no_candidate_with(&reg, b"x=1 y=2 z=3 w=4", "from-quoted-printable");
+    assert_no_candidate_with(&reg, b"a=b=c=d", "from-quoted-printable");
+}
+
+// ============================================================== punycode ----
+
+#[test]
+fn single_layer_punycode_ace() {
+    let reg = registry();
+    let input = b"xn--bcher-kva";
+    let c = find_candidate(&reg, input, "from-punycode").expect("punycode candidate");
+    assert_eq!(c.path.first().unwrap(), "from-punycode");
+    assert!(c.preview.contains("bücher"), "preview {}", c.preview);
+    assert!(c.confident, "score {}", c.score);
+}
+
+#[test]
+fn single_layer_punycode_domain() {
+    let reg = registry();
+    let input = b"xn--fiqs8s.cn";
+    let c = find_candidate(&reg, input, "from-punycode").expect("punycode domain candidate");
+    assert!(c.preview.contains("中国.cn"), "preview {}", c.preview);
+}
+
+#[test]
+fn short_xn_prefix_does_not_fire_punycode() {
+    let reg = registry();
+    assert_no_candidate_with(&reg, b"see xn--ab online", "from-punycode");
+    assert_no_candidate_with(&reg, b"nothing here at all", "from-punycode");
+}
+
+// ============================================================== uu / xx ----
+
+#[test]
+fn single_layer_uuencode() {
+    let reg = registry();
+    let input = encode_with_op(&reg, "to-uuencode", b"flag{uuencode_auto}");
+    let c = find_candidate(&reg, input.as_bytes(), "from-uuencode").expect("uu candidate");
+    assert_eq!(c.path.first().unwrap(), "from-uuencode");
+    assert!(
+        c.preview.contains("flag{uuencode_auto}"),
+        "preview {}",
+        c.preview
+    );
+    assert!(c.confident, "score {}", c.score);
+}
+
+#[test]
+fn uuencode_inside_multilayer_chain() {
+    let reg = registry();
+    use base64::Engine as _;
+    let uu = encode_with_op(&reg, "to-uuencode", b"flag{uu_over_b64}");
+    let input = base64::engine::general_purpose::STANDARD.encode(uu.as_bytes());
+    let candidates = auto_decode(&reg, input.as_bytes(), &ExecutionContext::new());
+    let chained = candidates
+        .iter()
+        .find(|c| c.path == vec!["from-base64", "from-uuencode"])
+        .expect("base64->uu chain must be discovered");
+    assert!(
+        chained.preview.contains("flag{uu_over_b64}"),
+        "preview {}",
+        chained.preview
+    );
+    assert!(chained.confident, "score {}", chained.score);
+    // The candidate path must replay through the recipe engine.
+    let recipe = RecipeV1::new(
+        chained
+            .recipe_ops()
+            .iter()
+            .enumerate()
+            .map(|(i, op)| RecipeNodeV1 {
+                id: format!("n{i}"),
+                op: op.clone(),
+                enabled: true,
+                params: Default::default(),
+            })
+            .collect(),
+    );
+    let engine = RecipeEngine::new(std::sync::Arc::new(registry()));
+    let report = engine
+        .execute(
+            &recipe,
+            Value::Bytes(input.as_bytes().to_vec()),
+            RunMode::Manual,
+            &ExecutionContext::new(),
+        )
+        .unwrap();
+    assert!(report.error.is_none());
+    // from-uuencode declares a Bytes output; the payload must roundtrip
+    // byte-exact either way.
+    let replayed = match report.output.unwrap() {
+        Value::Text(text) => text.into_bytes(),
+        Value::Bytes(bytes) => bytes,
+        other => panic!("uu replay must produce text/bytes, {}", other.kind().name()),
+    };
+    assert!(String::from_utf8_lossy(&replayed).contains("flag{uu_over_b64}"));
+}
+
+#[test]
+fn incomplete_uu_envelope_produces_no_candidate() {
+    let reg = registry();
+    // begin without end: the gate must not fire, the op must not be reached.
+    assert_no_candidate_with(&reg, b"begin 644 f\n%9F]O\n", "from-uuencode");
+    assert_no_candidate_with(&reg, b"begin 644 f\n%9F]O\n", "from-xxencode");
+}
+
+#[test]
+fn single_layer_xxencode() {
+    let reg = registry();
+    let input = encode_with_op(&reg, "to-xxencode", b"flag{xxencode_auto}");
+    let c = find_candidate(&reg, input.as_bytes(), "from-xxencode").expect("xx candidate");
+    assert_eq!(c.path.first().unwrap(), "from-xxencode");
+    assert!(
+        c.preview.contains("flag{xxencode_auto}"),
+        "preview {}",
+        c.preview
+    );
+    assert!(c.confident, "score {}", c.score);
+}
+
+// ================================================================= yEnc ----
+
+#[test]
+fn single_layer_yenc() {
+    let reg = registry();
+    let input = encode_bytes_with_op(&reg, "to-yenc", b"flag{yenc_auto}");
+    let c = find_candidate(&reg, &input, "from-yenc").expect("yenc candidate");
+    assert_eq!(c.path.first().unwrap(), "from-yenc");
+    assert!(
+        c.preview.contains("flag{yenc_auto}"),
+        "preview {}",
+        c.preview
+    );
+    assert!(c.confident, "score {}", c.score);
+}
+
+#[test]
+fn incomplete_yenc_produces_no_candidate() {
+    let reg = registry();
+    // Header without the =yend trailer: gate fires, strict op fails, and no
+    // relaxed guessing may produce a candidate.
+    assert_no_candidate_with(
+        &reg,
+        b"=ybegin line=128 size=4 name=f\r\nJ;IJ\r\n",
+        "from-yenc",
+    );
+}
+
+// ============================================================ compression ----
+
+#[test]
+fn magic_gated_compression_layers() {
+    let reg = registry();
+    for (op, needle, marker) in [
+        ("to-bzip2", "from-bzip2", "flag{bzip2_auto}"),
+        ("to-xz", "from-xz", "flag{xz_auto}"),
+        ("to-zstd", "from-zstd", "flag{zstd_auto}"),
+        ("to-lz4", "from-lz4", "flag{lz4_auto}"),
+    ] {
+        let input = encode_bytes_with_op(&reg, op, marker.as_bytes());
+        let c = find_candidate(&reg, &input, needle)
+            .unwrap_or_else(|| panic!("{needle} candidate must be discovered"));
+        assert!(c.preview.contains(marker), "{needle} preview {}", c.preview);
+    }
+}
+
+#[test]
+fn bzip2_inside_multilayer_chain() {
+    let reg = registry();
+    use base64::Engine as _;
+    let bz2 = encode_bytes_with_op(&reg, "to-bzip2", b"flag{b64_over_bzip2}");
+    let input = base64::engine::general_purpose::STANDARD.encode(&bz2);
+    let candidates = auto_decode(&reg, input.as_bytes(), &ExecutionContext::new());
+    let chained = candidates
+        .iter()
+        .find(|c| c.path == vec!["from-base64", "from-bzip2"])
+        .expect("base64->bzip2 chain must be discovered");
+    assert_eq!(chained.preview, "flag{b64_over_bzip2}");
+    assert!(chained.confident, "score {}", chained.score);
+}
+
+// ============================================================= structured ----
+
+#[test]
+fn cbor_layer_detected_structurally() {
+    let reg = registry();
+    let input = encode_bytes_with_op(&reg, "to-cbor", br#"{"flag":"cbor_auto_layer"}"#);
+    let c = find_candidate(&reg, &input, "from-cbor").expect("cbor candidate");
+    assert_eq!(c.path.first().unwrap(), "from-cbor");
+    assert!(
+        c.preview.contains("cbor_auto_layer"),
+        "preview {}",
+        c.preview
+    );
+    assert!(c.confident, "score {}", c.score);
+}
+
+#[test]
+fn msgpack_layer_detected_structurally() {
+    let reg = registry();
+    let input = encode_bytes_with_op(&reg, "to-msgpack", br#"{"k":"flag{msgpack_auto}"}"#);
+    let c = find_candidate(&reg, &input, "from-msgpack").expect("msgpack candidate");
+    assert!(
+        c.preview.contains("flag{msgpack_auto}"),
+        "preview {}",
+        c.preview
+    );
+    assert!(c.confident, "score {}", c.score);
+}
+
+#[test]
+fn random_binary_never_claimed_as_structured() {
+    let reg = registry();
+    let mut seed = 0xC0FFEEu64;
+    let data: Vec<u8> = (0..4096)
+        .map(|_| {
+            seed = seed
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            (seed >> 33) as u8
+        })
+        .collect();
+    let candidates = auto_decode(&reg, &data, &ExecutionContext::new());
+    for c in &candidates {
+        for op in [
+            "from-cbor",
+            "from-msgpack",
+            "from-uuencode",
+            "from-xxencode",
+            "from-yenc",
+            "from-unicode-escapes",
+            "from-html-entities",
+            "from-quoted-printable",
+            "from-punycode",
+            "run-brainfuck",
+        ] {
+            assert!(
+                !c.path.contains(&op.to_string()),
+                "random binary claimed as {op}: {c:?}"
+            );
+        }
+        assert!(
+            !c.confident,
+            "random binary produced a confident claim: {c:?}"
+        );
+    }
+}
+
+// ============================================================== specialty ----
+
+#[test]
+fn buddha_layer_detected() {
+    let reg = registry();
+    let input = encode_with_op(&reg, "to-buddha", "flag{buddha_auto}".as_bytes());
+    let c = find_candidate(&reg, input.as_bytes(), "from-buddha").expect("buddha candidate");
+    assert!(
+        c.preview.contains("flag{buddha_auto}"),
+        "preview {}",
+        c.preview
+    );
+    assert!(c.confident, "score {}", c.score);
+}
+
+#[test]
+fn bear_layer_detected() {
+    let reg = registry();
+    let input = encode_with_op(&reg, "to-bear", "flag{bear_auto}".as_bytes());
+    let c = find_candidate(&reg, input.as_bytes(), "from-bear").expect("bear candidate");
+    assert!(
+        c.preview.contains("flag{bear_auto}"),
+        "preview {}",
+        c.preview
+    );
+    assert!(c.confident, "score {}", c.score);
+}
+
+#[test]
+fn core_values_layer_detected() {
+    let reg = registry();
+    let input = encode_with_op(&reg, "to-core-values", "flag{core_auto}".as_bytes());
+    let c = find_candidate(&reg, input.as_bytes(), "from-core-values").expect("core candidate");
+    assert!(
+        c.preview.contains("flag{core_auto}"),
+        "preview {}",
+        c.preview
+    );
+    assert!(c.confident, "score {}", c.score);
+}
+
+#[test]
+fn brainfuck_layer_detected() {
+    let reg = registry();
+    let input = encode_with_op(&reg, "to-brainfuck", "flag{bf_auto}".as_bytes());
+    let c = find_candidate(&reg, input.as_bytes(), "run-brainfuck").expect("bf candidate");
+    assert!(c.preview.contains("flag{bf_auto}"), "preview {}", c.preview);
+    assert!(c.confident, "score {}", c.score);
+}
+
+#[test]
+fn ook_layer_detected() {
+    let reg = registry();
+    let input = encode_with_op(&reg, "to-ook", "flag{ook_auto}".as_bytes());
+    let c = find_candidate(&reg, input.as_bytes(), "from-ook").expect("ook candidate");
+    assert!(
+        c.preview.contains("flag{ook_auto}"),
+        "preview {}",
+        c.preview
+    );
+    assert!(c.confident, "score {}", c.score);
+}
+
+#[test]
+fn beast_layer_detected() {
+    let reg = registry();
+    let input = encode_with_op(&reg, "to-beast", "flag{beast_auto}".as_bytes());
+    let c = find_candidate(&reg, input.as_bytes(), "from-beast").expect("beast candidate");
+    assert!(
+        c.preview.contains("flag{beast_auto}"),
+        "preview {}",
+        c.preview
+    );
+    assert!(c.confident, "score {}", c.score);
+}
+
+// ============================================================== classical ----
+
+#[test]
+fn rot13_flag_recovered() {
+    let reg = registry();
+    let input = b"synt{pnrfne_pvcure}";
+    let c = find_candidate(&reg, input, "rot13").expect("rot13 candidate");
+    assert_eq!(c.path.first().unwrap(), "rot13");
+    assert_eq!(c.preview, "flag{caesar_cipher}");
+    assert!(c.confident, "score {}", c.score);
+    assert_eq!(c.flag_like.as_deref(), Some("flag{caesar_cipher}"));
+}
+
+#[test]
+fn rot13_plain_english_not_proposed() {
+    let reg = registry();
+    assert_no_candidate_with(
+        &reg,
+        b"the quick brown fox jumps over the lazy dog again and again",
+        "rot13",
+    );
+}
+
+#[test]
+fn atbash_flag_recovered() {
+    let reg = registry();
+    // banana atbash-encodes to yzmzmz (n <-> m, not n <-> n).
+    let input = b"uozt{yzmzmz}";
+    let c = find_candidate(&reg, input, "atbash").expect("atbash candidate");
+    assert_eq!(c.preview, "flag{banana}");
+    assert!(c.confident, "score {}", c.score);
+}
+
+#[test]
+fn reversed_flag_recovered() {
+    let reg = registry();
+    let input = b"}otua_desrever{galf";
+    let c = find_candidate(&reg, input, "reverse").expect("reverse candidate");
+    assert_eq!(c.preview, "flag{reversed_auto}");
+    assert!(c.confident, "score {}", c.score);
+    assert_eq!(c.flag_like.as_deref(), Some("flag{reversed_auto}"));
+}
+
+#[test]
+fn plain_reversed_prose_does_not_fire_reverse() {
+    let reg = registry();
+    assert_no_candidate_with(&reg, b"}dlrow olleh", "reverse");
+}
+
+// ============================================== bounds & pathological ----
+
+#[test]
+fn nested_html_layers_recover_at_depth() {
+    let reg = registry();
+    // Five successive HTML-escaping layers; each keeps two entity groups.
+    let mut current = b"flag{&&}".to_vec();
+    for _ in 0..5 {
+        current = encode_with_op(&reg, "to-html-entities", &current).into_bytes();
+    }
+    let started = std::time::Instant::now();
+    let candidates = auto_decode(&reg, &current, &ExecutionContext::new());
+    assert!(started.elapsed().as_secs() < 10, "must stay bounded");
+    let best = candidates
+        .iter()
+        .find(|c| c.path.len() == 5 && c.path.iter().all(|p| p == "from-html-entities"))
+        .expect("the five-layer decode must be among the candidates");
+    assert_eq!(best.preview, "flag{&&}");
+}
+
+#[test]
+fn pathological_unicode_escape_wall_stays_bounded() {
+    let reg = registry();
+    // 64 KiB of \u0041 escapes: the gate fires on ~10k escapes and the
+    // decode must complete within the deadline budget without exploding.
+    let mut input = Vec::with_capacity(64 * 1024);
+    for _ in 0..64 * 1024 / 6 {
+        input.extend_from_slice(b"\\u0041");
+    }
+    let started = std::time::Instant::now();
+    let candidates = auto_decode(&reg, &input, &ExecutionContext::new());
+    assert!(started.elapsed().as_secs() < 10, "must stay bounded");
+    assert!(
+        candidates
+            .iter()
+            .any(|c| c.path.contains(&"from-unicode-escapes".to_string())),
+        "the escape wall must decode"
+    );
 }

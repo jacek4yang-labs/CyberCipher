@@ -218,7 +218,623 @@ fn is_zlib(data: &[u8]) -> bool {
         )
 }
 
-/// The step set. Compression first (magic-exact), then syntax-gated decoders.
+// ------------------------------ v3 wrapper gates (magic + syntax) ----------
+
+fn is_bzip2_magic(data: &[u8]) -> bool {
+    data.len() >= 4 && &data[..3] == b"BZh" && data[3].is_ascii_digit() && data[3] != b'0'
+}
+
+fn is_xz_magic(data: &[u8]) -> bool {
+    data.starts_with(&[0xFD, 0x37, 0x7A, 0x58, 0x5A, 0x00])
+}
+
+fn is_zstd_magic(data: &[u8]) -> bool {
+    data.starts_with(&[0x28, 0xB5, 0x2F, 0xFD])
+}
+
+fn is_lz4_magic(data: &[u8]) -> bool {
+    data.starts_with(&[0x04, 0x22, 0x4D, 0x18])
+}
+
+/// Unicode escapes: >= 4 well-formed `\uXXXX` / `\u{...}` / `\xXX` escapes.
+/// The count requirement keeps lone escapes (and Windows-style paths like
+/// `C:\users`) out of the beam.
+fn is_unicode_escapes(data: &[u8]) -> bool {
+    let Ok(text) = std::str::from_utf8(data) else {
+        return false;
+    };
+    let b = text.as_bytes();
+    let mut count = 0usize;
+    let mut i = 0usize;
+    while i < b.len() {
+        if b[i] != b'\\' || i + 1 >= b.len() {
+            i += 1;
+            continue;
+        }
+        match b[i + 1] {
+            b'u' if i + 2 < b.len() && b[i + 2] == b'{' => {
+                // \u{...}: 1-6 hex digits then '}'.
+                let mut j = i + 3;
+                let mut digits = 0usize;
+                while j < b.len() && b[j] != b'}' && digits < 7 {
+                    if !b[j].is_ascii_hexdigit() {
+                        break;
+                    }
+                    digits += 1;
+                    j += 1;
+                }
+                if j < b.len() && b[j] == b'}' && (1..=6).contains(&digits) {
+                    count += 1;
+                    i = j + 1;
+                } else {
+                    i += 1;
+                }
+            }
+            b'u' if i + 5 < b.len() && b[i + 2..i + 6].iter().all(|c| c.is_ascii_hexdigit()) => {
+                count += 1;
+                i += 6;
+            }
+            b'x' if i + 3 < b.len()
+                && b[i + 2].is_ascii_hexdigit()
+                && b[i + 3].is_ascii_hexdigit() =>
+            {
+                count += 1;
+                i += 4;
+            }
+            _ => i += 1,
+        }
+    }
+    count >= 4
+}
+
+/// HTML entities: >= 2 well-formed references — numeric `&#NNN;` / `&#xHH;`
+/// or named `&name;`. A lone `&amp;` (or prose like `R&D`) must not fire.
+fn is_html_entities(data: &[u8]) -> bool {
+    let Ok(text) = std::str::from_utf8(data) else {
+        return false;
+    };
+    let b = text.as_bytes();
+    let mut count = 0usize;
+    let mut i = 0usize;
+    while i < b.len() {
+        if b[i] != b'&' {
+            i += 1;
+            continue;
+        }
+        let rest = &b[i + 1..];
+        let consumed = if rest.first() == Some(&b'#') {
+            // Numeric: optional x/X, 1-7 hex digits, then ';'.
+            let hex_mode = rest.get(1) == Some(&b'x') || rest.get(1) == Some(&b'X');
+            let digits_start = if hex_mode { 2 } else { 1 };
+            let mut end = digits_start;
+            while end < rest.len() && rest[end].is_ascii_hexdigit() && end - digits_start < 7 {
+                end += 1;
+            }
+            if end > digits_start && rest.get(end) == Some(&b';') {
+                Some(end + 1)
+            } else {
+                None
+            }
+        } else {
+            // Named: 2-10 alphanumerics then ';'.
+            let mut end = 0usize;
+            while end < rest.len() && rest[end].is_ascii_alphanumeric() && end < 10 {
+                end += 1;
+            }
+            if (2..=10).contains(&end) && rest.get(end) == Some(&b';') {
+                Some(end + 1)
+            } else {
+                None
+            }
+        };
+        match consumed {
+            Some(len) => {
+                count += 1;
+                i += 1 + len;
+            }
+            None => i += 1,
+        }
+    }
+    count >= 2
+}
+
+/// Quoted-printable: >= 4 `=XX` hex escapes, or any soft line break
+/// (`=\r\n` / `=\n`) plus at least one `=XX` escape.
+fn is_quoted_printable(data: &[u8]) -> bool {
+    let mut escapes = 0usize;
+    let mut soft_breaks = 0usize;
+    let mut i = 0usize;
+    while i < data.len() {
+        if data[i] == b'=' {
+            if data.get(i + 1) == Some(&b'\n')
+                || (data.get(i + 1) == Some(&b'\r') && data.get(i + 2) == Some(&b'\n'))
+            {
+                soft_breaks += 1;
+                i += 1;
+                continue;
+            }
+            if i + 2 < data.len()
+                && data[i + 1].is_ascii_hexdigit()
+                && data[i + 2].is_ascii_hexdigit()
+            {
+                escapes += 1;
+                i += 3;
+                continue;
+            }
+        }
+        i += 1;
+    }
+    escapes >= 3 || (soft_breaks >= 1 && escapes >= 1)
+}
+
+/// Punycode: an `xn--` ACE prefix (case-insensitive) followed by >= 4
+/// LDH characters (letters, digits, hyphen) — the label body of a real ACE
+/// label. Bounded like the other big-number explorations.
+const PUNYCODE_EXPLORE_LIMIT: usize = 64 * 1024;
+
+fn is_punycode_ace(data: &[u8]) -> bool {
+    let lower = data.to_ascii_lowercase();
+    let mut search = 0usize;
+    while let Some(pos) = lower[search..].windows(4).position(|w| w == b"xn--") {
+        let start = search + pos + 4;
+        let body = &lower[start..];
+        let body_len = body
+            .iter()
+            .take_while(|b| matches!(**b, b'a'..=b'z' | b'0'..=b'9' | b'-'))
+            .count();
+        if body_len >= 4 {
+            return true;
+        }
+        search = start.max(search + 1);
+    }
+    false
+}
+
+/// uuencode/xxencode: the shared `begin <mode> <name>` first line and a
+/// trailing `end` line. The table choice is decided by the decode itself.
+fn is_uu_envelope(data: &[u8]) -> bool {
+    let Ok(text) = std::str::from_utf8(data) else {
+        return false;
+    };
+    let mut lines = text.lines().map(str::trim_end).filter(|l| !l.is_empty());
+    let Some(first) = lines.next() else {
+        return false;
+    };
+    let fb = first.as_bytes();
+    if !fb.starts_with(b"begin ") || fb.len() < 10 {
+        return false;
+    }
+    if !fb[6..9].iter().all(|b| (b'0'..=b'7').contains(b)) || fb[9] != b' ' {
+        return false;
+    }
+    let Some(end) = text.lines().next_back() else {
+        return false;
+    };
+    end.trim_end().eq_ignore_ascii_case("end")
+}
+
+/// yEnc: the `=ybegin` control line.
+fn is_yenc_envelope(data: &[u8]) -> bool {
+    let first = data.split(|&b| b == b'\n').next().unwrap_or(data);
+    let first = first.strip_suffix(b"\r").unwrap_or(first);
+    first.starts_with(b"=ybegin")
+}
+
+/// Socialist core values: (trimmed) character count even and every 2-char
+/// pair is one of the 12 slogan phrases; at least 4 phrases.
+const CORE_VALUE_PHRASES: [&str; 12] = [
+    "富强", "民主", "文明", "和谐", "自由", "平等", "公正", "法治", "爱国", "敬业", "诚信", "友善",
+];
+
+fn is_core_values(data: &[u8]) -> bool {
+    let Ok(text) = std::str::from_utf8(data) else {
+        return false;
+    };
+    let text = text.trim();
+    let chars: Vec<char> = text.chars().collect();
+    if chars.len() < 8 || !chars.len().is_multiple_of(2) {
+        return false;
+    }
+    chars.chunks(2).all(|chunk| {
+        let phrase: String = chunk.iter().collect();
+        CORE_VALUE_PHRASES.contains(&phrase.as_str())
+    })
+}
+
+/// Buddha says (与佛论禅): the `佛曰：` / `魔曰：` envelope (full-width or
+/// ASCII colon).
+fn is_buddha_payload(data: &[u8]) -> bool {
+    for prefix in ["佛曰：", "佛曰:", "魔曰：", "魔曰:"] {
+        if data.starts_with(prefix.as_bytes()) {
+            return true;
+        }
+    }
+    false
+}
+
+/// New Buddha (新佛曰): the `佛又曰：` envelope.
+fn is_buddha_pbe_payload(data: &[u8]) -> bool {
+    data.starts_with("佛又曰：".as_bytes()) || data.starts_with("佛又曰:".as_bytes())
+}
+
+/// Bear says (熊曰): the `熊曰：` envelope.
+fn is_bear_payload(data: &[u8]) -> bool {
+    data.starts_with("熊曰：".as_bytes()) || data.starts_with("熊曰:".as_bytes())
+}
+
+/// Beast speak (兽音译者): the `~呜嗷 … 啊` envelope with the default codec.
+fn is_beast_payload(data: &[u8]) -> bool {
+    let Ok(text) = std::str::from_utf8(data) else {
+        return false;
+    };
+    let trimmed = text.trim();
+    trimmed.starts_with("~呜嗷") && trimmed.ends_with('啊') && trimmed.chars().count() >= 10
+}
+
+/// Brainfuck: only the 8-command vocabulary (plus whitespace), at least 20
+/// commands, at least one output command, and balanced brackets.
+fn is_brainfuck_program(data: &[u8]) -> bool {
+    let Ok(text) = std::str::from_utf8(data) else {
+        return false;
+    };
+    let mut commands = 0usize;
+    let mut outputs = 0usize;
+    let mut depth = 0i64;
+    for c in text.chars() {
+        match c {
+            '+' | '-' | '<' | '>' | '[' | ']' | '.' | ',' => {
+                commands += 1;
+                if c == '.' {
+                    outputs += 1;
+                }
+                if c == '[' {
+                    depth += 1;
+                } else if c == ']' {
+                    depth -= 1;
+                    if depth < 0 {
+                        return false;
+                    }
+                }
+            }
+            c if c.is_whitespace() => {}
+            _ => return false,
+        }
+    }
+    commands >= 20 && outputs >= 1 && depth == 0
+}
+
+/// Ook!: at least 8 `Ook.` / `Ook?` / `Ook!` token occurrences.
+fn is_ook_program(data: &[u8]) -> bool {
+    let Ok(text) = std::str::from_utf8(data) else {
+        return false;
+    };
+    let mut tokens = 0usize;
+    let mut rest = text;
+    while let Some(pos) = rest.find("Ook") {
+        let tail = &rest[pos + 3..];
+        match tail.chars().next() {
+            Some('.') | Some('?') | Some('!') => tokens += 1,
+            _ => {}
+        }
+        rest = tail;
+    }
+    tokens >= 8
+}
+
+/// Cheap English-language sanity check used by the ROT13/Atbash gates: the
+/// vowel share of the letters must land in the natural-language band. Both
+/// shifts permute vowels into consonants and vice versa, so a wrongly chosen
+/// candidate has (approximately) the input's ratio and does not fire.
+fn vowel_share(text: &str) -> Option<f64> {
+    let mut letters = 0usize;
+    let mut vowels = 0usize;
+    for c in text.chars() {
+        if c.is_ascii_alphabetic() {
+            letters += 1;
+            if matches!(c.to_ascii_lowercase(), 'a' | 'e' | 'i' | 'o' | 'u') {
+                vowels += 1;
+            }
+        }
+    }
+    if letters >= 8 {
+        Some(vowels as f64 / letters as f64)
+    } else {
+        None
+    }
+}
+
+fn shifted_share(data: &[u8], shift: fn(char) -> char) -> Option<f64> {
+    let Ok(text) = std::str::from_utf8(data) else {
+        return None;
+    };
+    let shifted: String = text.chars().map(shift).collect();
+    vowel_share(&shifted)
+}
+
+fn rot13_char(c: char) -> char {
+    match c {
+        'a'..='z' => ((c as u8 - b'a' + 13) % 26 + b'a') as char,
+        'A'..='Z' => ((c as u8 - b'A' + 13) % 26 + b'A') as char,
+        other => other,
+    }
+}
+
+fn atbash_char(c: char) -> char {
+    match c {
+        'a'..='z' => (b'z' - (c as u8 - b'a')) as char,
+        'A'..='Z' => (b'Z' - (c as u8 - b'A')) as char,
+        other => other,
+    }
+}
+
+/// ROT13/Atbash gate: the shifted text must gain a plausible vowel share
+/// over the input (at least 8 points, landing in the 28-65% band). Random
+/// alphanumerics keep their ratio under both shifts and never fire; plain
+/// English loses its share and does not either.
+fn is_shifted_language(data: &[u8], shift: fn(char) -> char) -> bool {
+    let Some(shifted) = shifted_share(data, shift) else {
+        return false;
+    };
+    let Ok(text) = std::str::from_utf8(data) else {
+        return false;
+    };
+    let Some(original) = vowel_share(text) else {
+        return false;
+    };
+    (0.28..=0.65).contains(&shifted) && shifted - original >= 0.08
+}
+
+/// Reversed flag gate: the input ends with `}` and its reversal starts with
+/// a known flag prefix. Precise evidence, near-zero false positives.
+fn is_reversed_flag(data: &[u8]) -> bool {
+    let Ok(text) = std::str::from_utf8(data) else {
+        return false;
+    };
+    let trimmed = text.trim();
+    // The REVERSED encoding starts with the flag's closing brace.
+    if trimmed.len() < 8 || !trimmed.starts_with('}') {
+        return false;
+    }
+    let reversed: String = trimmed.chars().rev().collect();
+    let lowered = reversed.to_lowercase();
+    ["flag{", "ctf{", "picoctf{", "htb{", "key{"]
+        .iter()
+        .any(|prefix| lowered.starts_with(prefix))
+}
+
+// ------------------------- structured-format gates (bounded walks) ----------
+
+/// A bounded structural walk over CBOR (RFC 8949). Definite lengths only
+/// (indefinite items are left to the explicit op); validates that every head
+/// fits the buffer and the stream is fully consumed. Depth- and
+/// element-capped so hostile inputs stay cheap.
+fn is_cbor_like(data: &[u8]) -> bool {
+    const MAX_ITEMS: usize = 4096;
+    const MAX_DEPTH: usize = 64;
+    let mut stack: Vec<u64> = Vec::new();
+    let mut items = 0usize;
+    stack.push(1);
+    let mut pos = 0usize;
+    // The zero-pop pass at the end of each iteration keeps every counter on
+    // the stack above zero, so a plain emptiness check suffices here.
+    while !stack.is_empty() {
+        items += 1;
+        if items > MAX_ITEMS || stack.len() > MAX_DEPTH || pos >= data.len() {
+            return false;
+        }
+        let ib = data[pos];
+        let major = ib >> 5;
+        let ai = ib & 0x1F;
+        pos += 1;
+        let length: Option<u64> = match ai {
+            0..=23 => Some(ai as u64),
+            24 => data.get(pos).map(|_| {
+                pos += 1;
+                data[pos - 1] as u64
+            }),
+            25 => data.get(pos + 1).map(|_| {
+                let v = u16::from_be_bytes([data[pos], data[pos + 1]]) as u64;
+                pos += 2;
+                v
+            }),
+            26 => data.get(pos + 3).map(|_| {
+                let v = u32::from_be_bytes([data[pos], data[pos + 1], data[pos + 2], data[pos + 3]])
+                    as u64;
+                pos += 4;
+                v
+            }),
+            27 => data.get(pos + 7).map(|_| {
+                let mut b = [0u8; 8];
+                b.copy_from_slice(&data[pos..pos + 8]);
+                pos += 8;
+                u64::from_be_bytes(b)
+            }),
+            _ => None, // indefinite / reserved: not gated
+        };
+        let Some(length) = length else {
+            return false;
+        };
+        let mut children: Option<u64> = None;
+        match major {
+            0 | 1 | 7 => {}
+            2 | 3 => {
+                let end = pos.checked_add(usize::try_from(length).unwrap_or(usize::MAX));
+                let Some(end) = end.filter(|&end| end <= data.len()) else {
+                    return false;
+                };
+                pos = end;
+            }
+            4 => {
+                if length > 0 {
+                    children = Some(length);
+                }
+            }
+            5 => {
+                if length > 0 {
+                    children = Some(length.saturating_mul(2));
+                }
+            }
+            6 => {
+                // Tag: the tag itself consumes one parent slot and wraps one
+                // child item.
+                children = Some(1);
+            }
+            _ => return false,
+        }
+        // Consume one parent slot, then register the children.
+        let top = stack.len() - 1;
+        stack[top] -= 1;
+        if let Some(children) = children {
+            stack.push(children);
+        }
+        while let Some(top) = stack.last() {
+            if *top == 0 {
+                stack.pop();
+            } else {
+                break;
+            }
+        }
+    }
+    pos == data.len()
+}
+
+/// A bounded structural walk over MessagePack. Validates every format byte
+/// and length against the buffer, requiring full consumption.
+fn is_msgpack_like(data: &[u8]) -> bool {
+    const MAX_ITEMS: usize = 4096;
+    const MAX_DEPTH: usize = 64;
+
+    // Read a big-endian length field of 1/2/4 bytes at `pos`.
+    fn read_len(data: &[u8], pos: &mut usize, bytes: usize) -> Option<u64> {
+        let end = pos.checked_add(bytes)?;
+        if end > data.len() {
+            return None;
+        }
+        let mut length = 0u64;
+        for &b in &data[*pos..end] {
+            length = (length << 8) | b as u64;
+        }
+        *pos = end;
+        Some(length)
+    }
+
+    let mut stack: Vec<u64> = Vec::new();
+    let mut items = 0usize;
+    stack.push(1);
+    let mut pos = 0usize;
+    // The zero-pop pass at the end of each iteration keeps every counter on
+    // the stack above zero, so a plain emptiness check suffices here.
+    while !stack.is_empty() {
+        items += 1;
+        if items > MAX_ITEMS || stack.len() > MAX_DEPTH || pos >= data.len() {
+            return false;
+        }
+        let b = data[pos];
+        pos += 1;
+        // (payload bytes to skip, child count pushed when > 0)
+        let (skip, children): (usize, u64) = match b {
+            // positive fixint / negative fixint / nil / false / true
+            0x00..=0x7F | 0xE0..=0xFF | 0xC0 | 0xC2 | 0xC3 => (0, 0),
+            // fixmap / fixarray
+            0x80..=0x8F => (0, (b & 0x0F) as u64 * 2),
+            0x90..=0x9F => (0, (b & 0x0F) as u64),
+            // fixstr
+            0xA0..=0xBF => (((b & 0x1F) as usize), 0),
+            0xC1 => return false, // never used
+            // bin8/16/32 and str8/16/32
+            0xC4 | 0xC5 | 0xC6 | 0xD9 | 0xDA | 0xDB => {
+                let len_bytes = match b {
+                    0xC4 | 0xD9 => 1,
+                    0xC5 | 0xDA => 2,
+                    _ => 4,
+                };
+                let Some(length) = read_len(data, &mut pos, len_bytes) else {
+                    return false;
+                };
+                (usize::try_from(length).unwrap_or(usize::MAX), 0)
+            }
+            // float32/64
+            0xCA | 0xCB => (if b == 0xCA { 4 } else { 8 }, 0),
+            // uint 8/16/32/64, int 8/16/32/64
+            0xCC..=0xD3 => (
+                match b {
+                    0xCC | 0xD0 => 1,
+                    0xCD | 0xD1 => 2,
+                    0xCE | 0xD2 => 4,
+                    _ => 8,
+                },
+                0,
+            ),
+            // fixext1/2/4/8/16 (one extra type byte + payload)
+            0xD4..=0xD8 => (
+                match b {
+                    0xD4 => 1,
+                    0xD5 => 2,
+                    0xD6 => 4,
+                    0xD7 => 8,
+                    _ => 16,
+                } + 1,
+                0,
+            ),
+            // ext8/16/32: length + 1 type byte
+            0xC7..=0xC9 => {
+                let len_bytes = match b {
+                    0xC7 => 1,
+                    0xC8 => 2,
+                    _ => 4,
+                };
+                let Some(length) = read_len(data, &mut pos, len_bytes) else {
+                    return false;
+                };
+                (
+                    usize::try_from(length)
+                        .unwrap_or(usize::MAX)
+                        .saturating_add(1),
+                    0,
+                )
+            }
+            // array16/32
+            0xDC | 0xDD => {
+                let Some(length) = read_len(data, &mut pos, if b == 0xDC { 2 } else { 4 }) else {
+                    return false;
+                };
+                (0, length)
+            }
+            // map16/32
+            0xDE | 0xDF => {
+                let Some(length) = read_len(data, &mut pos, if b == 0xDE { 2 } else { 4 }) else {
+                    return false;
+                };
+                (0, length.saturating_mul(2))
+            }
+        };
+        let Some(end) = pos.checked_add(skip) else {
+            return false;
+        };
+        if end > data.len() {
+            return false;
+        }
+        pos = end;
+        // Consume one parent slot, then register the children.
+        let top = stack.len() - 1;
+        stack[top] -= 1;
+        if children > 0 {
+            stack.push(children);
+        }
+        while let Some(top) = stack.last() {
+            if *top == 0 {
+                stack.pop();
+            } else {
+                break;
+            }
+        }
+    }
+    pos == data.len()
+}
+
+/// The step set. Compression first (magic-exact), then syntax-gated decoders,
+/// then the v3 wrapper vocabulary (each gated by a cheap deterministic
+/// detector that runs before the op).
 const STEPS: &[Step] = &[
     Step {
         op: "from-gzip",
@@ -229,6 +845,36 @@ const STEPS: &[Step] = &[
         op: "from-zlib",
         applies: |d, _| is_zlib(d),
         evidence: "zlib header 0x78",
+    },
+    Step {
+        op: "from-bzip2",
+        applies: |d, _| is_bzip2_magic(d),
+        evidence: "bzip2 magic 'BZh' + level digit",
+    },
+    Step {
+        op: "from-xz",
+        applies: |d, _| is_xz_magic(d),
+        evidence: "xz magic fd 37 7a 58 5a 00",
+    },
+    Step {
+        op: "from-zstd",
+        applies: |d, _| is_zstd_magic(d),
+        evidence: "zstd magic 28 b5 2f fd",
+    },
+    Step {
+        op: "from-lz4",
+        applies: |d, _| is_lz4_magic(d),
+        evidence: "lz4 frame magic 04 22 4d 18",
+    },
+    Step {
+        op: "from-cbor",
+        applies: |d, _| is_cbor_like(d),
+        evidence: "valid CBOR structure",
+    },
+    Step {
+        op: "from-msgpack",
+        applies: |d, _| is_msgpack_like(d),
+        evidence: "valid MessagePack structure",
     },
     Step {
         op: "from-base64",
@@ -280,6 +926,92 @@ const STEPS: &[Step] = &[
         applies: |d, _| is_url_encoded(d),
         evidence: "percent escapes",
     },
+    // ---- v3 wrapper vocabulary ----
+    Step {
+        op: "from-unicode-escapes",
+        applies: |d, _| is_unicode_escapes(d),
+        evidence: "unicode escape sequences (\\uXXXX / \\u{...} / \\xXX)",
+    },
+    Step {
+        op: "from-html-entities",
+        applies: |d, _| is_html_entities(d),
+        evidence: "HTML entities",
+    },
+    Step {
+        op: "from-quoted-printable",
+        applies: |d, _| is_quoted_printable(d),
+        evidence: "quoted-printable =XX escapes",
+    },
+    Step {
+        op: "from-punycode",
+        applies: |d, _| d.len() <= PUNYCODE_EXPLORE_LIMIT && is_punycode_ace(d),
+        evidence: "ACE (xn--) punycode label",
+    },
+    Step {
+        op: "from-uuencode",
+        applies: |d, _| is_uu_envelope(d),
+        evidence: "uuencode begin/end envelope",
+    },
+    Step {
+        op: "from-xxencode",
+        applies: |d, _| is_uu_envelope(d),
+        evidence: "xxencode begin/end envelope",
+    },
+    Step {
+        op: "from-yenc",
+        applies: |d, _| is_yenc_envelope(d),
+        evidence: "yEnc =ybegin envelope",
+    },
+    Step {
+        op: "from-buddha",
+        applies: |d, _| is_buddha_payload(d),
+        evidence: "Buddha (佛曰/魔曰) envelope",
+    },
+    Step {
+        op: "from-buddha-pbe",
+        applies: |d, _| is_buddha_pbe_payload(d),
+        evidence: "new Buddha (佛又曰) envelope",
+    },
+    Step {
+        op: "from-bear",
+        applies: |d, _| is_bear_payload(d),
+        evidence: "bear says (熊曰) envelope",
+    },
+    Step {
+        op: "from-beast",
+        applies: |d, _| is_beast_payload(d),
+        evidence: "beast speak (~呜嗷…啊) envelope",
+    },
+    Step {
+        op: "from-core-values",
+        applies: |d, _| is_core_values(d),
+        evidence: "socialist core values phrase table",
+    },
+    Step {
+        op: "run-brainfuck",
+        applies: |d, _| is_brainfuck_program(d),
+        evidence: "Brainfuck command vocabulary",
+    },
+    Step {
+        op: "from-ook",
+        applies: |d, _| is_ook_program(d),
+        evidence: "Ook! token pairs",
+    },
+    Step {
+        op: "rot13",
+        applies: |d, _| is_shifted_language(d, rot13_char),
+        evidence: "ROT13 letter-frequency sanity",
+    },
+    Step {
+        op: "atbash",
+        applies: |d, _| is_shifted_language(d, atbash_char),
+        evidence: "Atbash letter-frequency sanity",
+    },
+    Step {
+        op: "reverse",
+        applies: |d, _| is_reversed_flag(d),
+        evidence: "reversed flag-like text",
+    },
     Step {
         op: "decode-text",
         applies: |d, k| k == "bytes" && std::str::from_utf8(d).is_ok(),
@@ -292,6 +1024,16 @@ struct Frontier {
     kind: String,
     path: Vec<String>,
     evidence: Vec<String>,
+}
+
+/// Serialize a frontier value to bytes for gates, scoring and ranking.
+/// `Value::Json` (the output of from-cbor / from-msgpack) serializes as its
+/// JSON representation; other kinds borrow or fall back to empty.
+fn value_to_bytes(value: &Value) -> Vec<u8> {
+    match value {
+        Value::Json(j) => serde_json::to_vec(j).unwrap_or_default(),
+        other => other.as_bytes().map(|c| c.to_vec()).unwrap_or_default(),
+    }
 }
 
 /// Run Auto Decode on raw input bytes. Returns ranked candidates.
@@ -325,11 +1067,7 @@ pub fn auto_decode(
             if ctx.is_cancelled() || started.elapsed() >= DEADLINE {
                 break;
             }
-            let bytes = node
-                .value
-                .as_bytes()
-                .map(|c| c.to_vec())
-                .unwrap_or_default();
+            let bytes = value_to_bytes(&node.value);
             let kind = node.kind.clone();
             // Single-byte XOR exploration: 256 cheap candidates for small
             // inputs — the classic CTF layer that syntax detectors cannot see.
@@ -411,14 +1149,34 @@ fn adapt(value: &Value, accepted: &[ValueKind]) -> Value {
 }
 
 fn beam_rank(node: &Frontier) -> u32 {
-    let bytes = node
-        .value
-        .as_bytes()
-        .map(|c| c.to_vec())
-        .unwrap_or_default();
+    let bytes = value_to_bytes(&node.value);
     let printable = printable_ratio(&bytes) * 100.0;
-    bytes.len().min(64 * 1024) as u32 / 16 + printable as u32
+    // Syntax-decode chains (nested base64, qp-over-base64, ...) must survive
+    // the beam truncation: a node produced by a strong-syntax step outranks
+    // printable junk from the mass explorations, or deep chains get cut.
+    let syntax_chain = node
+        .path
+        .last()
+        .is_some_and(|p| SYNTAX_CHAIN_STEPS.contains(&p.as_str())) as u32
+        * 1000;
+    bytes.len().min(64 * 1024) as u32 / 16 + printable as u32 + syntax_chain
 }
+
+/// Steps whose successful decode is strong evidence; their continuations are
+/// prioritized in the beam so multi-layer chains are not starved.
+const SYNTAX_CHAIN_STEPS: &[&str] = &[
+    "from-base64",
+    "from-base32",
+    "from-hex",
+    "from-html-entities",
+    "from-punycode",
+    "from-quoted-printable",
+    "from-uuencode",
+    "from-xxencode",
+    "from-yenc",
+    "from-cbor",
+    "from-msgpack",
+];
 
 fn collect_candidate(
     node: &Frontier,
@@ -429,11 +1187,7 @@ fn collect_candidate(
     if node.path.is_empty() {
         return;
     }
-    let bytes = node
-        .value
-        .as_bytes()
-        .map(|c| c.to_vec())
-        .unwrap_or_default();
+    let bytes = value_to_bytes(&node.value);
     let key = xxhash_rust::xxh3::xxh3_64(&value_cache_bytes(&node.value));
     if !seen.insert(key) || bytes.is_empty() || bytes == prev {
         return;
@@ -456,6 +1210,17 @@ fn collect_candidate(
     if looks_like_json(&bytes) {
         score = (score + 0.30).min(0.99);
         evidence.push("valid JSON".to_string());
+    }
+    // Strict syntax decodes (ACE label, qp envelope, uu envelope) are strong
+    // evidence like JSON/PEM: a successful decode lifts confidence.
+    if node.path.last().is_some_and(|p| {
+        matches!(
+            p.as_str(),
+            "from-punycode" | "from-quoted-printable" | "from-uuencode" | "from-xxencode"
+        )
+    }) {
+        score = (score + 0.15).min(0.99);
+        evidence.push("strict syntax decode".to_string());
     }
     if looks_like_pem(&bytes) {
         score = (score + 0.25).min(0.99);
@@ -489,6 +1254,18 @@ fn collect_candidate(
         .unwrap_or(false)
     {
         score *= 0.85;
+    }
+    // ROT13/Atbash share the same mass-search character: the frequency gate
+    // is weak evidence, so the printable-output score alone must not reach
+    // confidence. Flag/JSON-grade evidence still lifts past the penalty.
+    if node
+        .path
+        .last()
+        .map(|p| p == "rot13" || p == "atbash")
+        .unwrap_or(false)
+    {
+        score *= 0.85;
+        evidence.push("weak-evidence transform (frequency heuristic)".to_string());
     }
     score = score.min(0.99);
 

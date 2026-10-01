@@ -650,6 +650,45 @@ fn braille_decode(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<V
     Ok(Value::Text(out))
 }
 
+// ------------------------------------------------------------ ROT13 ----
+
+/// ROT13 (Caesar shift 13): an involution, so one op serves encode and
+/// decode. Non-letters pass through unchanged.
+pub fn rot13_text(text: &str) -> String {
+    text.chars()
+        .map(|c| match c {
+            'a'..='z' => ((c as u8 - b'a' + 13) % 26 + b'a') as char,
+            'A'..='Z' => ((c as u8 - b'A' + 13) % 26 + b'A') as char,
+            other => other,
+        })
+        .collect()
+}
+
+fn rot13_op(v: &Value, _: &ParamMap, _: &ExecutionContext) -> OpResult<Value> {
+    let text = input_text(v, "ROT13")?;
+    Ok(Value::Text(rot13_text(text)))
+}
+
+// ------------------------------------------------------------ Atbash ----
+
+/// Atbash: A<->Z, B<->Y, ... (the Hebrew cipher applied to the Latin
+/// alphabet). An involution, so one op serves encode and decode. Non-letters
+/// pass through unchanged.
+pub fn atbash_text(text: &str) -> String {
+    text.chars()
+        .map(|c| match c {
+            'a'..='z' => (b'z' - (c as u8 - b'a')) as char,
+            'A'..='Z' => (b'Z' - (c as u8 - b'A')) as char,
+            other => other,
+        })
+        .collect()
+}
+
+fn atbash_op(v: &Value, _: &ParamMap, _: &ExecutionContext) -> OpResult<Value> {
+    let text = input_text(v, "Atbash")?;
+    Ok(Value::Text(atbash_text(text)))
+}
+
 // ------------------------------------------------------------ registry ----
 
 pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
@@ -940,5 +979,49 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
             "Round-trip tests",
         ),
         braille_decode,
+    );
+
+    let tag_classical: &'static [&'static str] = &["classical", "ctf"];
+
+    reg.add_simple(
+        spec(
+            "rot13",
+            "ROT13",
+            "Applies ROT13 (Caesar shift 13) to the letters A-Z and a-z; every other \
+             character passes through unchanged. ROT13 is an involution, so the same \
+             operation encodes and decodes.",
+            E,
+            &[T],
+            T,
+            CostClass::Instant,
+            true,
+            vec![],
+            tag_classical,
+            &["rot-13", "caesar 13", "rotate 13"],
+            "Common convention (Caesar cipher with shift 13)",
+            "Known-answer tests (Hello -> Uryyb) + involution round-trips",
+        ),
+        rot13_op,
+    );
+
+    reg.add_simple(
+        spec(
+            "atbash",
+            "Atbash",
+            "Applies the Atbash cipher (A<->Z, B<->Y, ...) to the letters A-Z and a-z; \
+             every other character passes through unchanged. Atbash is an involution, \
+             so the same operation encodes and decodes.",
+            E,
+            &[T],
+            T,
+            CostClass::Instant,
+            true,
+            vec![],
+            tag_classical,
+            &["at-bash", "hebrew cipher"],
+            "Classical Atbash (Hebrew cipher applied to the Latin alphabet)",
+            "Known-answer tests (Hello -> Svool) + involution round-trips",
+        ),
+        atbash_op,
     );
 }
