@@ -126,6 +126,27 @@ export interface StereoAutoResult {
   hint: string;
 }
 
+/** One frame of image_gif_info's report (ops.rs image_gif_info_op). */
+export interface GifFrameMeta {
+  index: number;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  delay_cs: number;
+  disposal: string;
+  transparent_index: number | null;
+  interlaced: boolean;
+}
+
+/** image_gif_info JSON report (ops.rs image_gif_info_op). */
+export interface GifInfo {
+  screen: { width: number; height: number };
+  frame_count: number;
+  frames_truncated: boolean;
+  frames: GifFrameMeta[];
+}
+
 /** One catalog entry, hard-coded to match transforms::catalog() exactly. */
 export interface StegoTransformDef {
   index: number;
@@ -202,7 +223,8 @@ export type StegoTab =
   | "autolsb"
   | "structure"
   | "qr"
-  | "stereo";
+  | "stereo"
+  | "frames";
 
 let bakeCounter = 0;
 
@@ -422,6 +444,18 @@ export interface StegoStore {
   runStereoAuto: () => Promise<void>;
   applyStereoAuto: () => void;
 
+  // Frames tab (image_gif_info / image_gif_frame ops; GIF files only).
+  framesInfo: GifInfo | null;
+  framesBusy: boolean;
+  framesError: string | null;
+  runFramesInfo: () => Promise<void>;
+  selectedFrame: number | null;
+  frameBusy: boolean;
+  frameError: string | null;
+  framePng: string | null;
+  previewFrame: (index: number) => Promise<void>;
+  analyzeFrame: () => void;
+
   // Handoff to the Workbench (binary travels as base64 input).
   sendToWorkbench: (base64: string) => void;
   /** Handoff to Auto Analyze (binary travels as base64 input, scan auto-runs). */
@@ -464,6 +498,13 @@ export const useStegoStore = create<StegoStore>((set, get) => {
       stereoAutoBusy: false,
       stereoAutoError: null,
       stereoAuto: null,
+      framesInfo: null,
+      framesBusy: false,
+      framesError: null,
+      selectedFrame: null,
+      frameBusy: false,
+      frameError: null,
+      framePng: null,
     });
 
   /**
@@ -958,6 +999,70 @@ export const useStegoStore = create<StegoStore>((set, get) => {
     applyStereoAuto: () => {
       const best = get().stereoAuto?.best_offset ?? 0;
       if (best > 0) set({ stereoOffset: best });
+    },
+
+    framesInfo: null,
+    framesBusy: false,
+    framesError: null,
+    runFramesInfo: async () => {
+      const { fileBase64, framesBusy } = get();
+      if (framesBusy || !fileBase64) return;
+      if (sniffImageFormat(fileBase64) !== "gif") {
+        set({
+          framesBusy: false,
+          framesError: "the loaded file is not a GIF — frame indexing needs GIF file bytes",
+          framesInfo: null,
+        });
+        return;
+      }
+      set({ framesBusy: true, framesError: null, framesInfo: null });
+      try {
+        const resp = await runSingleOp("image_gif_info", {}, fileBase64);
+        if (superseded(fileBase64)) return;
+        if (resp.report.error) throw new Error(formatInvokeError(resp.report.error));
+        if (resp.blocked_at !== null) {
+          throw new Error(`run stopped at stage ${resp.blocked_at}`);
+        }
+        const out = resp.output;
+        if (out === null || out.kind !== "json") {
+          throw new Error("image_gif_info returned no report");
+        }
+        set({ framesBusy: false, framesInfo: out.value as GifInfo });
+      } catch (e) {
+        if (superseded(fileBase64)) return;
+        set({ framesBusy: false, framesError: e instanceof Error ? e.message : String(e) });
+      }
+    },
+
+    selectedFrame: null,
+    frameBusy: false,
+    frameError: null,
+    framePng: null,
+    previewFrame: async (index) => {
+      const { fileBase64, frameBusy } = get();
+      if (frameBusy || !fileBase64) return;
+      set({ selectedFrame: index, frameBusy: true, frameError: null, framePng: null });
+      try {
+        const resp = await runSingleOp("image_gif_frame", { frame: index }, fileBase64);
+        if (superseded(fileBase64)) return;
+        if (resp.report.error) throw new Error(formatInvokeError(resp.report.error));
+        if (resp.blocked_at !== null) {
+          throw new Error(`run stopped at stage ${resp.blocked_at}`);
+        }
+        const out = resp.output;
+        if (out === null || out.kind !== "bytes") {
+          throw new Error("image_gif_frame returned no PNG payload");
+        }
+        set({ frameBusy: false, framePng: out.base64 });
+      } catch (e) {
+        if (superseded(fileBase64)) return;
+        set({ frameBusy: false, frameError: e instanceof Error ? e.message : String(e) });
+      }
+    },
+    analyzeFrame: () => {
+      const { selectedFrame, framePng, loadFromBytes } = get();
+      if (selectedFrame === null || framePng === null) return;
+      loadFromBytes(`frame-${selectedFrame + 1}.png`, framePng);
     },
 
     sendToWorkbench: (base64) => {

@@ -1401,6 +1401,173 @@ function StereoTab() {
   );
 }
 
+// ---------------------------------------------------------------- frames ----
+
+/** Bounded number of frame metadata rows rendered at once. */
+const FRAMES_RENDER_LIMIT = 256;
+
+function FramesTab() {
+  const fileBase64 = useStegoStore((s) => s.fileBase64);
+  const fileName = useStegoStore((s) => s.fileName);
+  const framesInfo = useStegoStore((s) => s.framesInfo);
+  const framesBusy = useStegoStore((s) => s.framesBusy);
+  const framesError = useStegoStore((s) => s.framesError);
+  const runFramesInfo = useStegoStore((s) => s.runFramesInfo);
+  const selectedFrame = useStegoStore((s) => s.selectedFrame);
+  const frameBusy = useStegoStore((s) => s.frameBusy);
+  const frameError = useStegoStore((s) => s.frameError);
+  const framePng = useStegoStore((s) => s.framePng);
+  const previewFrame = useStegoStore((s) => s.previewFrame);
+  const analyzeFrame = useStegoStore((s) => s.analyzeFrame);
+  const setTab = useStegoStore((s) => s.setTab);
+  const sendToWorkbench = useStegoStore((s) => s.sendToWorkbench);
+
+  // Index once per loaded file while the tab is visible; retry goes through the button.
+  useEffect(() => {
+    if (!fileBase64) return;
+    if (framesBusy || framesError !== null || framesInfo !== null) return;
+    void runFramesInfo();
+  }, [fileBase64, framesBusy, framesError, framesInfo, runFramesInfo]);
+
+  const frames = framesInfo?.frames ?? [];
+  const shown = frames.slice(0, FRAMES_RENDER_LIMIT);
+
+  const analyze = () => {
+    analyzeFrame();
+    setTab("transform");
+  };
+
+  return (
+    <Section title="GIF frames">
+      {!fileBase64 ? (
+        <div className="rsa-empty dim">
+          Load an animated GIF to index its frames without decoding pixel data: per-frame region,
+          delay, disposal method, transparency and interlace — then preview any frame and analyze
+          it with the rest of the Stego Lab.
+        </div>
+      ) : (
+        <>
+          <div className="pki-run-row">
+            <button
+              className="bake-btn"
+              onClick={() => void runFramesInfo()}
+              disabled={framesBusy}
+              title="Re-run image_gif_info on the original file bytes"
+            >
+              {framesBusy ? "Indexing…" : framesInfo ? "Re-index" : "Index frames"}
+            </button>
+            {framesBusy && (
+              <span className="dim sstv-busy-note">
+                the index runs to completion on the engine side — not cancellable
+              </span>
+            )}
+          </div>
+          <ErrorBanner error={framesError} />
+          {framesInfo && (
+            <>
+              <Chips
+                items={[
+                  `screen ${framesInfo.screen.width}×${framesInfo.screen.height}`,
+                  `${framesInfo.frame_count} frame${framesInfo.frame_count === 1 ? "" : "s"}`,
+                  framesInfo.frames_truncated
+                    ? "frame index truncated (engine cap 4096)"
+                    : null,
+                ]}
+              />
+              <div className="stego-frames">
+                <div className="stego-frame-row stego-frame-head dim">
+                  <span>#</span>
+                  <span>region</span>
+                  <span>delay</span>
+                  <span>disposal</span>
+                  <span>flags</span>
+                  <span />
+                </div>
+                {shown.map((f) => (
+                  <div
+                    key={f.index}
+                    className={`stego-frame-row${selectedFrame === f.index ? " selected" : ""}`}
+                  >
+                    <span className="stego-frame-idx">{f.index}</span>
+                    <span className="stego-frame-region">
+                      {f.left},{f.top} · {f.width}×{f.height}
+                    </span>
+                    <span>{(f.delay_cs / 100).toFixed(2)} s</span>
+                    <span>{f.disposal}</span>
+                    <span className="dim">
+                      {[
+                        f.interlaced ? "interlaced" : null,
+                        f.transparent_index !== null && f.transparent_index !== undefined
+                          ? `transparent ${f.transparent_index}`
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || "—"}
+                    </span>
+                    <button
+                      className="tool-btn"
+                      disabled={frameBusy}
+                      onClick={() => void previewFrame(f.index)}
+                      title="Decode and compose this frame as PNG (image_gif_frame)"
+                    >
+                      {selectedFrame === f.index && frameBusy ? "Decoding…" : "Preview"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+              {frames.length > shown.length && (
+                <div className="dim sstv-cand-total">
+                  +{frames.length - shown.length} more frames not listed (render bound{" "}
+                  {FRAMES_RENDER_LIMIT})
+                </div>
+              )}
+              <ErrorBanner error={frameError} />
+              {framePng !== null && selectedFrame !== null && (
+                <div className="stego-viewport">
+                  <img
+                    src={`data:image/png;base64,${framePng}`}
+                    alt={`GIF frame ${selectedFrame}`}
+                  />
+                  <div className="sstv-image-head">
+                    <span className="pki-kind-chip">frame {selectedFrame}</span>
+                    <span className="dim">
+                      composed onto the logical screen, as a viewer shows it
+                    </span>
+                    <span className="spacer" />
+                    <button
+                      className="tool-btn"
+                      onClick={analyze}
+                      title="Load this frame as the Stego Lab's active image (transforms, extract, QR, …)"
+                    >
+                      Analyze frame
+                    </button>
+                    <button
+                      className="tool-btn"
+                      onClick={() =>
+                        downloadPng(framePng, `${fileName ?? "gif"}-frame-${selectedFrame}.png`)
+                      }
+                      title="Download the frame PNG through the browser"
+                    >
+                      Save PNG
+                    </button>
+                    <button
+                      className="tool-btn"
+                      onClick={() => sendToWorkbench(framePng)}
+                      title="Put the frame PNG into the Workbench input (base64)"
+                    >
+                      → Workbench
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </>
+      )}
+    </Section>
+  );
+}
+
 // ----------------------------------------------------------------- page ----
 
 const TABS: [StegoTab, string][] = [
@@ -1410,6 +1577,7 @@ const TABS: [StegoTab, string][] = [
   ["structure", "Structure"],
   ["qr", "QR"],
   ["stereo", "Stereo"],
+  ["frames", "Frames"],
 ];
 
 export function StegoLabPage() {
@@ -1422,7 +1590,8 @@ export function StegoLabPage() {
       <p className="dim sstv-expl">
         Steganography workbench over the StegSolve-compatible engine: step through the 42-transform
         catalog, extract bit streams with full control over planes, order and traversal, and let
-        Auto LSB rank the likely configurations. Every operation runs in the Rust engine on the
+        Auto LSB rank the likely configurations. Structure, QR/barcode, stereo and GIF-frame tabs
+        cover the rest of the container toolkit. Every operation runs in the Rust engine on the
         original image bytes.
       </p>
       <div className="sstv-layout">
@@ -1449,6 +1618,7 @@ export function StegoLabPage() {
             {tab === "structure" && <StructureTab />}
             {tab === "qr" && <QrTab />}
             {tab === "stereo" && <StereoTab />}
+            {tab === "frames" && <FramesTab />}
           </div>
         </div>
       </div>

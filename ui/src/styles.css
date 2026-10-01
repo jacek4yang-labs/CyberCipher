@@ -2290,3 +2290,45 @@ button.pki-asn1-row:hover .pki-asn1-tag {
   font-family: var(--mono);
   font-size: 11.5px;
 }
+
+/* GIF frame metadata list */
+
+.stego-frames {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 320px;
+  overflow-y: auto;
+  margin-bottom: 8px;
+}
+
+.stego-frame-row {
+  display: grid;
+  grid-template-columns: 36px minmax(120px, 1fr) 64px minmax(90px, 1fr) minmax(120px, 1.4fr) auto;
+  gap: 8px;
+  align-items: center;
+  padding: 3px 8px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-family: var(--mono);
+  font-size: 11px;
+}
+
+.stego-frame-row.selected {
+  border-color: var(--accent);
+}
+
+.stego-frame-head {
+  background: none;
+  border: none;
+  padding-bottom: 0;
+}
+
+.stego-frame-idx {
+  color: var(--accent);
+}
+
+.stego-frame-region {
+  word-break: break-all;
+}
