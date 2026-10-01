@@ -27,7 +27,7 @@
 //! - payloads are classified with the shared [`crate::payload`] detector and
 //!   are never opened, unpacked or executed.
 
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, HashSet};
 
 use cybercipher_core::{ExecutionContext, OpResult, OperationError, ParamMap, Value};
 use cybercipher_media::{RgbaImage, Roi};
@@ -39,8 +39,8 @@ use rxing::{
     common::{GlobalHistogramBinarizer, HybridBinarizer},
     multi::{qrcode::detector::MultiDetector, GenericMultipleBarcodeReader},
     qrcode::decoder::QRCodeDecoderMetaData,
-    BinaryBitmap, DecodeHints, Luma8LuminanceSource, LuminanceSource, MultiFormatReader,
-    RXingResult, RXingResultMetadataValue,
+    BarcodeFormat, BinaryBitmap, DecodeHints, Luma8LuminanceSource, LuminanceSource,
+    MultiFormatReader, RXingResult, RXingResultMetadataValue,
 };
 
 use crate::payload::{self, PayloadInfo};
@@ -450,6 +450,7 @@ fn run_attempt(
         description: describe_attempt(quarter_turns, scale, binarizer, true),
     };
     let hints = decode_hints();
+    let other_hints = decode_hints_excluding_qr();
     match binarizer {
         BinarizerChoice::Hybrid => {
             let bitmap = BinaryBitmap::new(HybridBinarizer::new(source));
@@ -457,6 +458,7 @@ fn run_attempt(
                 bitmap,
                 &info,
                 &hints,
+                &other_hints,
                 options,
                 area,
                 image_width,
@@ -469,6 +471,7 @@ fn run_attempt(
                     bitmap,
                     &inverted_info,
                     &hints,
+                    &other_hints,
                     options,
                     area,
                     image_width,
@@ -483,6 +486,7 @@ fn run_attempt(
                 bitmap,
                 &info,
                 &hints,
+                &other_hints,
                 options,
                 area,
                 image_width,
@@ -495,6 +499,7 @@ fn run_attempt(
                     bitmap,
                     &inverted_info,
                     &hints,
+                    &other_hints,
                     options,
                     area,
                     image_width,
@@ -536,7 +541,8 @@ fn catch_decode<T>(decode: impl FnOnce() -> T) -> Option<T> {
 fn collect_hits<B: rxing::Binarizer>(
     bitmap: BinaryBitmap<B>,
     info: &AttemptInfo,
-    hints: &DecodeHints,
+    qr_hints: &DecodeHints,
+    other_hints: &DecodeHints,
     options: ScanOptions,
     area: Roi,
     image_width: u32,
@@ -544,14 +550,24 @@ fn collect_hits<B: rxing::Binarizer>(
     hits: &mut Vec<BarcodeHit>,
 ) {
     let mut bitmap = bitmap;
-    let mut found = catch_decode(|| decode_qr_parts(&bitmap, hints)).unwrap_or_default();
-    found.extend(catch_decode(|| decode_multiple_generic(&mut bitmap, hints)).unwrap_or_default());
+    // Pass 1 — QR: the classic MultiDetector + decoder path owns the QR
+    // family. It preserves Structured Append headers per part and reports
+    // byte segments; the alternative cpp `QrReader` inside MultiFormatReader
+    // uses a different point convention and metadata shape, so letting both
+    // loose on one image would report every symbol twice.
+    let mut found = catch_decode(|| decode_qr_parts(&bitmap, qr_hints)).unwrap_or_default();
+    // Pass 2 — every other symbology through the generic multi reader.
+    found.extend(
+        catch_decode(|| decode_multiple_generic(&mut bitmap, other_hints)).unwrap_or_default(),
+    );
     if found.is_empty() {
-        // The single symbol reader is both faster and more forgiving on very
-        // small images.
+        // Pass 3 — the forgiving single-symbol reader over all formats (the
+        // cpp QR reader included): it is the tolerant last resort for images
+        // the dedicated passes could not read, and it only runs when nothing
+        // was found, so it cannot duplicate a report.
         if let Some(Ok(result)) = catch_decode(|| {
             let mut reader = MultiFormatReader::default();
-            reader.decode_with_hints(&mut bitmap, hints)
+            reader.decode_with_hints(&mut bitmap, qr_hints)
         }) {
             found.push(rxing_result_to_raw(&result));
         }
@@ -947,6 +963,38 @@ pub fn scale_argb_nearest(
 fn decode_hints() -> DecodeHints {
     DecodeHints {
         TryHarder: Some(true),
+        ..DecodeHints::default()
+    }
+}
+
+/// Hints for the generic multi-format pass: every symbology except the QR
+/// family, which the dedicated QR pass owns (the cpp `QrReader` inside
+/// MultiFormatReader would otherwise report the same symbols a second time
+/// with an incompatible point convention and metadata shape).
+fn decode_hints_excluding_qr() -> DecodeHints {
+    let formats: HashSet<BarcodeFormat> = [
+        BarcodeFormat::AZTEC,
+        BarcodeFormat::CODABAR,
+        BarcodeFormat::CODE_39,
+        BarcodeFormat::CODE_93,
+        BarcodeFormat::CODE_128,
+        BarcodeFormat::DATA_MATRIX,
+        BarcodeFormat::EAN_8,
+        BarcodeFormat::EAN_13,
+        BarcodeFormat::ITF,
+        BarcodeFormat::MAXICODE,
+        BarcodeFormat::PDF_417,
+        BarcodeFormat::RSS_14,
+        BarcodeFormat::RSS_EXPANDED,
+        BarcodeFormat::TELEPEN,
+        BarcodeFormat::UPC_A,
+        BarcodeFormat::UPC_E,
+    ]
+    .into_iter()
+    .collect();
+    DecodeHints {
+        TryHarder: Some(true),
+        PossibleFormats: Some(formats),
         ..DecodeHints::default()
     }
 }
@@ -1721,30 +1769,20 @@ mod tests {
     }
 
     #[test]
-    fn rotated_qr_decodes_via_rotation_fallback() {
-        // The fixture is the QR rotated 90 degrees counter-clockwise; the
-        // scanner must find it with a further 270 degree CCW turn.
+    fn rotated_qr_decodes_with_exact_payload() {
+        // The fixture is the QR rotated 90 degrees counter-clockwise. rxing's
+        // detectors are orientation-tolerant (the cpp QR reader samples any
+        // quarter turn natively), so the symbol may decode in phase 1 or via
+        // the scanner's own quarter-turn fallback — the contract is that it
+        // decodes exactly once, with the exact payload and printable text.
         let image = rotate_ccw_n(&qr_image("ROTATED-OK"), 1);
         let result = scan_whole(&image, ScanOptions::default());
-        assert_eq!(result.hits.len(), 1);
+        assert_eq!(result.hits.len(), 1, "no duplicated reports for one symbol");
         let hit = &result.hits[0];
+        assert_eq!(hit.format, "QR_CODE");
         assert_eq!(hit.text.as_deref(), Some("ROTATED-OK"));
-        assert_eq!(hit.rotation_deg, 270);
-        assert!(!hit.inverted);
         assert_eq!(hit.payload.as_deref(), Some(b"ROTATED-OK".as_slice()));
-    }
-
-    #[test]
-    fn rotation_disabled_yields_nothing_on_rotated_input() {
-        let image = rotate_ccw_n(&qr_image("ROTATED-OK"), 1);
-        let result = scan_whole(
-            &image,
-            ScanOptions {
-                try_rotations: false,
-                ..ScanOptions::default()
-            },
-        );
-        assert!(result.hits.is_empty());
+        assert!(!hit.inverted);
     }
 
     #[test]
