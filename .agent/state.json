@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "phase": "Wave-3: M9-IMAGE-02 (Auto LSB) + M10-SSTV-02 (SSTV bridge) in flight",
-  "last_reconciled_sha": "378a8e7",
+  "phase": "Wave-5: M9-IMAGE-04 (QR) + M9-IMAGE-05 (stereo/combine/frames) in flight",
+  "last_reconciled_sha": "d7b40b9",
   "active_branch": null,
   "active_pr": null,
   "current_task": null,
@@ -48,12 +48,18 @@
     "M8-PKI-F-JWT",
     "GUI-PKI-LAB-01",
     "M9-IMAGE-01",
-    "M10-SSTV-01"
+    "M10-SSTV-01",
+    "M9-IMAGE-02",
+    "M10-SSTV-02",
+    "GUI-SSTV-LAB-01",
+    "M9-IMAGE-03",
+    "GUI-STEGO-LAB-01",
+    "CTF-SPECIALTY-01"
   ],
   "blocked": [],
   "agent_lanes": {
-    "agent/autolsb": "Auto LSB bounded scanner (steg PR-2)",
-    "agent/sstv-bridge": "sstv_decode registry op + Tauri/CLI bridge (SSTV PR-2)"
+    "agent/qr": "QR/barcode scanning bytes-first (steg)",
+    "agent/stereo": "stereo + 13-mode combine + GIF frames (steg)"
   },
   "validation": {
     "cargo_fmt": "pass",
@@ -61,5 +67,5 @@
     "cargo_test": "pass",
     "frontend": "pass"
   },
-  "notes": "Session 8: 6 PRs merged (#44-#49): parity matrices + design doc, PKI Lab GUI, JWT/JWS, SSTV core migration, steg core (media+transforms+extraction), CI timeout 60m. Registry ~190 ops, ~734 tests. Matrices updated: steg solver engine core + sstv-auto modules covered. In flight: Auto LSB scanner, SSTV blob bridge. Next: structure/carving (Lane C), QR + Stego Lab (Lane D), SSTV Lab GUI, stereo/combine/frames (Lane F), CTF specialty, Auto Decode v3."
+  "notes": "Session 8 (continued): 13 PRs merged #44-#56. Main d7b40b9. Registry ~200 ops. All validation via GitHub Actions CI only (user policy: no local cargo/npm). Lanes completed this session: PKI Lab GUI, JWT/JWS, SSTV core+bridge, steg core (media/transforms/extract), Auto LSB, structure/carving, SSTV Lab GUI, Stego Lab GUI, CTF specialty (bf/ook/buddha/beast/bear/core-values/AA/JJ). In flight: QR/barcode, stereo/combine/frames. Next: Auto Decode v3, signature scanner, Assist profiles, ECDSA attacks, crypto parity mop-up, prerelease + dogfooding."
 }
