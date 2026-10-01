@@ -2,7 +2,7 @@
 //! the GUI; no algorithm code is duplicated.
 
 use clap::{Parser, Subcommand};
-use cybercipher_core::{ExecutionContext, ParamMap, ParamValue, Value};
+use cybercipher_core::{ExecutionContext, OperationRegistry, ParamMap, ParamValue, Value};
 use cybercipher_engine::{RecipeEngine, RecipeV1, RunMode};
 use std::io::Read;
 use std::sync::Arc;
@@ -63,6 +63,21 @@ enum Command {
     Auto {
         /// Input file path, `-` for stdin, or a literal string.
         input: String,
+    },
+    /// Scan input for cryptographic algorithm signatures (constant tables,
+    /// code shapes). Evidence-backed candidates with confidence.
+    Sigscan {
+        /// Input file path, `-` for stdin, or a literal string.
+        input: String,
+        /// Detection mode: auto | text | bytes.
+        #[arg(long, default_value = "auto")]
+        mode: String,
+        /// Interpret the input as a hex string / hex dump (decode first).
+        #[arg(long)]
+        hex: bool,
+        /// Minimum confidence to report: low | medium | high.
+        #[arg(long, default_value = "low")]
+        min_confidence: String,
     },
     /// Execute a recipe file (JSON, format v1) on input.
     Recipe {
@@ -262,6 +277,15 @@ no plaintext recovered (see findings)"
                 let head: String = c.preview.chars().take(120).collect();
                 println!("    preview: {head:?}");
             }
+        }
+        Command::Sigscan {
+            input,
+            mode,
+            hex,
+            min_confidence,
+        } => {
+            let value = sigscan_value(&registry, &input, &mode, hex, &min_confidence);
+            print_value(&value);
         }
         Command::Recipe { recipe, input } => {
             let text = read_input(&recipe);
@@ -709,6 +733,30 @@ fn run_prng(cmd: PrngCmd) {
     }
 }
 
+/// Execute the crypto-signature-scan operation (shared with tests).
+fn sigscan_value(
+    registry: &OperationRegistry,
+    input: &str,
+    mode: &str,
+    hex: bool,
+    min_confidence: &str,
+) -> Value {
+    let op = registry.get("crypto-signature-scan").unwrap_or_else(|| {
+        eprintln!("error: `crypto-signature-scan` is not registered");
+        std::process::exit(2);
+    });
+    let mut map = ParamMap::new();
+    map.insert("mode", mode);
+    map.insert("input_is_hex", hex);
+    map.insert("min_confidence", min_confidence);
+    let data = read_input(input);
+    let value = Value::from_bytes(data);
+    match op.execute(&value, &map, &ExecutionContext::new()) {
+        Ok(out) => out,
+        Err(e) => fail(&e),
+    }
+}
+
 fn fail(e: &cybercipher_core::OperationError) -> ! {
     eprintln!("error: {e}");
     if let Some(d) = &e.details {
@@ -815,5 +863,64 @@ fn print_value(v: &Value) {
             }
         }
         Value::Null => {}
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_registry() -> Arc<OperationRegistry> {
+        let mut reg = cybercipher_engine::default_registry();
+        cybercipher_pki::jwt::register(&mut reg);
+        cybercipher_sstv::register_all(&mut reg);
+        Arc::new(reg)
+    }
+
+    #[test]
+    fn sigscan_cli_roundtrip_text_input() {
+        let registry = test_registry();
+        let value = sigscan_value(&registry, "sum += 0x9E3779B9;", "auto", false, "low");
+        match value {
+            Value::Json(json) => {
+                assert_eq!(json["mode"], "text");
+                let candidates = json["candidates"].as_array().unwrap();
+                let tea = candidates
+                    .iter()
+                    .find(|c| c["algorithm"] == "tea")
+                    .expect("tea candidate");
+                assert_eq!(tea["confidence"], "low");
+                assert!(tea["explanation"].as_str().unwrap().contains("weak"));
+            }
+            other => panic!("expected JSON output, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn sigscan_cli_roundtrip_hex_input() {
+        let registry = test_registry();
+        // 40 junk bytes, then the first 32 bytes of the AES S-box: a prefix
+        // anchor, so Medium confidence.
+        let mut blob = vec![0xA5u8; 40];
+        blob.extend_from_slice(&[
+            0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7,
+            0xab, 0x76, 0xca, 0x82, 0xc9, 0x7d, 0xfa, 0x59, 0x47, 0xf0, 0xad, 0xd4, 0xa2, 0xaf,
+            0x9c, 0xa4, 0x72, 0xc0,
+        ]);
+        let hex: String = blob.iter().map(|b| format!("{b:02x}")).collect();
+        let value = sigscan_value(&registry, &hex, "auto", true, "medium");
+        match value {
+            Value::Json(json) => {
+                assert_eq!(json["mode"], "bytes");
+                let candidates = json["candidates"].as_array().unwrap();
+                let aes = candidates
+                    .iter()
+                    .find(|c| c["algorithm"] == "aes")
+                    .expect("aes candidate");
+                assert_eq!(aes["confidence"], "medium");
+                assert_eq!(aes["locations"][0]["offset"].as_u64(), Some(40));
+            }
+            other => panic!("expected JSON output, got {other:?}"),
+        }
     }
 }
