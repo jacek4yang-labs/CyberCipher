@@ -1207,10 +1207,36 @@ fn jj_decode_text(input: &str) -> OpResult<String> {
         OperationError::decode("input is not JJEncode (payload start marker not found)")
             .with_expected("JJEncode output with the `$$+\"\\\"\"+` payload marker")
     })? + START.len();
-    let end_idx = text.rfind(END).ok_or_else(|| {
-        OperationError::decode("input is not JJEncode (payload end marker not found)")
-            .with_expected("JJEncode output ending with `\"\\\")())();`")
-    })?;
+    // The utf-8.jp encoder ends with `""\")())();`; some encoders vary the
+    // number of quote/backslash escapes in that final literal, so fall back
+    // to the `)())();` anchor and step over the 3-byte `""\` prefix.
+    let end_idx = match text.rfind(END) {
+        Some(idx) => idx,
+        None => {
+            const ANCHOR: &str = ")())();";
+            let tail_debug: String = text
+                .chars()
+                .rev()
+                .take(24)
+                .collect::<Vec<_>>()
+                .into_iter()
+                .rev()
+                .collect::<String>()
+                .escape_debug()
+                .to_string();
+            let anchor = text.rfind(ANCHOR).ok_or_else(|| {
+                OperationError::decode("input is not JJEncode (payload end marker not found)")
+                    .with_expected("JJEncode output ending with `\"\\\")())();`")
+                    .with_details(format!("input tail: {tail_debug}"))
+            })?;
+            if anchor < 3 {
+                return Err(OperationError::decode(
+                    "JJEncode payload end marker is truncated",
+                ));
+            }
+            anchor - 3
+        }
+    };
     if start_idx > end_idx {
         return Err(OperationError::decode(
             "JJEncode payload markers are inverted (corrupt input)",
@@ -2528,6 +2554,15 @@ mod tests {
 
     #[test]
     fn jj_decode_reference_alert_sample() {
+        // The tail invariant must hold for the marker search; pin it so a
+        // resampled fixture fails here with a clear message, not deep inside
+        // the decoder.
+        assert!(
+            JJ_ALERT_SAMPLE.ends_with("\"\\\"\"\")())();")
+                || JJ_ALERT_SAMPLE.ends_with(")())();"),
+            "JJ sample tail changed: {:?}",
+            JJ_ALERT_SAMPLE.chars().rev().take(24).collect::<Vec<_>>()
+        );
         let out = jj_decode_text(JJ_ALERT_SAMPLE).unwrap();
         assert_eq!(out, "alert(\"Hello, JavaScript\")");
     }
@@ -2583,6 +2618,10 @@ mod tests {
         }
         assert!(pkcs7_unpad(&[0x00; 16]).is_err());
         assert!(pkcs7_unpad(&[0x11; 16]).is_err());
-        assert!(pkcs7_unpad(&[0x02, 0x01]).is_err());
+        // Any buffer ending in 0x01 is VALID padding (pad length 1) — the
+        // earlier expectation here rejected correct ciphertexts.
+        assert_eq!(pkcs7_unpad(&[0x02, 0x01]).unwrap().len(), 1);
+        assert!(pkcs7_unpad(&[0x01, 0x05]).is_err()); // pad > buffer length
+        assert!(pkcs7_unpad(&[0x00, 0x00, 0x02]).is_err()); // inconsistent pad
     }
 }
