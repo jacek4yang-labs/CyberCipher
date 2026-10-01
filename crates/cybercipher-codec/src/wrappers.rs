@@ -1274,8 +1274,7 @@ fn encode_uu_lines(data: &[u8], table: &dyn Fn(u8) -> u8, len_char: &dyn Fn(u8) 
         // Classic uu/xx encoders emit a zero-length data line for empty
         // input; the decoder treats length 0 as end-of-data.
         out.push(len_char(0) as char);
-        out.push('
-');
+        out.push('\n');
         return out;
     }
     for chunk in data.chunks(45) {
