@@ -804,8 +804,13 @@ struct RawHit {
     detail: String,
     /// Source offsets of the match starts.
     offsets: Vec<usize>,
-    /// Source ranges [start, end) covered by this match, used to suppress
-    /// single-constant hits already contained in a table match.
+}
+
+/// Where a table match landed: source offsets of the match starts plus the
+/// source ranges [start, end) they cover (used to suppress single-constant
+/// hits already contained in a table match).
+struct TableMatch {
+    offsets: Vec<usize>,
     extents: Vec<(usize, usize)>,
 }
 
@@ -851,11 +856,8 @@ fn layout_note(le: bool) -> &'static str {
 }
 
 /// Search one byte pattern across all segments. Returns the hit kind (Full or
-/// prefix Anchor), the source offsets, and the source extents of the matches.
-fn search_pattern(
-    segments: &[Segment],
-    needle: &[u8],
-) -> Option<(HitKind, Vec<usize>, Vec<(usize, usize)>)> {
+/// prefix Anchor) and where the matches landed.
+fn search_pattern(segments: &[Segment], needle: &[u8]) -> Option<(HitKind, TableMatch)> {
     for seg in segments {
         let found = find_all(&seg.bytes, needle, OFFSETS_PER_HIT);
         if !found.is_empty() {
@@ -868,7 +870,7 @@ fn search_pattern(
                     (first, last + 8)
                 })
                 .collect();
-            return Some((HitKind::Full, offsets, extents));
+            return Some((HitKind::Full, TableMatch { offsets, extents }));
         }
     }
     // Full match failed: fall back to prefix anchors of 16 then 8 bytes.
@@ -890,7 +892,7 @@ fn search_pattern(
                         (first, last + 8)
                     })
                     .collect();
-                return Some((HitKind::Anchor, offsets, extents));
+                return Some((HitKind::Anchor, TableMatch { offsets, extents }));
             }
         }
     }
@@ -918,7 +920,7 @@ fn collect_table_hits(
             layouts.push((true, Cow::Owned(word_swapped(&canonical, table.word))));
         }
         for (le, needle) in layouts {
-            if let Some((kind, offsets, extents)) = search_pattern(segments, &needle) {
+            if let Some((kind, m)) = search_pattern(segments, &needle) {
                 let len = needle.len();
                 let (weight, detail) = match kind {
                     HitKind::Full => (
@@ -928,7 +930,7 @@ fn collect_table_hits(
                             part = table.part,
                             len = len,
                             note = layout_note(le),
-                            off = offsets[0]
+                            off = m.offsets[0]
                         ),
                     ),
                     HitKind::Anchor => (
@@ -939,19 +941,18 @@ offset {off} — table not fully present",
                             part = table.part,
                             alen = needle.len().min(16).min(len),
                             note = layout_note(le),
-                            off = offsets[0]
+                            off = m.offsets[0]
                         ),
                     ),
                 };
+                covered.extend(m.extents);
                 hits.push(RawHit {
                     part: table.part,
                     weight,
                     weak: false,
                     detail,
-                    extents: extents.clone(),
-                    offsets,
+                    offsets: m.offsets,
                 });
-                covered.extend(extents);
             }
         }
         // Printable-ASCII tables (ChaCha sigma) also match as string literals
@@ -963,6 +964,7 @@ offset {off} — table not fully present",
                     let len = canonical.len();
                     let extents: Vec<(usize, usize)> =
                         found.iter().map(|&o| (o, o + len)).collect();
+                    covered.extend(extents);
                     hits.push(RawHit {
                         part: table.part,
                         weight: full_weight(len),
@@ -973,10 +975,8 @@ offset {off} — table not fully present",
                             len = len,
                             off = found[0]
                         ),
-                        offsets: found.clone(),
-                        extents: extents.clone(),
+                        offsets: found,
                     });
-                    covered.extend(extents);
                 }
             }
         }
@@ -1011,8 +1011,6 @@ fn collect_single_hits(
                     continue;
                 }
                 let weight = if needle.len() >= 8 { 2 } else { 1 };
-                let extents: Vec<(usize, usize)> =
-                    live.iter().map(|&o| (o, o + needle.len())).collect();
                 hits.push(RawHit {
                     part: single.part,
                     weight,
@@ -1025,7 +1023,6 @@ fn collect_single_hits(
                         off = live[0]
                     ),
                     offsets: live,
-                    extents,
                 });
                 break;
             }
@@ -1094,7 +1091,7 @@ impl Tokenizer {
 }
 
 fn is_hex_byte(b: u8) -> bool {
-    matches!(b, b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F')
+    b.is_ascii_hexdigit()
 }
 
 fn is_ident_byte(b: u8) -> bool {
@@ -1160,7 +1157,7 @@ fn run_bytes(run: &Run, line: &[u8]) -> Option<Vec<u8>> {
         let be = value.to_be_bytes();
         return Some(be[16 - width..].to_vec());
     }
-    if run.len < 2 || run.len % 2 != 0 || run.len > MAX_BARE_RUN_CHARS {
+    if run.len < 2 || !run.len.is_multiple_of(2) || run.len > MAX_BARE_RUN_CHARS {
         return None;
     }
     let mut out = Vec::with_capacity(run.len / 2);
@@ -1190,7 +1187,7 @@ fn process_line(tok: &mut Tokenizer, line: &[u8], base: usize) {
     let runs = collect_runs(line);
     let standalone: Vec<&Run> = runs
         .iter()
-        .filter(|r| r.standalone && r.len >= 2 && r.len % 2 == 0)
+        .filter(|r| r.standalone && r.len >= 2 && r.len.is_multiple_of(2))
         .collect();
     let standalone_bytes: usize = standalone.iter().map(|r| r.len / 2).sum();
 
@@ -1300,7 +1297,6 @@ fn scan_text_hits(text: &str) -> (Vec<Segment>, Vec<RawHit>) {
                             line_no = idx + 1
                         ),
                         offsets: vec![line_start],
-                        extents: vec![(line_start, end)],
                     });
                     taken += 1;
                 }
@@ -1754,7 +1750,7 @@ fn decode_hex_input(raw: &[u8]) -> Result<Vec<u8>, OperationError> {
         .copied()
         .filter(|b| !b.is_ascii_whitespace())
         .collect();
-    if cleaned.len() % 2 != 0 {
+    if !cleaned.len().is_multiple_of(2) {
         return Err(OperationError::decode(format!(
             "hex input has an odd number of digits ({len})",
             len = cleaned.len()
