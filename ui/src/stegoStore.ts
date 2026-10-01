@@ -65,6 +65,30 @@ export interface StegoExtractResult {
   data: Uint8Array;
 }
 
+/**
+ * image_extract_appended JSON report header (first line of its Bytes output;
+ * fields mirror structure.rs image_extract_appended_op).
+ */
+export interface StegoAppendedHeader {
+  format?: string;
+  complete?: boolean;
+  present?: boolean;
+  offset?: number;
+  size?: number;
+  magic?: Record<string, unknown> | null;
+  preview_bytes?: number;
+  strings?: string[];
+  emitted_bytes?: number;
+  truncated?: boolean;
+  max_bytes?: number;
+}
+
+/** Result of one appended-data carve: header report plus the carved bytes. */
+export interface StegoAppendedResult {
+  header: StegoAppendedHeader | null;
+  data: Uint8Array;
+}
+
 /** One catalog entry, hard-coded to match transforms::catalog() exactly. */
 export interface StegoTransformDef {
   index: number;
@@ -135,7 +159,7 @@ export const RGB_ORDERS: { code: number; label: string }[] = [
 const DEFAULT_PLANE_MASK = 0x01010100;
 
 /** Tabs of the Stego Lab page. */
-export type StegoTab = "transform" | "extract" | "autolsb";
+export type StegoTab = "transform" | "extract" | "autolsb" | "structure";
 
 let bakeCounter = 0;
 
@@ -163,20 +187,29 @@ function runSingleOp(
   });
 }
 
-/** Split image_extract_bits output (base64) into its JSON header and payload. */
-function splitExtractOutput(base64: string): StegoExtractResult {
+/**
+ * Split a header-line transport output (base64): a JSON report header line
+ * followed by the raw payload bytes (the engine's established carrier).
+ */
+export function splitHeaderPayload(base64: string): { header: unknown; data: Uint8Array } {
   const bin = atob(base64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   const newline = bytes.indexOf(0x0a);
   if (newline < 0) return { header: null, data: bytes };
-  let header: StegoExtractHeader | null = null;
+  let header: unknown = null;
   try {
-    header = JSON.parse(new TextDecoder().decode(bytes.subarray(0, newline))) as StegoExtractHeader;
+    header = JSON.parse(new TextDecoder().decode(bytes.subarray(0, newline)));
   } catch {
     header = null;
   }
   return { header, data: bytes.subarray(newline + 1) };
+}
+
+/** Split image_extract_bits output (base64) into its JSON header and payload. */
+function splitExtractOutput(base64: string): StegoExtractResult {
+  const { header, data } = splitHeaderPayload(base64);
+  return { header: header === null ? null : (header as StegoExtractHeader), data };
 }
 
 /** Base64 of raw bytes (op input carries binary as base64). */
@@ -203,6 +236,34 @@ export function roiString(x: string, y: string, w: string, h: string): string {
 export function base64ByteLength(base64: string): number {
   const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
   return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
+}
+
+/** Container formats the structure analyzers understand (structure.rs). */
+export type StructureFormat = "png" | "jpeg" | "gif" | "bmp";
+
+/** Registry op ids of the per-format structure analyzers. */
+export type StructureOpId = `${StructureFormat}_structure`;
+
+/**
+ * Sniff the container magic from the first bytes of a base64 payload
+ * (structure.rs detect_format: PNG signature, JPEG FFD8, GIF87a/89a, BM).
+ * Decodes at most 24 base64 characters, never the whole payload.
+ */
+export function sniffImageFormat(base64: string): StructureFormat | null {
+  let bin: string;
+  try {
+    bin = atob(base64.slice(0, 24));
+  } catch {
+    return null;
+  }
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const startsWith = (signature: number[]) => signature.every((b, i) => bytes[i] === b);
+  if (startsWith([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return "png";
+  if (startsWith([0xff, 0xd8])) return "jpeg";
+  if (bin.startsWith("GIF87a") || bin.startsWith("GIF89a")) return "gif";
+  if (bin.startsWith("BM")) return "bmp";
+  return null;
 }
 
 export interface StegoStore {
@@ -267,6 +328,21 @@ export interface StegoStore {
   runScan: (deep: boolean) => Promise<void>;
   applyCandidate: (candidate: StegoCandidate) => Promise<void>;
 
+  // Structure tab (png/jpeg/gif/bmp_structure + image_extract_appended ops).
+  structureBusy: boolean;
+  structureError: string | null;
+  structureOp: StructureOpId | null;
+  structureReport: unknown | null;
+  structureOpen: boolean;
+  setStructureOpen: (open: boolean) => void;
+  runStructure: () => Promise<void>;
+  appendedMaxBytes: number;
+  setAppendedMaxBytes: (v: number) => void;
+  appendedBusy: boolean;
+  appendedError: string | null;
+  appendedResult: StegoAppendedResult | null;
+  runAppended: () => Promise<void>;
+
   // Handoff to the Workbench (binary travels as base64 input).
   sendToWorkbench: (base64: string) => void;
   /** Handoff to Auto Analyze (binary travels as base64 input, scan auto-runs). */
@@ -293,6 +369,13 @@ export const useStegoStore = create<StegoStore>((set, get) => {
       applyBusy: false,
       applyError: null,
       applied: null,
+      structureBusy: false,
+      structureError: null,
+      structureOp: null,
+      structureReport: null,
+      appendedBusy: false,
+      appendedError: null,
+      appendedResult: null,
     });
 
   /**
@@ -567,6 +650,86 @@ export const useStegoStore = create<StegoStore>((set, get) => {
       } catch (e) {
         if (superseded(fileBase64)) return;
         set({ applyBusy: false, applyError: e instanceof Error ? e.message : String(e) });
+      }
+    },
+
+    structureBusy: false,
+    structureError: null,
+    structureOp: null,
+    structureReport: null,
+    structureOpen: false,
+    setStructureOpen: (structureOpen) => set({ structureOpen }),
+    runStructure: async () => {
+      const { fileBase64, structureBusy } = get();
+      if (structureBusy || !fileBase64) return;
+      // The per-format analyzers walk raw container bytes; pick the op by magic.
+      const format = sniffImageFormat(fileBase64);
+      if (format === null) {
+        set({
+          structureBusy: false,
+          structureError:
+            "not a PNG/JPEG/GIF/BMP container — the structure analyzers walk raw file bytes",
+          structureOp: null,
+          structureReport: null,
+        });
+        return;
+      }
+      const opId: StructureOpId = `${format}_structure`;
+      set({ structureBusy: true, structureError: null, structureReport: null, structureOp: opId });
+      try {
+        const resp = await runSingleOp(opId, {}, fileBase64);
+        if (superseded(fileBase64)) return;
+        if (resp.report.error) throw new Error(formatInvokeError(resp.report.error));
+        if (resp.blocked_at !== null) {
+          throw new Error(`run stopped at stage ${resp.blocked_at}`);
+        }
+        const out = resp.output;
+        if (out === null || out.kind !== "json") {
+          throw new Error(`${opId} returned no report`);
+        }
+        set({ structureBusy: false, structureReport: out.value });
+      } catch (e) {
+        if (superseded(fileBase64)) return;
+        set({ structureBusy: false, structureError: e instanceof Error ? e.message : String(e) });
+      }
+    },
+
+    appendedMaxBytes: 65_536,
+    setAppendedMaxBytes: (appendedMaxBytes) => set({ appendedMaxBytes }),
+    appendedBusy: false,
+    appendedError: null,
+    appendedResult: null,
+    runAppended: async () => {
+      const { fileBase64, appendedBusy, appendedMaxBytes } = get();
+      if (appendedBusy || !fileBase64) return;
+      set({ appendedBusy: true, appendedError: null, appendedResult: null });
+      try {
+        const clampedMax = Math.min(Math.max(Math.trunc(appendedMaxBytes) || 0, 1), MAX_EXTRACT_BYTES);
+        const resp = await runSingleOp(
+          "image_extract_appended",
+          { max_bytes: clampedMax },
+          fileBase64,
+        );
+        if (superseded(fileBase64)) return;
+        if (resp.report.error) throw new Error(formatInvokeError(resp.report.error));
+        if (resp.blocked_at !== null) {
+          throw new Error(`run stopped at stage ${resp.blocked_at}`);
+        }
+        const out = resp.output;
+        if (out === null || out.kind !== "bytes") {
+          throw new Error("image_extract_appended returned no byte payload");
+        }
+        const { header, data } = splitHeaderPayload(out.base64);
+        set({
+          appendedBusy: false,
+          appendedResult: {
+            header: header === null ? null : (header as StegoAppendedHeader),
+            data,
+          },
+        });
+      } catch (e) {
+        if (superseded(fileBase64)) return;
+        set({ appendedBusy: false, appendedError: e instanceof Error ? e.message : String(e) });
       }
     },
 

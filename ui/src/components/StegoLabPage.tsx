@@ -7,6 +7,7 @@ import {
   TRANSFORM_GROUPS,
   bytesToBase64,
   useStegoStore,
+  type StegoAppendedResult,
   type StegoCandidate,
   type StegoExtractResult,
   type StegoTab,
@@ -757,12 +758,212 @@ function AutoLsbTab() {
   );
 }
 
+// ------------------------------------------------------------- structure ----
+
+const STRUCTURE_OP_NAMES: Record<string, string> = {
+  png_structure: "PNG Structure",
+  jpeg_structure: "JPEG Structure",
+  gif_structure: "GIF Structure",
+  bmp_structure: "BMP Structure",
+};
+
+function AppendedView({ result }: { result: StegoAppendedResult }) {
+  const sendToWorkbench = useStegoStore((s) => s.sendToWorkbench);
+  const sendToAutoDecode = useStegoStore((s) => s.sendToAutoDecode);
+  const header = result.header;
+  const magicId =
+    typeof header?.magic?.id === "string" ? header.magic.id : null;
+  return (
+    <div className="sstv-applied">
+      <div className="sstv-cand-head">
+        {header?.present ? (
+          <>
+            <span className="pki-kind-chip">
+              appended {formatSize(result.data.length)}
+              {header.size !== undefined ? ` of ${formatSize(header.size)}` : ""}
+            </span>
+            {header.offset !== undefined && (
+              <span className="pki-kind-chip">
+                at 0x{header.offset.toString(16)}
+              </span>
+            )}
+            {magicId && <span className="pki-kind-chip">looks like {magicId}</span>}
+            {header.truncated && <span className="pki-kind-chip">truncated</span>}
+            <span className="spacer" />
+            <button
+              className="tool-btn"
+              onClick={() => sendToWorkbench(bytesToBase64(result.data))}
+              title="Put the carved bytes into the Workbench input (base64)"
+            >
+              → Workbench
+            </button>
+            <button
+              className="tool-btn"
+              onClick={() => sendToAutoDecode(bytesToBase64(result.data))}
+              title="Run Auto Analyze on the carved bytes"
+            >
+              → Auto Decode
+            </button>
+            <CopyHexButton bytes={result.data} />
+          </>
+        ) : (
+          <span className="dim">no data after the container's logical end of file</span>
+        )}
+      </div>
+      {header?.strings && header.strings.length > 0 && (
+        <div className="dim sstv-cand-reason">
+          printable strings: {header.strings.join(" · ")}
+        </div>
+      )}
+      {header?.present && result.data.length > 0 && <BytePreview bytes={result.data} />}
+    </div>
+  );
+}
+
+function StructureTab() {
+  const fileBase64 = useStegoStore((s) => s.fileBase64);
+  const structureBusy = useStegoStore((s) => s.structureBusy);
+  const structureError = useStegoStore((s) => s.structureError);
+  const structureOp = useStegoStore((s) => s.structureOp);
+  const structureReport = useStegoStore((s) => s.structureReport);
+  const structureOpen = useStegoStore((s) => s.structureOpen);
+  const setStructureOpen = useStegoStore((s) => s.setStructureOpen);
+  const runStructure = useStegoStore((s) => s.runStructure);
+  const appendedMaxBytes = useStegoStore((s) => s.appendedMaxBytes);
+  const setAppendedMaxBytes = useStegoStore((s) => s.setAppendedMaxBytes);
+  const appendedBusy = useStegoStore((s) => s.appendedBusy);
+  const appendedError = useStegoStore((s) => s.appendedError);
+  const appendedResult = useStegoStore((s) => s.appendedResult);
+  const runAppended = useStegoStore((s) => s.runAppended);
+
+  // Analyze once per loaded file while the tab is visible; a retry after an
+  // error (or a re-run) goes through the button.
+  useEffect(() => {
+    if (!fileBase64) return;
+    if (structureBusy || structureError !== null || structureOp !== null) return;
+    void runStructure();
+  }, [fileBase64, structureBusy, structureError, structureOp, runStructure]);
+
+  const report = (structureReport ?? null) as Record<string, unknown> | null;
+  const reportJson = useMemo(
+    () => (structureReport !== null ? JSON.stringify(structureReport, null, 2) : ""),
+    [structureReport],
+  );
+  const appendedFlag = report?.["appended"] as { present?: boolean } | null | undefined;
+  const complete = report?.["complete"] === true;
+  const truncatedWalk = report?.["truncated"] === true;
+  const fileSize = typeof report?.["file_size"] === "number" ? report["file_size"] : null;
+
+  return (
+    <>
+      <Section title="Container structure">
+        {!fileBase64 ? (
+          <div className="rsa-empty dim">
+            Load a PNG, JPEG, GIF or BMP to walk its raw container bytes: chunks / segments /
+            blocks with offsets and CRC validity, header geometry, comments, and the logical end
+            of file with appended-data detection.
+          </div>
+        ) : (
+          <>
+            <div className="pki-run-row">
+              <button
+                className="bake-btn"
+                onClick={() => void runStructure()}
+                disabled={structureBusy}
+                title={
+                  structureOp
+                    ? `Re-run ${STRUCTURE_OP_NAMES[structureOp] ?? structureOp} on the original file bytes`
+                    : "Run the matching structure analyzer on the original file bytes"
+                }
+              >
+                {structureBusy ? "Walking…" : structureOp ? "Re-analyze" : "Analyze structure"}
+              </button>
+              {structureBusy && (
+                <span className="dim sstv-busy-note">
+                  the walk runs to completion on the engine side — not cancellable
+                </span>
+              )}
+            </div>
+            <ErrorBanner error={structureError} />
+            {report !== null && (
+              <>
+                <Chips
+                  items={[
+                    structureOp ? (STRUCTURE_OP_NAMES[structureOp] ?? structureOp) : null,
+                    fileSize !== null ? `file size ${formatSize(fileSize)}` : null,
+                    complete ? "walk complete" : "walk incomplete",
+                    truncatedWalk ? "report truncated" : null,
+                    appendedFlag?.present ? "appended data found" : "no appended data",
+                  ]}
+                />
+                <button
+                  className="pki-advanced-toggle"
+                  onClick={() => setStructureOpen(!structureOpen)}
+                  title="The analyzer's full bounded report, exactly as the engine produced it"
+                >
+                  <span className="pki-twist">{structureOpen ? "▾" : "▸"}</span> Raw report JSON (
+                  {formatSize(reportJson.length)})
+                </button>
+                {structureOpen && <pre className="sstv-evidence">{reportJson}</pre>}
+              </>
+            )}
+          </>
+        )}
+      </Section>
+
+      <Section title="Appended data">
+        {!fileBase64 ? (
+          <div className="rsa-empty dim">
+            Carve bytes appended after the container's logical end of file (PNG IEND, JPEG EOI,
+            GIF trailer, BMP pixel-array end) with the image_extract_appended op.
+          </div>
+        ) : (
+          <>
+            <div className="pki-run-row">
+              <label
+                className="pki-select-label"
+                title="Bounded carve size; the header reports the total appended size and a truncated flag. Hard cap 16 MiB."
+              >
+                max bytes
+                <input
+                  type="number"
+                  min={1}
+                  max={MAX_EXTRACT_BYTES}
+                  step={1}
+                  value={appendedMaxBytes}
+                  onChange={(e) => setAppendedMaxBytes(Number(e.target.value))}
+                />
+              </label>
+              <button
+                className="bake-btn"
+                onClick={() => void runAppended()}
+                disabled={appendedBusy}
+                title="Run image_extract_appended on the original file bytes"
+              >
+                {appendedBusy ? "Carving…" : "Extract appended"}
+              </button>
+              {appendedBusy && (
+                <span className="dim sstv-busy-note">
+                  the carve runs to completion on the engine side — not cancellable
+                </span>
+              )}
+            </div>
+            <ErrorBanner error={appendedError} />
+            {appendedResult && <AppendedView result={appendedResult} />}
+          </>
+        )}
+      </Section>
+    </>
+  );
+}
+
 // ----------------------------------------------------------------- page ----
 
 const TABS: [StegoTab, string][] = [
   ["transform", "Transforms"],
   ["extract", "Extract"],
   ["autolsb", "Auto LSB"],
+  ["structure", "Structure"],
 ];
 
 export function StegoLabPage() {
@@ -799,6 +1000,7 @@ export function StegoLabPage() {
             {tab === "transform" && <TransformTab />}
             {tab === "extract" && <ExtractTab />}
             {tab === "autolsb" && <AutoLsbTab />}
+            {tab === "structure" && <StructureTab />}
           </div>
         </div>
       </div>
