@@ -12,11 +12,15 @@ mod auto;
 mod executor;
 mod payload;
 mod recipe;
+mod signature;
 
 pub use auto::{auto_decode, AutoCandidate};
 pub use executor::{ExecutionReport, RunMode, StageStatus};
 pub use payload::{ValuePayload, ValueSummary};
 pub use recipe::{RecipeEdge, RecipeNodeV1, RecipeV1};
+pub use signature::{
+    scan, scan_bytes, scan_text, Confidence, ScanMode, ScanReport, SigCandidate, SigLocation,
+};
 
 use cybercipher_core::{ExecutionContext, OperationRegistry};
 use parking_lot::Mutex;
@@ -320,5 +324,6 @@ pub fn default_registry() -> OperationRegistry {
     let mut reg = OperationRegistry::new();
     cybercipher_codec::register_all(&mut reg);
     cybercipher_crypto::register_all(&mut reg);
+    signature::register(&mut reg);
     reg
 }
