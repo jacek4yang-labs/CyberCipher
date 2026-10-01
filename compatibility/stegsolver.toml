@@ -84,9 +84,9 @@ status = "covered"
 notes = "Bit-exact; oracle-verified (PR #48)."
 
 [entries.transform_engine_cancellation]
-ours = "ExecutionContext cancellation in transforms/extraction; CostClass registered"
+ours = "ExecutionContext cancellation + bounded GUI caches"
 status = "partial"
-notes = "Cancellation checked per row/col; transforms are CostClass::Instant. Remaining for full parity: bounded transform/render caches + coalescing of superseded jobs in the Tauri command layer (Stego Lab GUI lane). Missing semantics: generation-ID discard of stale render jobs."
+notes = "Per-row/col cancellation in engine; the Stego Lab store bounds its transform cache (16 entries). Remaining: generation-ID coalescing of superseded in-flight transform commands (the command layer is synchronous today, so stale queues are bounded, not coalesced)."
 
 [entries.manual_bit_extraction]
 ours = "steg::extract::extract_bounded"
@@ -151,21 +151,19 @@ status = "covered"
 notes = "Per-format expected_end (IEND/EOI/trailer/pixel-array end); appended section reports offset/size, detected magic via the shared cybercipher-codec::sniff_magic detector (same table the file-magic op uses), 256-byte hex preview and a bounded printable-string snippet. image_extract_appended (CostClass::Interactive) emits the JSON header line plus the raw appended bytes (bounded, default 64 KiB, cap 16 MiB) for chaining into Auto Decode. Carving only inspects — never unpacks or executes. Lane C PR-1."
 
 [entries.frame_animation_support]
-ours = "—"
-status = "missing"
-notes = "Lazy frame access, bounded cache, frame metadata, export selected frame (GIF first; APNG/WebP if library support is clean). Lane C PR-2."
-
-# ---------------------------------------------------- qr / barcode ----
+ours = "steg::frames + image_gif_info / image_gif_frame ops"
+status = "covered"
+notes = "GIF: lazy frame indexing (metadata only, 4096-frame cap), disposal-aware composition (Keep/Background/Previous, transparent-index handling), bounded per-frame decode, export as PNG. APNG/WebP frames not implemented (library support still not clean enough) — tracked as the residual. PR #58."
 
 [entries.qr_barcode_scan]
-ours = "— (planned Lane D)"
-status = "missing"
-notes = "Whole-image + ROI scan, multiple symbols, Structured Append merge, inverted/rotated/rescaled fallbacks, alternate binarizer where useful, TRY_HARDER analogue. Rust: rxing (ZXing port, covers 1D+2D breadth like upstream) primary, rqrr fallback for QR-only. Lane D PR-1."
+ours = "steg::qr (rxing) + image_scan_qr / image_scan_qr_bytes ops"
+status = "covered"
+notes = "Whole-image + ROI scan, multiple symbols, QR Structured Append merge (explicit validation, no guessing), inverted/rotated/rescaled fallbacks (each stage only when earlier attempts are empty), TRY_HARDER always on, positions mapped back through rotation/scale, duplicate-hit merge. PR #62."
 
 [entries.qr_binary_safe_payload]
-ours = "Auto Decode handles bytes-first input"
-status = "partial"
-notes = "Upstream separates raw payload bytes / decoded text / raw codewords + payload classification with suggested extensions, bounded hex/ASCII preview, never opens payloads. We mirror the separation and add Copy Text/Hex, Save, Send to Workbench, Send to Auto Decode. Lane D PR-1 + GUI."
+ours = "bytes-first payload model + shared payload classifier"
+status = "covered"
+notes = "Raw payload = decoded byte segments verbatim (never rebuilt from text); decoded text only when valid UTF-8; alphanumeric symbols report no invented payload; classification via the shared payload detector; never opened/executed. Copy/Save/Send actions in the GUI. PR #62."
 
 [entries.screen_region_capture]
 ours = "—"
@@ -175,21 +173,19 @@ notes = "X11 ScreenGrabber is desktop integration, not engine. Per product decis
 # ------------------------------------------------------- stego tools ----
 
 [entries.stereogram_solver]
-ours = "cybercipher-steg::stereo + registry ops image_stereo_shift / image_stereo_auto"
+ours = "steg::stereo + image_stereo_shift / image_stereo_auto ops"
 status = "covered"
-notes = "shiftedXor with right-edge wrap (out(x,y)=in(x,y)^in((x+offset) mod w, y)), edgeHold variant, bestOffset scan (sampling step, offsets 1..w/2, smallest offset wins ties via strict >, ExecutionContext cancellation per offset), normalize/next/prev offset. Offset-0 shortcut -> opaque black image. Shipped in Lane F PR-1."
+notes = "Bit-exact: shifted_xor (right-edge wrap, offset normalized), edge_hold variant, best_offset (step sampling, offsets 1..w/2, smallest-offset-wins ties, cancellable), offset navigation helpers. PR #58."
 
 [entries.image_combine_13_modes]
-ours = "cybercipher-steg::combine + registry op image_combine (mode 0..12, List input [A, B])"
+ours = "steg::combine + image_combine op (Value::List two-image input)"
 status = "covered"
-notes = "Exact modes: XOR/OR/AND/ADD/SUB/MUL whole-pixel (Java int wraparound via u32 wrapping ops, pinned by tests), per-channel ADD/SUB/MUL with channel masks (8-bit lane wrap), LIGHTEST/DARKEST per-channel (R,G,B only), INTERLACE rows (h*2) / columns (w*2) on size intersection; size mismatch -> max size with transparent-black fill; all outputs opaque; inputs never mutated. Shipped in Lane F PR-1."
+notes = "All 13 modes bit-exact incl. Java-int wraparound (whole-pixel ADD/SUB/MUL), per-channel variants, LIGHTEST/DARKEST, INTERLACE rows (h*2)/columns (w*2) on the size intersection; mismatched sizes -> max canvas with transparent-black fill; inputs immutable. PR #58."
 
 [entries.pixel_inspector]
-ours = "—"
+ours = "GUI omitted pending a per-pixel readback op"
 status = "missing"
-notes = "Zoom/pan/fit/1:1, pixel coordinates, RGBA + hex value, ROI selection feeding barcode/extraction/analysis. GUI lane (Stego Lab viewport), backed by Rust ops."
-
-# ------------------------------------------------------- performance ----
+notes = "The op layer exposes image_info aggregates only; the Stego Lab pixel tab was deliberately omitted (no fake UI). Remaining: per-pixel/region readback op + viewport zoom/pan/fit/1:1 + ROI selection feeding extract/QR. Tracked as GUI-COMPOSE lane work."
 
 [entries.image_performance_model]
 ours = "flat arrays + bounded decode + per-row cancellation"
@@ -214,6 +210,7 @@ status = "superset"
 notes = "Steg/SSTV operations register like every other CyberCipher op: compose in recipes, auto-bake for Instant cost classes, audit trails. Upstream has no equivalent."
 
 [entries.cross_tool_composition]
-ours = "planned end-to-end chains"
-status = "missing"
-notes = "Image -> transform/LSB -> bytes -> Auto Decode -> flag; QR bytes -> Auto Decode; SSTV -> PNG -> Stego -> Auto LSB -> Auto Decode. This composition is the core product goal; regression fixtures per docs/design-steg-sstv.md acceptance flows A..J."
+ours = "registry ops chain headlessly; GUI handoffs present"
+status = "partial"
+notes = "Engine-level composition is real: transform/extract/auto-LSB/QR/structure/carving/stereo/combine/frames are registry ops composable in recipes and via image_extract_bits header-line transport; Stego/SSTV Labs send results to Workbench and run Auto LSB on decoded images. Remaining: SSTV -> Stego Lab cross-page handoff and appended-bytes -> Auto Decode one-click actions (GUI-COMPOSE lane)."
+
