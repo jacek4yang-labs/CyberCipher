@@ -11,7 +11,10 @@ use cybercipher_core::{ExecutionContext, OpResult, OperationRegistry, Value};
 use cybercipher_media::{decode, encode_png, DecodeLimits, Roi};
 
 use crate::auto_lsb;
+use crate::combine::{self, CombineMode};
 use crate::extract::{extract_bounded, ExtractionOptions, RgbOrder};
+use crate::frames;
+use crate::stereo;
 use crate::transforms::{self};
 
 /// Default bounded-preview size shared by the extraction and carving ops.
@@ -80,6 +83,135 @@ fn image_transform_op(v: &Value, params: &ParamMap, ctx: &ExecutionContext) -> O
     let index = params.require_int("transform", 0, 41)? as usize;
     let transformed = transforms::apply_checked(index, &image, ctx)?;
     let png = encode_png(&transformed).map_err(|e| media_error(e, OP))?;
+    Ok(Value::Bytes(png))
+}
+
+// ---------------------------------------------------------------------------
+// Stereo / combine / GIF frames
+// ---------------------------------------------------------------------------
+
+fn image_stereo_shift_op(v: &Value, params: &ParamMap, _: &ExecutionContext) -> OpResult<Value> {
+    const OP: &str = "Stereo Shift";
+    let image = decode_input_image(v, OP)?;
+    let offset = params.int_or("offset", 1);
+    let result = if params.bool_or("edge_hold", false) {
+        stereo::edge_hold(&image, offset)
+    } else {
+        stereo::shifted_xor(&image, offset)
+    };
+    let png = encode_png(&result).map_err(|e| media_error(e, OP))?;
+    Ok(Value::Bytes(png))
+}
+
+fn image_stereo_auto_op(v: &Value, params: &ParamMap, ctx: &ExecutionContext) -> OpResult<Value> {
+    const OP: &str = "Stereo Auto";
+    let image = decode_input_image(v, OP)?;
+    let sample_step = params.int_or("sample_step", 2).max(1) as usize;
+    let best = stereo::best_offset(&image, sample_step, ctx)?;
+    Ok(Value::Json(serde_json::json!({
+        "best_offset": best,
+        "sample_step": sample_step,
+        "width": image.width,
+        "height": image.height,
+        "hint": if best == 0 {
+            "no repeating pattern found"
+        } else {
+            "apply the offset with Stereo Shift to reveal the depth map"
+        },
+    })))
+}
+
+fn decode_two_images(
+    v: &Value,
+    op: &str,
+) -> OpResult<(cybercipher_media::RgbaImage, cybercipher_media::RgbaImage)> {
+    let items = match v {
+        Value::List(items) => items,
+        other => {
+            let found = format!("{:?}", other.kind());
+            return Err(OperationError::invalid_input(format!(
+                "{op} expects a list of two images [image A, image B], got {found}"
+            ))
+            .with_expected("List of two Bytes items")
+            .with_actual(found));
+        }
+    };
+    if items.len() != 2 {
+        return Err(OperationError::invalid_input(format!(
+            "{op} expects exactly two images, got {}",
+            items.len()
+        ))
+        .with_expected("2 items")
+        .with_actual(items.len().to_string()));
+    }
+    Ok((
+        decode_input_image(&items[0], op)?,
+        decode_input_image(&items[1], op)?,
+    ))
+}
+
+fn image_combine_op(v: &Value, params: &ParamMap, _: &ExecutionContext) -> OpResult<Value> {
+    const OP: &str = "Image Combine";
+    let (first, second) = decode_two_images(v, OP)?;
+    let mode_index = params.require_int("mode", 0, 12)? as usize;
+    let mode = CombineMode::from_legacy_index(mode_index).ok_or_else(|| {
+        OperationError::invalid_param("mode", format!("no combine mode {mode_index}"))
+            .with_expected("0..12")
+    })?;
+    let combined = combine::combine(mode, &first, &second)?;
+    let png = encode_png(&combined).map_err(|e| media_error(e, OP))?;
+    Ok(Value::Bytes(png))
+}
+
+fn gif_bytes_input<'a>(v: &'a Value, op: &str) -> OpResult<&'a [u8]> {
+    match v {
+        Value::Bytes(b) => Ok(b),
+        other => {
+            let found = format!("{:?}", other.kind());
+            Err(
+                OperationError::invalid_input(format!("{op} expects GIF file bytes, got {found}"))
+                    .with_expected("Bytes")
+                    .with_actual(found),
+            )
+        }
+    }
+}
+
+fn image_gif_info_op(v: &Value, _: &ParamMap, _: &ExecutionContext) -> OpResult<Value> {
+    const OP: &str = "GIF Info";
+    let bytes = gif_bytes_input(v, OP)?;
+    let index = frames::index_frames(bytes, &DecodeLimits::default())?;
+    let frames_json: Vec<serde_json::Value> = index
+        .frames
+        .iter()
+        .map(|f| {
+            serde_json::json!({
+                "index": f.index,
+                "left": f.left,
+                "top": f.top,
+                "width": f.width,
+                "height": f.height,
+                "delay_cs": f.delay_cs,
+                "disposal": f.disposal.name(),
+                "transparent_index": f.transparent_index,
+                "interlaced": f.interlaced,
+            })
+        })
+        .collect();
+    Ok(Value::Json(serde_json::json!({
+        "screen": { "width": index.screen_width, "height": index.screen_height },
+        "frame_count": index.frames.len(),
+        "frames_truncated": index.truncated,
+        "frames": frames_json,
+    })))
+}
+
+fn image_gif_frame_op(v: &Value, params: &ParamMap, ctx: &ExecutionContext) -> OpResult<Value> {
+    const OP: &str = "GIF Frame";
+    let bytes = gif_bytes_input(v, OP)?;
+    let index = params.int_or("frame", 0).max(0) as usize;
+    let composed = frames::decode_frame(bytes, index, &DecodeLimits::default(), ctx)?;
+    let png = encode_png(&composed).map_err(|e| media_error(e, OP))?;
     Ok(Value::Bytes(png))
 }
 
@@ -418,6 +550,119 @@ pub(crate) fn register(reg: &mut OperationRegistry) {
         ),
         auto_lsb_scan_op,
     );
+
+    reg.add_simple(
+        spec(
+            "image_stereo_shift",
+            "Stereo Shift",
+            "Stereogram solver: XORs the image with a horizontally shifted copy of itself, which reveals the depth map of an autostereogram once the shift matches the repeating pattern width. Wraps the sample at the right edge (or clamps it with edge hold); offset 0 collapses to opaque black.",
+            A,
+            &[B],
+            B,
+            CostClass::Instant,
+            false,
+            vec![
+                p_int("offset", "Offset (pixels)", 1, "Horizontal shift; negative values and values at or beyond the width wrap around (normalized into 0..width-1)."),
+                p_bool("edge_hold", "Edge hold", false, "Clamp the sample at the right edge instead of wrapping, removing the wrap-around seam on the last columns."),
+            ],
+            &["steg", "image", "ctf", "stereo"],
+            &[],
+            "Semantics ported from StegSolve via StegSolver c14bfa9 (MIT): StereoTransform.shiftedXor/withEdgeHold",
+            "Hand-computed vectors over a period-8 pattern plus edge-hold/normalization fixtures",
+        ),
+        image_stereo_shift_op,
+    );
+
+    reg.add_simple(
+        spec(
+            "image_stereo_auto",
+            "Stereo Auto",
+            "Scans for the stereogram offset with the strongest self similarity: offsets 1..=width/2 are compared on every Nth row and column and the best match wins, with the smallest offset preferred among equals so the fundamental pattern period beats its multiples.",
+            A,
+            &[B],
+            J,
+            CostClass::Interactive,
+            false,
+            vec![p_int(
+                "sample_step",
+                "Sample step",
+                2,
+                "Compare only every Nth row and column (1 = exhaustive). The scan is O(width^2 * height / step).",
+            )],
+            &["steg", "image", "ctf", "stereo", "auto"],
+            &[],
+            "Semantics ported from StegSolve via StegSolver c14bfa9 (MIT): StereoTransform.bestOffset",
+            "Period-8 autostereogram fixtures; tie-breaking and cancellation tests",
+        ),
+        image_stereo_auto_op,
+    );
+
+    reg.add_simple(
+        spec(
+            "image_combine",
+            "Image Combine",
+            "Combines two images with one of the 13 StegSolve combiner modes (bit-exact): XOR/OR/AND/ADD/SUB/MUL whole-pixel with Java int wraparound, per-channel ADD/SUB/MUL wrapping within each 8-bit lane, per-channel Lightest/Darkest, and row/column interlacing on the size intersection. Mismatched sizes use the max canvas with transparent-black fill; every output is opaque. Input: a list of exactly two images [A, B].",
+            A,
+            &[cybercipher_core::ValueKind::List],
+            B,
+            CostClass::Instant,
+            false,
+            vec![p_int(
+                "mode",
+                "Mode",
+                0,
+                "Legacy combiner number 0..12: 0 XOR, 1 OR, 2 AND, 3 ADD, 4 ADD (R,G,B separate), 5 SUB, 6 SUB (R,G,B separate), 7 MUL, 8 MUL (R,G,B separate), 9 Lightest, 10 Darkest, 11 Interlace rows, 12 Interlace columns.",
+            )],
+            &["steg", "image", "ctf", "combine"],
+            &[],
+            "Semantics ported from StegSolve via StegSolver c14bfa9 (MIT): CombineMode.combine/combinePixels",
+            "Hand-computed per-mode vectors including Java wraparound, size-mismatch and interlace geometry fixtures",
+        ),
+        image_combine_op,
+    );
+
+    reg.add_simple(
+        spec(
+            "image_gif_info",
+            "GIF Info",
+            "Indexes the frames of a GIF file without decoding pixel data: logical screen size, frame count, and per-frame region, delay, disposal method, transparency and interlace. Indexing stops at 4096 frames and reports the cut.",
+            A,
+            &[B],
+            J,
+            CostClass::Interactive,
+            false,
+            vec![],
+            &["steg", "image", "ctf", "gif", "frames"],
+            &[],
+            "GIF89a block semantics; frame metadata via the gif crate (StegSolver Lane C frames model)",
+            "Synthetic multi-frame GIF fixtures with disposal/transparency checks",
+        ),
+        image_gif_info_op,
+    );
+
+    reg.add_simple(
+        spec(
+            "image_gif_frame",
+            "GIF Frame",
+            "Decodes one GIF frame and returns it as PNG. Frames are composited onto the logical screen in order (restore-to-background/previous honoured), so the result is what a viewer displays while that frame is shown; undrawn regions stay transparent.",
+            A,
+            &[B],
+            B,
+            CostClass::Interactive,
+            false,
+            vec![p_int(
+                "frame",
+                "Frame index",
+                0,
+                "Zero-based frame number; the stream is decoded up to this frame (no random access).",
+            )],
+            &["steg", "image", "ctf", "gif", "frames"],
+            &[],
+            "GIF89a disposal semantics; decoding via the gif crate (StegSolver Lane C frames model)",
+            "Synthetic three-frame fixture with disposal-chain and transparency assertions",
+        ),
+        image_gif_frame_op,
+    );
 }
 
 #[cfg(test)]
@@ -676,5 +921,307 @@ mod tests {
         let ctx = ExecutionContext::new().with_cancel(flag);
         let err = op.execute(&input, &ParamMap::new(), &ctx).unwrap_err();
         assert_eq!(err.kind, cybercipher_core::ErrorKind::Cancelled);
+    }
+
+    // ------------------------------------------------------- stereo ops ----
+
+    /// PNG of a 32x4 image whose colour depends only on `x % 8` (period 8).
+    fn periodic8_png() -> Vec<u8> {
+        let mut argb = Vec::new();
+        for _y in 0..4u32 {
+            for x in 0..32u32 {
+                let v = 0x10 + (x % 8) * 0x1E;
+                argb.push(0xFF00_0000 | (v << 16) | (v << 8) | v);
+            }
+        }
+        encode_png(&RgbaImage::new(32, 4, argb, false).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn image_stereo_shift_roundtrips_through_registry() {
+        let reg = registry();
+        let op = reg.get("image_stereo_shift").expect("op registered");
+        let input = Value::Bytes(periodic8_png());
+
+        let mut params = ParamMap::new();
+        params.insert("offset", 8i64);
+        let out = op
+            .execute(&input, &params, &ExecutionContext::new())
+            .unwrap();
+        let Value::Bytes(png) = out else {
+            panic!("expected bytes");
+        };
+        let decoded = decode(&png, &DecodeLimits::default()).unwrap();
+        assert_eq!((decoded.width, decoded.height), (32, 4));
+        assert!(decoded.argb.iter().all(|&p| p == 0xFF00_0000));
+
+        // Edge hold on a non-matching offset still returns a full PNG.
+        let mut params = ParamMap::new();
+        params.insert("offset", 3i64);
+        params.insert("edge_hold", true);
+        let out = op
+            .execute(&input, &params, &ExecutionContext::new())
+            .unwrap();
+        let Value::Bytes(png) = out else {
+            panic!("expected bytes");
+        };
+        let decoded = decode(&png, &DecodeLimits::default()).unwrap();
+        assert_eq!(decoded.argb.len(), 128);
+    }
+
+    #[test]
+    fn image_stereo_auto_reports_the_period() {
+        let reg = registry();
+        let op = reg.get("image_stereo_auto").expect("op registered");
+        let out = op
+            .execute(
+                &Value::Bytes(periodic8_png()),
+                &ParamMap::new(),
+                &ExecutionContext::new(),
+            )
+            .unwrap();
+        let Value::Json(report) = out else {
+            panic!("expected json");
+        };
+        assert_eq!(report["best_offset"], 8);
+        assert_eq!(report["sample_step"], 2);
+        assert_eq!(report["width"], 32);
+        assert_eq!(report["height"], 4);
+
+        // Cancellation through the execution context.
+        let flag = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(true));
+        let ctx = ExecutionContext::new().with_cancel(flag);
+        let err = op
+            .execute(&Value::Bytes(periodic8_png()), &ParamMap::new(), &ctx)
+            .unwrap_err();
+        assert_eq!(err.kind, cybercipher_core::ErrorKind::Cancelled);
+    }
+
+    // ------------------------------------------------------ combine ops ----
+
+    fn combine_png(pixels: &[u32]) -> Vec<u8> {
+        encode_png(&RgbaImage::new(1, 1, pixels.to_vec(), true).unwrap()).unwrap()
+    }
+
+    #[test]
+    fn image_combine_roundtrips_through_registry() {
+        let reg = registry();
+        let op = reg.get("image_combine").expect("op registered");
+        let input = Value::List(vec![
+            Value::Bytes(combine_png(&[0x0000_FF01])),
+            Value::Bytes(combine_png(&[0x0000_00FF])),
+        ]);
+
+        // Whole-pixel ADD carries into red: 0x0000FF01 + 0x000000FF.
+        let mut params = ParamMap::new();
+        params.insert("mode", 3i64);
+        let out = op
+            .execute(&input, &params, &ExecutionContext::new())
+            .unwrap();
+        let Value::Bytes(png) = out else {
+            panic!("expected bytes");
+        };
+        assert_eq!(
+            decode(&png, &DecodeLimits::default()).unwrap().argb,
+            vec![0xFF01_0000]
+        );
+
+        // Per-channel ADD wraps within the blue lane instead.
+        let mut params = ParamMap::new();
+        params.insert("mode", 4i64);
+        let out = op
+            .execute(&input, &params, &ExecutionContext::new())
+            .unwrap();
+        let Value::Bytes(png) = out else {
+            panic!("expected bytes");
+        };
+        assert_eq!(
+            decode(&png, &DecodeLimits::default()).unwrap().argb,
+            vec![0xFF00_FF00]
+        );
+    }
+
+    #[test]
+    fn image_combine_validates_input_shape_and_mode() {
+        let reg = registry();
+        let op = reg.get("image_combine").unwrap();
+
+        // Not a list.
+        let err = op
+            .execute(
+                &Value::Bytes(combine_png(&[0xFF00_0000])),
+                &ParamMap::new(),
+                &ExecutionContext::new(),
+            )
+            .unwrap_err();
+        assert_eq!(err.kind, cybercipher_core::ErrorKind::InvalidInput);
+
+        // A list of one.
+        let err = op
+            .execute(
+                &Value::List(vec![Value::Bytes(combine_png(&[0xFF00_0000]))]),
+                &ParamMap::new(),
+                &ExecutionContext::new(),
+            )
+            .unwrap_err();
+        assert_eq!(err.kind, cybercipher_core::ErrorKind::InvalidInput);
+
+        // A list whose second item is not an image.
+        let err = op
+            .execute(
+                &Value::List(vec![
+                    Value::Bytes(combine_png(&[0xFF00_0000])),
+                    Value::Bytes(vec![0xDE, 0xAD]),
+                ]),
+                &ParamMap::new(),
+                &ExecutionContext::new(),
+            )
+            .unwrap_err();
+        assert_eq!(err.kind, cybercipher_core::ErrorKind::Decode);
+
+        // Out-of-range mode.
+        let mut params = ParamMap::new();
+        params.insert("mode", 13i64);
+        let err = op
+            .execute(
+                &Value::List(vec![
+                    Value::Bytes(combine_png(&[0xFF00_0000])),
+                    Value::Bytes(combine_png(&[0xFF00_0000])),
+                ]),
+                &params,
+                &ExecutionContext::new(),
+            )
+            .unwrap_err();
+        assert_eq!(err.kind, cybercipher_core::ErrorKind::InvalidParam);
+    }
+
+    // --------------------------------------------------------- gif ops ----
+
+    /// 4x2 GIF with three frames: full red (keep), blue 2x1 at (1,0)
+    /// (restore-to-background), transparent+green 2x1 at (0,0).
+    fn three_frame_gif_bytes() -> Vec<u8> {
+        use std::borrow::Cow;
+        const RED: u8 = 0;
+        const BLUE: u8 = 1;
+        const GREEN: u8 = 2;
+        let palette: [u8; 9] = [0xFF, 0x00, 0x00, 0x00, 0x00, 0xFF, 0x00, 0xC0, 0x00];
+        let mut out = Vec::new();
+        {
+            let mut encoder = gif::Encoder::new(&mut out, 4, 2, &palette).unwrap();
+            let base = |width: u16, height: u16, left: u16, top: u16, pixels: Vec<u8>| gif::Frame {
+                width,
+                height,
+                left,
+                top,
+                buffer: Cow::Owned(pixels),
+                ..gif::Frame::default()
+            };
+            encoder
+                .write_frame(&gif::Frame {
+                    delay: 5,
+                    dispose: gif::DisposalMethod::Keep,
+                    ..base(4, 2, 0, 0, vec![RED; 8])
+                })
+                .unwrap();
+            encoder
+                .write_frame(&gif::Frame {
+                    delay: 10,
+                    dispose: gif::DisposalMethod::Background,
+                    ..base(2, 1, 1, 0, vec![BLUE; 2])
+                })
+                .unwrap();
+            encoder
+                .write_frame(&gif::Frame {
+                    transparent: Some(RED),
+                    ..base(2, 1, 0, 0, vec![RED, GREEN])
+                })
+                .unwrap();
+        }
+        out
+    }
+
+    #[test]
+    fn image_gif_info_roundtrips_through_registry() {
+        let reg = registry();
+        let op = reg.get("image_gif_info").expect("op registered");
+        let out = op
+            .execute(
+                &Value::Bytes(three_frame_gif_bytes()),
+                &ParamMap::new(),
+                &ExecutionContext::new(),
+            )
+            .unwrap();
+        let Value::Json(info) = out else {
+            panic!("expected json");
+        };
+        assert_eq!(info["screen"]["width"], 4);
+        assert_eq!(info["screen"]["height"], 2);
+        assert_eq!(info["frame_count"], 3);
+        assert_eq!(info["frames_truncated"], false);
+        assert_eq!(info["frames"][0]["delay_cs"], 5);
+        assert_eq!(info["frames"][0]["disposal"], "keep");
+        assert_eq!(info["frames"][1]["left"], 1);
+        assert_eq!(info["frames"][1]["disposal"], "background");
+        assert_eq!(info["frames"][2]["transparent_index"], 0);
+
+        // Non-GIF input: typed decode error.
+        let err = op
+            .execute(
+                &Value::Bytes(vec![0xDE, 0xAD, 0xBE, 0xEF]),
+                &ParamMap::new(),
+                &ExecutionContext::new(),
+            )
+            .unwrap_err();
+        assert_eq!(err.kind, cybercipher_core::ErrorKind::Decode);
+
+        // Wrong input kind.
+        let err = op
+            .execute(
+                &Value::Text("nope".to_owned()),
+                &ParamMap::new(),
+                &ExecutionContext::new(),
+            )
+            .unwrap_err();
+        assert_eq!(err.kind, cybercipher_core::ErrorKind::InvalidInput);
+    }
+
+    #[test]
+    fn image_gif_frame_roundtrips_through_registry() {
+        let reg = registry();
+        let op = reg.get("image_gif_frame").expect("op registered");
+        let input = Value::Bytes(three_frame_gif_bytes());
+
+        // Frame 1: blue subregion composited over the kept red canvas.
+        let mut params = ParamMap::new();
+        params.insert("frame", 1i64);
+        let out = op
+            .execute(&input, &params, &ExecutionContext::new())
+            .unwrap();
+        let Value::Bytes(png) = out else {
+            panic!("expected bytes");
+        };
+        let decoded = decode(&png, &DecodeLimits::default()).unwrap();
+        assert_eq!((decoded.width, decoded.height), (4, 2));
+        assert_eq!(
+            decoded.argb,
+            vec![
+                0xFFFF_0000,
+                0xFF00_00FF,
+                0xFF00_00FF,
+                0xFFFF_0000,
+                0xFFFF_0000,
+                0xFFFF_0000,
+                0xFFFF_0000,
+                0xFFFF_0000,
+            ]
+        );
+
+        // Out-of-range frame: typed invalid-parameter error.
+        let mut params = ParamMap::new();
+        params.insert("frame", 7i64);
+        let err = op
+            .execute(&input, &params, &ExecutionContext::new())
+            .unwrap_err();
+        assert_eq!(err.kind, cybercipher_core::ErrorKind::InvalidParam);
     }
 }

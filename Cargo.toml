@@ -39,6 +39,10 @@ image = { version = "0.25", default-features = false, features = ["png", "jpeg",
 # crate does not expose palette/indices, and `png` is already in the tree via
 # image's `png` feature (no new transitive dependencies).
 png = "0.18"
+# Direct dependency of cybercipher-steg's GIF frame access: the `image` crate
+# only decodes the first frame, and `gif` is already in the tree via image's
+# `gif` feature (no new transitive dependencies).
+gif = "0.14.2"
 rustfft = "6.2"
 # Pinned exact per docs/design-steg-sstv.md (hard invariant 2): slowrx stays a
 # pinned crates.io dependency, re-evaluated for vendoring at 1.0.

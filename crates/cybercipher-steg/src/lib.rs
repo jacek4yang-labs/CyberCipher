@@ -9,21 +9,27 @@
 //! MSB-first bit packing — are reproduced exactly and covered by golden
 //! parity tests. The `structure`/`carving` modules port the StegSolver
 //! container analyzers (PNG chunk / JPEG marker / GIF block / BMP header
-//! walks over raw file bytes) with appended-data carving, and the `qr`
-//! module ports the barcode scanner (bytes-first payloads, multi-symbol,
-//! Structured Append merge, inverted/rotated/rescaled fallbacks) onto the
-//! `rxing` (ZXing) decoder. See `compatibility/stegsolver.toml` and
+//! walks over raw file bytes) with appended-data carving; `stereo` and
+//! `combine` port the stereogram solver and the 13-mode combiner bit for
+//! bit; `frames` adds lazy GIF frame indexing and disposal-aware frame
+//! decoding; and the `qr` module ports the barcode scanner (bytes-first
+//! payloads, multi-symbol, Structured Append merge, inverted/rotated/rescaled
+//! fallbacks) onto the `rxing` (ZXing) decoder. See
+//! `compatibility/stegsolver.toml` and
 //! `docs/design-steg-sstv.md`.
 
 #![allow(clippy::result_large_err)]
 
 pub mod auto_lsb;
 pub mod carving;
+pub mod combine;
 pub mod extract;
+pub mod frames;
 pub mod java_random;
 pub mod ops;
 pub mod payload;
 pub mod qr;
+pub mod stereo;
 pub mod structure;
 pub mod transforms;
 

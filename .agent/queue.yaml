@@ -98,6 +98,10 @@
   priority: P1
   depends_on: [M9-IMAGE-02]
 
+- id: M9-IMAGE-05
+  title: stereo + combine + frames
+  status: done
+  owner: agent/stereo
 - id: M9-IMAGE-04
   title: QR/barcode scanning
   status: in_progress
