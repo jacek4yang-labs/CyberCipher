@@ -112,14 +112,26 @@ rail-fence (normal/w-type), morse, Polybius, bacon, QWE keyboard, Braille,
 01248, BubbleBabble, one-time-pad, and more — all upstream-only today."""
 
 [entries.chinese_ctf_encodings]
-ours = "—"
-status = "missing"
-notes = "Buddha Says (与佛论禅/佛曰), 新佛曰, 兽音译者, 熊曰, socialist core values, 汉字编码-style bases — upstream-only. High-value for the CN CTF scene this project targets; needs a spec/implementation owner."
+ours = "to-buddha / from-buddha, to-buddha-pbe / from-buddha-pbe, to-beast / from-beast, to-bear / from-bear, to-core-values / from-core-values"
+status = "covered"
+notes = """Tables and algorithms pinned from reference implementations: 佛曰 from
+ToolsFx BuddhaCipher.kt (keyfc.net AES-256-CBC over UTF-16LE, 128-char sutra
+table), 新佛曰 from BuddhaPbeCipher.kt (OpenSSL EVP_BytesToKey(MD5) + AES-256-CBC,
+65-char table), 兽音 from sgdrg15rdg/beast_js (cross-checked SycAlright/beast_sdk),
+熊曰 (raw-deflate + basE91 + 91-char dict), 核心价值观 from
+SocialistCoreValues.kt. Every op ships reference test vectors. Deterministic
+deviations, both decodable by upstream: Buddha encode always emits the first
+high-byte marker (upstream randomizes among 11) and Buddha PBE takes an explicit
+8-byte salt (upstream randomizes). 汉字编码-style bases remain out of scope."""
 
 [entries.brainfuck_ook]
-ours = "—"
-status = "missing"
-notes = "brainfuck / Ook! / Trollscript interpreters are upstream-only."
+ours = "run-brainfuck / to-brainfuck, from-ook / to-ook"
+status = "covered"
+notes = """Standard 8-op Brainfuck (8-bit wrapping cells, `,` input parameter)
+with hard bounds: step budget (default 1M, cap 10M), tape cap, typed errors for
+unmatched brackets and pointer under/overflow — never panics. Ook! uses the
+canonical esolangs token table (identical to ToolsFx OokEngine) and shares the
+bounded interpreter. ToolsFx's Trollscript dialect is not implemented."""
 
 [entries.jsfuck]
 ours = "—"
@@ -127,8 +139,17 @@ status = "missing"
 notes = "verify feature list — the README names aaencode/jjencode; JSFuck itself may ship under a different label. We have none of the three."
 
 [entries.aaencode_jjencode]
-ours = "—"
-status = "missing"
+ours = "from-aaencode / from-jjencode (decode only)"
+status = "partial"
+notes = """Decode-only, and honestly so: the reference decoders (utf-8.jp,
+mirrored by ToolsFx via a JS engine) work by `eval`-ing a self-decoding script.
+CyberCipher instead implements the deterministic token walk the payloads embed
+(JS string escapes spelled with fixed digit expressions), reconstructing the
+text from UTF-16 code units without executing anything — validated byte-for-byte
+against reference-format samples and a 145 KB real corpus file. Intentional
+out-of-scope: AAEncode/JJEncode encode (they are JS generators; a faithful port
+needs a JS-eval-equivalent evaluator to be meaningful) and the palindrome-wrapped
+JJEncode p=true variant (typed Unsupported error)."""
 
 [entries.auto_decode]
 ours = "auto_decode engine + Auto Analyze page"
