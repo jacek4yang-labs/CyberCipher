@@ -1229,6 +1229,178 @@ function QrTab() {
   );
 }
 
+// ---------------------------------------------------------------- stereo ----
+
+function StereoTab() {
+  const fileBase64 = useStegoStore((s) => s.fileBase64);
+  const fileName = useStegoStore((s) => s.fileName);
+  const stereoOffset = useStegoStore((s) => s.stereoOffset);
+  const stereoEdgeHold = useStegoStore((s) => s.stereoEdgeHold);
+  const stereoSampleStep = useStegoStore((s) => s.stereoSampleStep);
+  const setStereoOffset = useStegoStore((s) => s.setStereoOffset);
+  const setStereoEdgeHold = useStegoStore((s) => s.setStereoEdgeHold);
+  const setStereoSampleStep = useStegoStore((s) => s.setStereoSampleStep);
+  const stereoBusy = useStegoStore((s) => s.stereoBusy);
+  const stereoError = useStegoStore((s) => s.stereoError);
+  const stereoPng = useStegoStore((s) => s.stereoPng);
+  const runStereoShift = useStegoStore((s) => s.runStereoShift);
+  const stereoAutoBusy = useStegoStore((s) => s.stereoAutoBusy);
+  const stereoAutoError = useStegoStore((s) => s.stereoAutoError);
+  const stereoAuto = useStegoStore((s) => s.stereoAuto);
+  const runStereoAuto = useStegoStore((s) => s.runStereoAuto);
+  const applyStereoAuto = useStegoStore((s) => s.applyStereoAuto);
+  const sendToWorkbench = useStegoStore((s) => s.sendToWorkbench);
+
+  return (
+    <Section title="Stereo shift">
+      {!fileBase64 ? (
+        <div className="rsa-empty dim">
+          Load an autostereogram to solve it: the shift XORs the image with a horizontally shifted
+          copy of itself, revealing the depth map once the shift matches the repeating pattern
+          width. Auto-detect scans offsets for the strongest self-similarity.
+        </div>
+      ) : (
+        <>
+          <div className="pki-run-row">
+            <button
+              className="tool-btn"
+              onClick={() => setStereoOffset(stereoOffset - 1)}
+              disabled={stereoOffset <= 1}
+              title="Previous offset"
+            >
+              ◀
+            </button>
+            <label
+              className="pki-select-label"
+              title="Horizontal shift in pixels; the engine wraps values at or beyond the width"
+            >
+              offset
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={stereoOffset}
+                onChange={(e) => setStereoOffset(Number(e.target.value))}
+              />
+            </label>
+            <button
+              className="tool-btn"
+              onClick={() => setStereoOffset(stereoOffset + 1)}
+              title="Next offset"
+            >
+              ▶
+            </button>
+            <label
+              className="pki-select-label"
+              title="Clamp the sample at the right edge instead of wrapping, removing the wrap-around seam on the last columns"
+            >
+              edge hold
+              <input
+                type="checkbox"
+                checked={stereoEdgeHold}
+                onChange={(e) => setStereoEdgeHold(e.target.checked)}
+              />
+            </label>
+            <button
+              className="bake-btn"
+              onClick={() => void runStereoShift()}
+              disabled={stereoBusy}
+              title="Run image_stereo_shift with this offset on the original image bytes"
+            >
+              {stereoBusy ? "Shifting…" : "Stereo Shift"}
+            </button>
+          </div>
+          <ErrorBanner error={stereoError} />
+
+          <div className="pki-run-row">
+            <label
+              className="pki-select-label"
+              title="Compare only every Nth row and column during the scan (1 = exhaustive); the scan is O(width² · height / step)"
+            >
+              sample step
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={stereoSampleStep}
+                onChange={(e) => setStereoSampleStep(Number(e.target.value))}
+              />
+            </label>
+            <button
+              className="bake-btn"
+              onClick={() => void runStereoAuto()}
+              disabled={stereoAutoBusy}
+              title="Run image_stereo_auto: rank offsets 1..width/2 by self similarity, smallest offset wins ties"
+            >
+              {stereoAutoBusy ? "Scanning…" : "Auto-detect offset"}
+            </button>
+            {stereoAutoBusy && (
+              <span className="dim sstv-busy-note">
+                the scan runs to completion on the engine side — not cancellable
+              </span>
+            )}
+          </div>
+          <ErrorBanner error={stereoAutoError} />
+          {stereoAuto && (
+            <div className="sstv-applied">
+              <div className="sstv-cand-head">
+                <span className="pki-kind-chip">best offset {stereoAuto.best_offset}</span>
+                <Chips
+                  items={[
+                    `sampled every ${stereoAuto.sample_step} px`,
+                    `${stereoAuto.width}×${stereoAuto.height}`,
+                  ]}
+                />
+                <span className="spacer" />
+                {stereoAuto.best_offset > 0 && (
+                  <button
+                    className="tool-btn"
+                    onClick={applyStereoAuto}
+                    title="Set the shift offset to the detected value"
+                  >
+                    Use offset {stereoAuto.best_offset}
+                  </button>
+                )}
+              </div>
+              <div className="dim sstv-cand-reason">{stereoAuto.hint}</div>
+            </div>
+          )}
+
+          {stereoPng !== null && (
+            <div className="stego-viewport">
+              <img
+                src={`data:image/png;base64,${stereoPng}`}
+                alt={`stereo shift at offset ${stereoOffset}`}
+              />
+              <div className="sstv-image-head">
+                <span className="pki-kind-chip">offset {stereoOffset}</span>
+                {stereoEdgeHold && <span className="pki-kind-chip">edge hold</span>}
+                <span className="spacer" />
+                <button
+                  className="tool-btn"
+                  onClick={() =>
+                    downloadPng(stereoPng, `${fileName ?? "image"}-stereo-${stereoOffset}.png`)
+                  }
+                  title="Download the result PNG through the browser"
+                >
+                  Save PNG
+                </button>
+                <button
+                  className="tool-btn"
+                  onClick={() => sendToWorkbench(stereoPng)}
+                  title="Put the result PNG into the Workbench input (base64)"
+                >
+                  → Workbench
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </Section>
+  );
+}
+
 // ----------------------------------------------------------------- page ----
 
 const TABS: [StegoTab, string][] = [
@@ -1237,6 +1409,7 @@ const TABS: [StegoTab, string][] = [
   ["autolsb", "Auto LSB"],
   ["structure", "Structure"],
   ["qr", "QR"],
+  ["stereo", "Stereo"],
 ];
 
 export function StegoLabPage() {
@@ -1275,6 +1448,7 @@ export function StegoLabPage() {
             {tab === "autolsb" && <AutoLsbTab />}
             {tab === "structure" && <StructureTab />}
             {tab === "qr" && <QrTab />}
+            {tab === "stereo" && <StereoTab />}
           </div>
         </div>
       </div>

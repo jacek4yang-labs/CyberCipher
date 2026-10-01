@@ -117,6 +117,15 @@ export interface QrScanResult {
   merged: QrHit[];
 }
 
+/** image_stereo_auto JSON report (ops.rs image_stereo_auto_op). */
+export interface StereoAutoResult {
+  best_offset: number;
+  sample_step: number;
+  width: number;
+  height: number;
+  hint: string;
+}
+
 /** One catalog entry, hard-coded to match transforms::catalog() exactly. */
 export interface StegoTransformDef {
   index: number;
@@ -187,7 +196,13 @@ export const RGB_ORDERS: { code: number; label: string }[] = [
 const DEFAULT_PLANE_MASK = 0x01010100;
 
 /** Tabs of the Stego Lab page. */
-export type StegoTab = "transform" | "extract" | "autolsb" | "structure" | "qr";
+export type StegoTab =
+  | "transform"
+  | "extract"
+  | "autolsb"
+  | "structure"
+  | "qr"
+  | "stereo";
 
 let bakeCounter = 0;
 
@@ -390,6 +405,23 @@ export interface StegoStore {
   qrResult: QrScanResult | null;
   runQrScan: () => Promise<void>;
 
+  // Stereo tab (image_stereo_shift / image_stereo_auto ops).
+  stereoOffset: number;
+  stereoEdgeHold: boolean;
+  stereoSampleStep: number;
+  setStereoOffset: (v: number) => void;
+  setStereoEdgeHold: (v: boolean) => void;
+  setStereoSampleStep: (v: number) => void;
+  stereoBusy: boolean;
+  stereoError: string | null;
+  stereoPng: string | null;
+  runStereoShift: () => Promise<void>;
+  stereoAutoBusy: boolean;
+  stereoAutoError: string | null;
+  stereoAuto: StereoAutoResult | null;
+  runStereoAuto: () => Promise<void>;
+  applyStereoAuto: () => void;
+
   // Handoff to the Workbench (binary travels as base64 input).
   sendToWorkbench: (base64: string) => void;
   /** Handoff to Auto Analyze (binary travels as base64 input, scan auto-runs). */
@@ -426,6 +458,12 @@ export const useStegoStore = create<StegoStore>((set, get) => {
       qrBusy: false,
       qrError: null,
       qrResult: null,
+      stereoBusy: false,
+      stereoError: null,
+      stereoPng: null,
+      stereoAutoBusy: false,
+      stereoAutoError: null,
+      stereoAuto: null,
     });
 
   /**
@@ -850,6 +888,76 @@ export const useStegoStore = create<StegoStore>((set, get) => {
         if (superseded(fileBase64)) return;
         set({ qrBusy: false, qrError: e instanceof Error ? e.message : String(e) });
       }
+    },
+
+    stereoOffset: 1,
+    stereoEdgeHold: false,
+    stereoSampleStep: 2,
+    setStereoOffset: (stereoOffset) =>
+      set({ stereoOffset: Math.max(Math.trunc(stereoOffset) || 1, 1) }),
+    setStereoEdgeHold: (stereoEdgeHold) => set({ stereoEdgeHold }),
+    setStereoSampleStep: (stereoSampleStep) =>
+      set({ stereoSampleStep: Math.max(Math.trunc(stereoSampleStep) || 1, 1) }),
+    stereoBusy: false,
+    stereoError: null,
+    stereoPng: null,
+    runStereoShift: async () => {
+      const { fileBase64, stereoBusy, stereoOffset, stereoEdgeHold } = get();
+      if (stereoBusy || !fileBase64) return;
+      set({ stereoBusy: true, stereoError: null, stereoPng: null });
+      try {
+        const resp = await runSingleOp(
+          "image_stereo_shift",
+          { offset: stereoOffset, edge_hold: stereoEdgeHold },
+          fileBase64,
+        );
+        if (superseded(fileBase64)) return;
+        if (resp.report.error) throw new Error(formatInvokeError(resp.report.error));
+        if (resp.blocked_at !== null) {
+          throw new Error(`run stopped at stage ${resp.blocked_at}`);
+        }
+        const out = resp.output;
+        if (out === null || out.kind !== "bytes") {
+          throw new Error("image_stereo_shift returned no PNG payload");
+        }
+        set({ stereoBusy: false, stereoPng: out.base64 });
+      } catch (e) {
+        if (superseded(fileBase64)) return;
+        set({ stereoBusy: false, stereoError: e instanceof Error ? e.message : String(e) });
+      }
+    },
+
+    stereoAutoBusy: false,
+    stereoAutoError: null,
+    stereoAuto: null,
+    runStereoAuto: async () => {
+      const { fileBase64, stereoAutoBusy, stereoSampleStep } = get();
+      if (stereoAutoBusy || !fileBase64) return;
+      set({ stereoAutoBusy: true, stereoAutoError: null, stereoAuto: null });
+      try {
+        const resp = await runSingleOp(
+          "image_stereo_auto",
+          { sample_step: stereoSampleStep },
+          fileBase64,
+        );
+        if (superseded(fileBase64)) return;
+        if (resp.report.error) throw new Error(formatInvokeError(resp.report.error));
+        if (resp.blocked_at !== null) {
+          throw new Error(`run stopped at stage ${resp.blocked_at}`);
+        }
+        const out = resp.output;
+        if (out === null || out.kind !== "json") {
+          throw new Error("image_stereo_auto returned no report");
+        }
+        set({ stereoAutoBusy: false, stereoAuto: out.value as StereoAutoResult });
+      } catch (e) {
+        if (superseded(fileBase64)) return;
+        set({ stereoAutoBusy: false, stereoAutoError: e instanceof Error ? e.message : String(e) });
+      }
+    },
+    applyStereoAuto: () => {
+      const best = get().stereoAuto?.best_offset ?? 0;
+      if (best > 0) set({ stereoOffset: best });
     },
 
     sendToWorkbench: (base64) => {
