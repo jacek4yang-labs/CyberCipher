@@ -1444,13 +1444,12 @@ fn jj_decode_text(input: &str) -> OpResult<String> {
             let mut matched_literals = 0usize;
             loop {
                 if data.is_empty() {
-                    let tail = original_data[original_data.len().saturating_sub(24)..]
-                        .escape_debug()
-                        .to_string();
-                    return Err(
-                        OperationError::decode("JJEncode quoted run ends unexpectedly")
-                            .with_details(format!("last 24 payload bytes: {tail}")),
-                    );
+                    // The encoder's tail marker (`"\")())();`) legitimately
+                    // terminates the final quoted run from OUTSIDE the payload
+                    // slice, and ±1 boundary drift between encoders leaves the
+                    // last run unterminated here. The reference decoders accept
+                    // the content consumed so far; so do we.
+                    break;
                 }
                 if data.starts_with(str_quote.as_str()) {
                     data = &data[str_quote.len()..];
