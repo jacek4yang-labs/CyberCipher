@@ -2558,8 +2558,7 @@ mod tests {
         // resampled fixture fails here with a clear message, not deep inside
         // the decoder.
         assert!(
-            JJ_ALERT_SAMPLE.ends_with("\"\\\"\"\")())();")
-                || JJ_ALERT_SAMPLE.ends_with(")())();"),
+            JJ_ALERT_SAMPLE.ends_with("\"\\\"\"\")())();") || JJ_ALERT_SAMPLE.ends_with(")())();"),
             "JJ sample tail changed: {:?}",
             JJ_ALERT_SAMPLE.chars().rev().take(24).collect::<Vec<_>>()
         );
