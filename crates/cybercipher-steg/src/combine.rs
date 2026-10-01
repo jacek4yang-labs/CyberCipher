@@ -373,10 +373,11 @@ mod tests {
             combine_pixels(CombineMode::Multiply, 0x0000_0040, 0x1000_0000).unwrap(),
             0xFF00_0000
         );
-        // 0x00000001 - 0x00000002 wraps to 0xFFFFFFFF; masked to 0xFFFFFF.
+        // 0x00000001 - 0x00000002 wraps to 0xFFFFFFFF; opaque() then ORs the
+        // alpha byte on top of the masked 0xFFFFFF, producing white.
         assert_eq!(
             combine_pixels(CombineMode::Subtract, 0x0000_0001, 0x0000_0002).unwrap(),
-            0xFF00_FFFF
+            0xFFFF_FFFF
         );
         // Alpha participates in whole-pixel arithmetic before the mask.
         assert_eq!(
@@ -485,22 +486,16 @@ mod tests {
 
     #[test]
     fn interlace_rows_use_the_size_intersection() {
-        // A is 3x2, B is 1x1: intersection 1x2 -> output 1x4.
+        // A is 2x2, B is 1x2: the intersection is 1x2 -> output is 1x4 with
+        // the rows of A and B interleaved.
         let a = RgbaImage::new(
-            3,
             2,
-            vec![
-                0xFF00_000A,
-                0xFF00_000B,
-                0xFF00_000C,
-                0xFF00_000D,
-                0xFF00_000E,
-                0xFF00_000F,
-            ],
+            2,
+            vec![0xFF00_000A, 0xFF00_000B, 0xFF00_000D, 0xFF00_000E],
             false,
         )
         .unwrap();
-        let b = RgbaImage::new(1, 1, vec![0xFF00_00B1], false).unwrap();
+        let b = RgbaImage::new(1, 2, vec![0xFF00_00B1, 0xFF00_00B2], false).unwrap();
         let out = combine(CombineMode::InterlaceRows, &a, &b).unwrap();
         assert_eq!((out.width, out.height), (1, 4));
         assert_eq!(
@@ -509,7 +504,7 @@ mod tests {
                 opaque(0xFF00_000A),
                 opaque(0xFF00_00B1),
                 opaque(0xFF00_000D),
-                opaque(0xFF00_00B1),
+                opaque(0xFF00_00B2),
             ]
         );
     }
