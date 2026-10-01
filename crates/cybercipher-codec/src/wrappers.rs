@@ -798,6 +798,9 @@ fn punycode_decode_body(body: &str) -> OpResult<(Vec<char>, Vec<bool>)> {
         let old_i = i;
         let mut w: u32 = 1;
         let mut k = PUNY_BASE;
+        // Every loop iteration assigns the flag before it is read, so the
+        // initial value is never observed.
+        #[allow(unused_assignments)]
         let mut last_flag = false;
         loop {
             let Some(&c) = chars.get(idx) else {
@@ -921,6 +924,9 @@ pub fn punycode_encode_body(text: &str) -> OpResult<String> {
 
     let mut n: u32 = PUNY_INITIAL_N;
     let mut delta: u32 = 0;
+    // RFC 3492: the first adapt call is the dampening pass and does not read
+    // the incoming bias, so the initial value here is never observed.
+    #[allow(unused_assignments)]
     let mut bias: u32 = PUNY_INITIAL_BIAS;
     let mut first_time = true;
     let mut handled = basic_len;
@@ -1371,15 +1377,16 @@ pub fn decode_yenc(bytes: &[u8], strict: bool) -> OpResult<Vec<u8>> {
                 String::from_utf8_lossy(&header[..header.len().min(60)])
             )));
         }
-        let Some(trailer) = lines.iter().rposition(|l| l.starts_with(b"=yend")) else {
-            if strict {
+        let trailer = match lines.iter().rposition(|l| l.starts_with(b"=yend")) {
+            Some(t) => t,
+            None if strict => {
                 return Err(
                     OperationError::decode("yEnc stream is missing the =yend trailer")
                         .with_expected("a =yend line after the data")
                         .with_actual("none found"),
                 );
             }
-            lines.len()
+            None => lines.len(),
         };
         &lines[first.unwrap() + 1..trailer]
     } else {
