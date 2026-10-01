@@ -1,13 +1,15 @@
 //! The Crypto Assist engine: generate → prune → execute via the operation
 //! registry → score → rank. AES is the first profile; the trait generalizes
-//! to SM4/DES/Serpent/RC4 later without duplicating the search.
+//! the search to SM4/DES/3DES/Serpent/Twofish/Camellia/RC4 without
+//! duplicating it.
 
 // See cybercipher-core/src/lib.rs for the rationale.
 #![allow(clippy::result_large_err)]
 
 use super::params::{
-    generate_candidates, AesCandidate, AesProfile, AssistProfile, IvSource, KeyInterpretation,
-    Mode, Padding,
+    generate_profile_candidates, AesCandidate, AesProfile, AssistCandidate, AssistProfile,
+    CamelliaProfile, DesProfile, IvSource, KeyInterpretation, Mode, Padding, Rc4Profile,
+    SerpentProfile, Sm4Profile, TdesProfile, TwofishProfile,
 };
 use super::scoring::AssistScore;
 use cybercipher_core::error::{OpResult, OperationError};
@@ -70,11 +72,92 @@ pub fn aes_assist(
     input: &AssistInput,
     ctx: &ExecutionContext,
 ) -> OpResult<AssistResult> {
-    aes_assist_with_profile(registry, &AesProfile, input, ctx, DEFAULT_DEADLINE_MS)
+    assist_with_profile(registry, &AesProfile, input, ctx, DEFAULT_DEADLINE_MS)
+}
+
+/// Run the SM4 assist search over the input.
+pub fn sm4_assist(
+    registry: &OperationRegistry,
+    input: &AssistInput,
+    ctx: &ExecutionContext,
+) -> OpResult<AssistResult> {
+    assist_with_profile(registry, &Sm4Profile, input, ctx, DEFAULT_DEADLINE_MS)
+}
+
+/// Run the single-DES assist search over the input.
+pub fn des_assist(
+    registry: &OperationRegistry,
+    input: &AssistInput,
+    ctx: &ExecutionContext,
+) -> OpResult<AssistResult> {
+    assist_with_profile(registry, &DesProfile, input, ctx, DEFAULT_DEADLINE_MS)
+}
+
+/// Run the triple-DES assist search over the input.
+pub fn tdes_assist(
+    registry: &OperationRegistry,
+    input: &AssistInput,
+    ctx: &ExecutionContext,
+) -> OpResult<AssistResult> {
+    assist_with_profile(registry, &TdesProfile, input, ctx, DEFAULT_DEADLINE_MS)
+}
+
+/// Run the Serpent assist search over the input.
+pub fn serpent_assist(
+    registry: &OperationRegistry,
+    input: &AssistInput,
+    ctx: &ExecutionContext,
+) -> OpResult<AssistResult> {
+    assist_with_profile(
+        registry,
+        &SerpentProfile,
+        input,
+        ctx,
+        DEFAULT_DEADLINE_MS,
+    )
+}
+
+/// Run the Twofish assist search over the input.
+pub fn twofish_assist(
+    registry: &OperationRegistry,
+    input: &AssistInput,
+    ctx: &ExecutionContext,
+) -> OpResult<AssistResult> {
+    assist_with_profile(
+        registry,
+        &TwofishProfile,
+        input,
+        ctx,
+        DEFAULT_DEADLINE_MS,
+    )
+}
+
+/// Run the Camellia assist search over the input.
+pub fn camellia_assist(
+    registry: &OperationRegistry,
+    input: &AssistInput,
+    ctx: &ExecutionContext,
+) -> OpResult<AssistResult> {
+    assist_with_profile(
+        registry,
+        &CamelliaProfile,
+        input,
+        ctx,
+        DEFAULT_DEADLINE_MS,
+    )
+}
+
+/// Run the RC4 assist search over the input.
+pub fn rc4_assist(
+    registry: &OperationRegistry,
+    input: &AssistInput,
+    ctx: &ExecutionContext,
+) -> OpResult<AssistResult> {
+    assist_with_profile(registry, &Rc4Profile, input, ctx, DEFAULT_DEADLINE_MS)
 }
 
 /// Generalized assist search driven by a profile.
-pub fn aes_assist_with_profile(
+pub fn assist_with_profile(
     registry: &OperationRegistry,
     profile: &dyn AssistProfile,
     input: &AssistInput,
@@ -91,8 +174,8 @@ pub fn aes_assist_with_profile(
 
     // The explicit IV may be given as raw bytes (already decoded) or hex.
     let explicit_iv: Option<Vec<u8>> = match input.iv_hex.as_deref() {
-        Some(hex_str) if !hex_str.trim().is_empty() => {
-            let cleaned: String = hex_str.chars().filter(|c| !c.is_whitespace()).collect();
+        Some(iv_str) if !iv_str.trim().is_empty() => {
+            let cleaned: String = iv_str.chars().filter(|c| !c.is_whitespace()).collect();
             let bytes = (0..cleaned.len())
                 .step_by(2)
                 .map(|i| u8::from_str_radix(&cleaned[i..i + 2], 16).ok())
@@ -102,20 +185,19 @@ pub fn aes_assist_with_profile(
                 None => {
                     return Err(OperationError::decode("explicit IV is not valid hex")
                         .with_parameter("iv")
-                        .with_actual(hex_str))
+                        .with_actual(iv_str))
                 }
             }
         }
         _ => None,
     };
 
-    let block_size = 16;
-    let candidates = generate_candidates(
+    let block_size = profile.block_size();
+    let candidates = generate_profile_candidates(
+        profile,
         &input.key_candidate,
         explicit_iv,
         &input.ciphertext,
-        block_size,
-        profile.key_lengths(),
     );
     let candidates_total = candidates.len();
     if candidates_total == 0 {
@@ -124,13 +206,19 @@ pub fn aes_assist_with_profile(
              an accepted key length for this cipher",
         )
         .with_expected(format!(
-            "a key decoding to one of {:?} byte lengths",
-            profile.key_lengths()
+            "a key decoding to {}",
+            profile.key_len_desc()
         ))
         .with_actual(format!("\"{}\"", input.key_candidate))
-        .with_details(
-            "Accepted interpretations are UTF-8 text, hex, and Base64; keys are never truncated or padded.",
-        ));
+        .with_details(format!(
+            "Accepted interpretations are {}; keys are never truncated or padded.",
+            profile
+                .key_interpretations()
+                .iter()
+                .map(|i| i.name())
+                .collect::<Vec<_>>()
+                .join(", ")
+        )));
     }
 
     let op = registry
@@ -163,7 +251,10 @@ pub fn aes_assist_with_profile(
         let mut map = ParamMap::new();
         map.insert("key", ParamValue::Str(hex_str(&cand.key)));
         map.insert("key_encoding", ParamValue::Str("hex".to_string()));
-        map.insert("mode", ParamValue::Str(cand.mode.name().to_string()));
+        // A pure stream cipher (RC4) takes no mode/IV/padding parameters.
+        if cand.mode != Mode::Stream {
+            map.insert("mode", ParamValue::Str(cand.mode.name().to_string()));
+        }
         if cand.mode.uses_iv() {
             map.insert("iv", ParamValue::Str(hex_str(&iv)));
             map.insert("iv_encoding", ParamValue::Str("hex".to_string()));
@@ -201,7 +292,15 @@ pub fn aes_assist_with_profile(
                     // accepted the padding.
                     evidence.push(format!("{} padding valid", pad.name()));
                 }
-                Padding::None => evidence.push("no padding (raw blocks)".to_string()),
+                Padding::None => {
+                    if cand.mode == Mode::Stream {
+                        evidence.push("stream cipher: no mode, IV, or padding".to_string());
+                    } else if cand.mode.is_stream() {
+                        evidence.push("stream mode: no padding applied".to_string());
+                    } else {
+                        evidence.push("no padding (raw blocks)".to_string());
+                    }
+                }
                 Padding::Zero => evidence.push("zero padding (ambiguous tail)".to_string()),
             }
         }
@@ -272,6 +371,17 @@ pub fn aes_assist_with_profile(
     })
 }
 
+/// Pre-generalization name of [`assist_with_profile`]; kept for compatibility.
+pub fn aes_assist_with_profile(
+    registry: &OperationRegistry,
+    profile: &dyn AssistProfile,
+    input: &AssistInput,
+    ctx: &ExecutionContext,
+    deadline_ms: u64,
+) -> OpResult<AssistResult> {
+    assist_with_profile(registry, profile, input, ctx, deadline_ms)
+}
+
 impl AssistHit {
     /// Deterministic secondary sort: prefer explicit IV, hex interpretation,
     /// and declared padding over fallbacks at equal score.
@@ -291,13 +401,20 @@ impl AssistHit {
     }
 }
 
-/// Build the recipe steps reproducing this candidate in the Workbench.
-/// The GUI serializes these into recipe nodes ("Apply as Recipe").
-pub fn recipe_ops_for(cand: &AesCandidate, iv: &[u8]) -> Vec<(String, ParamMap)> {
+/// Build the recipe steps reproducing this candidate in the Workbench for a
+/// profile. The GUI serializes these into recipe nodes ("Apply as Recipe").
+pub fn recipe_ops_for_profile(
+    profile: &dyn AssistProfile,
+    cand: &AssistCandidate,
+    iv: &[u8],
+) -> Vec<(String, ParamMap)> {
     let mut params = ParamMap::new();
     params.insert("key", ParamValue::Str(hex_str(&cand.key)));
     params.insert("key_encoding", ParamValue::Str("hex".to_string()));
-    params.insert("mode", ParamValue::Str(cand.mode.name().to_string()));
+    // A pure stream cipher (RC4) takes no mode/IV/padding parameters.
+    if cand.mode != Mode::Stream {
+        params.insert("mode", ParamValue::Str(cand.mode.name().to_string()));
+    }
     if cand.mode.uses_iv() {
         params.insert("iv", ParamValue::Str(hex_str(iv)));
         params.insert("iv_encoding", ParamValue::Str("hex".to_string()));
@@ -305,5 +422,10 @@ pub fn recipe_ops_for(cand: &AesCandidate, iv: &[u8]) -> Vec<(String, ParamMap)>
     if let Some(pad) = cand.padding {
         params.insert("padding", ParamValue::Str(pad.name().to_string()));
     }
-    vec![("aes-decrypt".to_string(), params)]
+    vec![(profile.op_id().to_string(), params)]
+}
+
+/// AES recipe steps reproducing this candidate (pre-generalization form).
+pub fn recipe_ops_for(cand: &AesCandidate, iv: &[u8]) -> Vec<(String, ParamMap)> {
+    recipe_ops_for_profile(&AesProfile, cand, iv)
 }
