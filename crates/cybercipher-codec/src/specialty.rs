@@ -1243,6 +1243,7 @@ fn jj_decode_text(input: &str) -> OpResult<String> {
         ));
     }
     let data = &text[start_idx..end_idx];
+    let original_data = data;
 
     let str_l = format!("(![]+\"\")[{gv}._$_]+");
     let str_o = format!("{gv}._$+");
@@ -1443,9 +1444,14 @@ fn jj_decode_text(input: &str) -> OpResult<String> {
             let mut matched_literals = 0usize;
             loop {
                 if data.is_empty() {
+                    let tail = original_data
+                        [original_data.len().saturating_sub(24)..]
+                        .escape_debug()
+                        .to_string();
                     return Err(OperationError::decode(
                         "JJEncode quoted run ends unexpectedly",
-                    ));
+                    )
+                    .with_details(format!("last 24 payload bytes: {tail}")));
                 }
                 if data.starts_with(str_quote.as_str()) {
                     data = &data[str_quote.len()..];
