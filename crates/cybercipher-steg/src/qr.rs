@@ -238,7 +238,7 @@ pub fn scan(
         OperationError::internal(format!("QR scan: cropping the region failed: {e}"))
     })?;
     let options = ScanOptions {
-        max_symbols: options.max_symbols.min(MAX_SYMBOLS_CAP).max(1),
+        max_symbols: options.max_symbols.clamp(1, MAX_SYMBOLS_CAP),
         ..options
     };
     let mut hits: Vec<BarcodeHit> = Vec::new();
@@ -517,7 +517,7 @@ fn collect_hits<B: rxing::Binarizer>(
     hits: &mut Vec<BarcodeHit>,
 ) {
     let mut bitmap = bitmap;
-    let mut found = decode_qr_parts(&mut bitmap, hints);
+    let mut found = decode_qr_parts(&bitmap, hints);
     found.extend(decode_multiple_generic(&mut bitmap, hints));
     if found.is_empty() {
         // The single symbol reader is both faster and more forgiving on very
@@ -630,7 +630,7 @@ fn rxing_result_to_raw(result: &RXingResult) -> RawDecoded {
     let mut byte_segments: Vec<Vec<u8>> = Vec::new();
     let mut sequence: Option<i32> = None;
     let mut parity: Option<i32> = None;
-    for (_kind, value) in result.getRXingResultMetadata() {
+    for value in result.getRXingResultMetadata().values() {
         match value {
             RXingResultMetadataValue::ByteSegments(segments) => {
                 let total: usize = segments.iter().map(Vec::len).sum();
@@ -1268,8 +1268,7 @@ fn scan_options_from_params(params: &ParamMap) -> OpResult<ScanOptions> {
     let max_symbols = (params
         .int_or("max_symbols", DEFAULT_MAX_SYMBOLS as i64)
         .max(0) as usize)
-        .min(MAX_SYMBOLS_CAP)
-        .max(1);
+        .clamp(1, MAX_SYMBOLS_CAP);
     Ok(ScanOptions {
         try_inverted: params.bool_or("try_inverted", true),
         try_rotations: params.bool_or("try_rotations", true),
