@@ -678,8 +678,7 @@ fn encode_quoted_printable(bytes: &[u8]) -> String {
                 line_len -= trailing;
                 for &t in &bytes[i - trailing..i] {
                     if line_len + 3 > LINE_MAX {
-                        out.push_str("=\r
-");
+                        out.push_str("=\r\n");
                         line_len = 0;
                     }
                     out.push_str(&format!("={t:02X}"));
