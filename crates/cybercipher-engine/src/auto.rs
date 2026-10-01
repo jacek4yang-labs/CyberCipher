@@ -591,7 +591,8 @@ fn is_reversed_flag(data: &[u8]) -> bool {
         return false;
     };
     let trimmed = text.trim();
-    if trimmed.len() < 8 || !trimmed.ends_with('}') {
+    // The REVERSED encoding starts with the flag's closing brace.
+    if trimmed.len() < 8 || !trimmed.starts_with('}') {
         return false;
     }
     let reversed: String = trimmed.chars().rev().collect();

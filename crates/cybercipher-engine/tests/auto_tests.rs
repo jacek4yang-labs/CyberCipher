@@ -20,12 +20,14 @@ fn encode_with_op(reg: &OperationRegistry, op_id: &str, data: &[u8]) -> String {
     let op = reg
         .get(op_id)
         .unwrap_or_else(|| panic!("{op_id} must be registered"));
+    // Text-oriented encoder ops reject bytes; feed Text when the payload is
+    // valid UTF-8 and Bytes otherwise.
+    let input = match std::str::from_utf8(data) {
+        Ok(text) => Value::Text(text.to_owned()),
+        Err(_) => Value::Bytes(data.to_vec()),
+    };
     match op
-        .execute(
-            &Value::Bytes(data.to_vec()),
-            &ParamMap::new(),
-            &ExecutionContext::new(),
-        )
+        .execute(&input, &ParamMap::new(), &ExecutionContext::new())
         .expect("{op_id} must encode")
     {
         Value::Text(text) => text,
@@ -470,12 +472,14 @@ fn encode_bytes_with_op(reg: &OperationRegistry, op_id: &str, data: &[u8]) -> Ve
     let op = reg
         .get(op_id)
         .unwrap_or_else(|| panic!("{op_id} must be registered"));
+    // Text-oriented encoder ops reject bytes; feed Text when the payload is
+    // valid UTF-8 and Bytes otherwise.
+    let input = match std::str::from_utf8(data) {
+        Ok(text) => Value::Text(text.to_owned()),
+        Err(_) => Value::Bytes(data.to_vec()),
+    };
     match op
-        .execute(
-            &Value::Bytes(data.to_vec()),
-            &ParamMap::new(),
-            &ExecutionContext::new(),
-        )
+        .execute(&input, &ParamMap::new(), &ExecutionContext::new())
         .expect("{op_id} must encode")
     {
         Value::Bytes(bytes) => bytes,
@@ -562,8 +566,9 @@ fn single_layer_html_named_entities() {
     let input = b"flag{&amp;&lt;entities&gt;}";
     let c = find_candidate(&reg, input, "from-html-entities").expect("html candidate");
     assert_eq!(c.path.first().unwrap(), "from-html-entities");
+    // &amp; decodes to a literal &, so the preview keeps it.
     assert!(
-        c.preview.contains("flag{<entities>}"),
+        c.preview.contains("flag{&<entities>}"),
         "preview {}",
         c.preview
     );
@@ -978,7 +983,8 @@ fn rot13_plain_english_not_proposed() {
 #[test]
 fn atbash_flag_recovered() {
     let reg = registry();
-    let input = b"uozt{yzmznz}";
+    // banana atbash-encodes to yzmzmz (n <-> m, not n <-> n).
+    let input = b"uozt{yzmzmz}";
     let c = find_candidate(&reg, input, "atbash").expect("atbash candidate");
     assert_eq!(c.preview, "flag{banana}");
     assert!(c.confident, "score {}", c.score);
