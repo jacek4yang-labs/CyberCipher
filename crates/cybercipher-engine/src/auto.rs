@@ -364,7 +364,7 @@ fn is_quoted_printable(data: &[u8]) -> bool {
         }
         i += 1;
     }
-    escapes >= 4 || (soft_breaks >= 1 && escapes >= 1)
+    escapes >= 3 || (soft_breaks >= 1 && escapes >= 1)
 }
 
 /// Punycode: an `xn--` ACE prefix (case-insensitive) followed by >= 4
@@ -1151,8 +1151,32 @@ fn adapt(value: &Value, accepted: &[ValueKind]) -> Value {
 fn beam_rank(node: &Frontier) -> u32 {
     let bytes = value_to_bytes(&node.value);
     let printable = printable_ratio(&bytes) * 100.0;
-    bytes.len().min(64 * 1024) as u32 / 16 + printable as u32
+    // Syntax-decode chains (nested base64, qp-over-base64, ...) must survive
+    // the beam truncation: a node produced by a strong-syntax step outranks
+    // printable junk from the mass explorations, or deep chains get cut.
+    let syntax_chain = node
+        .path
+        .last()
+        .is_some_and(|p| SYNTAX_CHAIN_STEPS.contains(&p.as_str())) as u32
+        * 1000;
+    bytes.len().min(64 * 1024) as u32 / 16 + printable as u32 + syntax_chain
 }
+
+/// Steps whose successful decode is strong evidence; their continuations are
+/// prioritized in the beam so multi-layer chains are not starved.
+const SYNTAX_CHAIN_STEPS: &[&str] = &[
+    "from-base64",
+    "from-base32",
+    "from-hex",
+    "from-html-entities",
+    "from-punycode",
+    "from-quoted-printable",
+    "from-uuencode",
+    "from-xxencode",
+    "from-yenc",
+    "from-cbor",
+    "from-msgpack",
+];
 
 fn collect_candidate(
     node: &Frontier,
