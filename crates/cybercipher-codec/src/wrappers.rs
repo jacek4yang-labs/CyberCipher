@@ -1208,7 +1208,13 @@ fn decode_uu_lines(
         }
         let body = &body[..expected];
         let mut vals = [0u8; 4];
+        // The data-byte budget is PER LINE: the previous computation mixed the
+        // global output length in, which underflowed on the second line and
+        // pushed garbage for every padding group of a multi-line stream.
+        let mut line_produced = 0usize;
         for chunk in body.chunks(4) {
+            let produced = (n - line_produced).min(3);
+            line_produced += produced;
             for (slot, &c) in chunk.iter().enumerate() {
                 match value(c) {
                     Some(v) => vals[slot] = v,
@@ -1226,7 +1232,6 @@ fn decode_uu_lines(
                     }
                 }
             }
-            let produced = n.min(out.len() + 3) - out.len();
             out.push((vals[0] << 2) | (vals[1] >> 4));
             if produced > 1 {
                 out.push(((vals[1] & 0xF) << 4) | (vals[2] >> 2));
@@ -2223,8 +2228,14 @@ mod tests {
 
     #[test]
     fn yenc_relaxed_envelopeless() {
-        // "test" shifted by +42 is "J;IJ".
-        let out = from_yenc_op(&Value::Bytes(b"J;IJ".to_vec()), &relaxed(), &ctx()).unwrap();
+        // yEnc encode shifts +42: "test" -> [0x9E, 0x8F, 0x9D, 0x9E] (none of
+        // which need `=` escaping). The earlier fixture "J;IJ" was backwards.
+        let out = from_yenc_op(
+            &Value::Bytes(vec![0x9E, 0x8F, 0x9D, 0x9E]),
+            &relaxed(),
+            &ctx(),
+        )
+        .unwrap();
         assert_eq!(out, Value::Bytes(b"test".to_vec()));
     }
 
