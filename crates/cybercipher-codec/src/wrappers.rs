@@ -1016,10 +1016,10 @@ pub fn punycode_encode_body(text: &str) -> OpResult<String> {
                 handled += 1;
             }
         }
-        // RFC 3492 main-encode step: scale the accumulator after each full
-        // sweep over the input (missing here, which produced wrong labels).
+        // RFC 3492 main-encode step: increment BOTH delta and n after each
+        // full sweep over the input.
         delta = delta
-            .checked_mul(handled + 1)
+            .checked_add(1)
             .ok_or_else(|| OperationError::decode("punycode encode overflow"))?;
         n += 1;
     }
