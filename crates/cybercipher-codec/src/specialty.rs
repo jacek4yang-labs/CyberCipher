@@ -1243,7 +1243,6 @@ fn jj_decode_text(input: &str) -> OpResult<String> {
         ));
     }
     let data = &text[start_idx..end_idx];
-    let original_data = data;
 
     let str_l = format!("(![]+\"\")[{gv}._$_]+");
     let str_o = format!("{gv}._$+");
