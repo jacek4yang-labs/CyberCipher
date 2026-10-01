@@ -614,10 +614,9 @@ fn is_cbor_like(data: &[u8]) -> bool {
     let mut items = 0usize;
     stack.push(1);
     let mut pos = 0usize;
-    loop {
-        let Some(&remaining) = stack.last() else {
-            break;
-        };
+    // The zero-pop pass at the end of each iteration keeps every counter on
+    // the stack above zero, so a plain emptiness check suffices here.
+    while !stack.is_empty() {
         items += 1;
         if items > MAX_ITEMS || stack.len() > MAX_DEPTH || pos >= data.len() {
             return false;
@@ -722,10 +721,9 @@ fn is_msgpack_like(data: &[u8]) -> bool {
     let mut items = 0usize;
     stack.push(1);
     let mut pos = 0usize;
-    loop {
-        let Some(&remaining) = stack.last() else {
-            break;
-        };
+    // The zero-pop pass at the end of each iteration keeps every counter on
+    // the stack above zero, so a plain emptiness check suffices here.
+    while !stack.is_empty() {
         items += 1;
         if items > MAX_ITEMS || stack.len() > MAX_DEPTH || pos >= data.len() {
             return false;
@@ -757,7 +755,7 @@ fn is_msgpack_like(data: &[u8]) -> bool {
             // float32/64
             0xCA | 0xCB => (if b == 0xCA { 4 } else { 8 }, 0),
             // uint 8/16/32/64, int 8/16/32/64
-            0xCC..=0xCF | 0xD0..=0xD3 => (
+            0xCC..=0xD3 => (
                 match b {
                     0xCC | 0xD0 => 1,
                     0xCD | 0xD1 => 2,
@@ -778,7 +776,7 @@ fn is_msgpack_like(data: &[u8]) -> bool {
                 0,
             ),
             // ext8/16/32: length + 1 type byte
-            0xC7 | 0xC8 | 0xC9 => {
+            0xC7..=0xC9 => {
                 let len_bytes = match b {
                     0xC7 => 1,
                     0xC8 => 2,
@@ -808,7 +806,6 @@ fn is_msgpack_like(data: &[u8]) -> bool {
                 };
                 (0, length.saturating_mul(2))
             }
-            _ => return false,
         };
         let Some(end) = pos.checked_add(skip) else {
             return false;
