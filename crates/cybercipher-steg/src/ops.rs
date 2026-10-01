@@ -45,7 +45,7 @@ fn media_error(e: cybercipher_media::MediaError, op: &str) -> OperationError {
     OperationError::decode(message).with_details(details)
 }
 
-fn decode_input_image(v: &Value, op: &str) -> OpResult<cybercipher_media::RgbaImage> {
+pub(crate) fn decode_input_image(v: &Value, op: &str) -> OpResult<cybercipher_media::RgbaImage> {
     let bytes = match v {
         Value::Bytes(b) => b,
         other => {
@@ -83,7 +83,7 @@ fn image_transform_op(v: &Value, params: &ParamMap, ctx: &ExecutionContext) -> O
     Ok(Value::Bytes(png))
 }
 
-fn parse_roi(params: &ParamMap) -> OpResult<Option<Roi>> {
+pub(crate) fn parse_roi(params: &ParamMap) -> OpResult<Option<Roi>> {
     let text = match params.get_str("roi") {
         None => return Ok(None),
         Some(t) if t.trim().is_empty() => return Ok(None),

@@ -9,8 +9,11 @@
 //! MSB-first bit packing — are reproduced exactly and covered by golden
 //! parity tests. The `structure`/`carving` modules port the StegSolver
 //! container analyzers (PNG chunk / JPEG marker / GIF block / BMP header
-//! walks over raw file bytes) with appended-data carving. See
-//! `compatibility/stegsolver.toml` and `docs/design-steg-sstv.md`.
+//! walks over raw file bytes) with appended-data carving, and the `qr`
+//! module ports the barcode scanner (bytes-first payloads, multi-symbol,
+//! Structured Append merge, inverted/rotated/rescaled fallbacks) onto the
+//! `rxing` (ZXing) decoder. See `compatibility/stegsolver.toml` and
+//! `docs/design-steg-sstv.md`.
 
 #![allow(clippy::result_large_err)]
 
@@ -20,6 +23,7 @@ pub mod extract;
 pub mod java_random;
 pub mod ops;
 pub mod payload;
+pub mod qr;
 pub mod structure;
 pub mod transforms;
 
@@ -29,4 +33,5 @@ use cybercipher_core::OperationRegistry;
 pub fn register_all(reg: &mut OperationRegistry) {
     ops::register(reg);
     structure::register(reg);
+    qr::register(reg);
 }
