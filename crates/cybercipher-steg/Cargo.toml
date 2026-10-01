@@ -11,5 +11,6 @@ cybercipher-core.workspace = true
 cybercipher-codec.workspace = true
 cybercipher-media.workspace = true
 flate2.workspace = true
+gif.workspace = true
 serde_json.workspace = true
 xxhash-rust.workspace = true
