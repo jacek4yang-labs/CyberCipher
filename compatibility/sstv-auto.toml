@@ -32,9 +32,9 @@ status = "covered"
 notes = "Automatic strongest-channel selection migrated; explicit override via options.channel; tests green (PR #47)."
 
 [entries.audio_safety]
-ours = "audio::is_silent/level; op-layer bounds in flight"
-status = "partial"
-notes = "Silence/level safety migrated (PR #47). Registry op with CostClass::Heavy + duration caps lands with the blob/Tauri bridge lane (in flight). Missing semantics: op-layer bound enforcement until the bridge merges."
+ours = "decode_bounded: duration caps + CostClass::Heavy + typed bounds"
+status = "covered"
+notes = "sstv_decode op (PR #52 bridge): empty-bytes rejection, channel/mode validation before work, duration cap (default 90s, cap 300s) enforced post-probe pre-decode with BudgetExceeded, candidate cap, Heavy cost class (never Auto-Bake)."
 
 [entries.dsp_fft_track]
 ours = "cybercipher-sstv::dsp"
@@ -97,11 +97,9 @@ status = "covered"
 notes = "PNG bytes in memory as the explicit serialization step, per design (PR #47)."
 
 [entries.stego_handoff]
-ours = "— (superset, CyberCipher-only)"
-status = "missing"
-notes = "Open in Stego Lab / Save PNG / Send to Workbench / Run Auto LSB / Run QR scan on the recovered image. Cross-link chain: challenge.wav -> SSTV -> PNG -> Auto LSB -> bytes -> Auto Decode -> flag. Lane B PR-3 + Stego Lab GUI."
-
-# ------------------------------------------------------------- tests ----
+ours = "SSTV Lab: Save PNG / -> Workbench / Run Auto LSB (+deep) on recovered images"
+status = "partial"
+notes = "SSTV Lab wires recovered images to Auto LSB (auto_lsb_scan via bake) with Apply -> image_extract_bits -> Workbench, plus Save PNG and evidence panels. Remaining: a one-click Open-in-Stego-Lab cross-page handoff (Stego Lab needs an image-entry-from-store path) — GUI-COMPOSE lane."
 
 [entries.test_migration]
 ours = "135 inline + 15 end-to-end tests"
@@ -114,9 +112,9 @@ status = "superset"
 notes = "Upstream uses anyhow + strict clippy (no unwrap/panic outside tests). We keep those lints in the migrated crate and add typed operation errors, cost classes, and resource bounds at the registry boundary."
 
 [entries.registry_recipe_integration]
-ours = "OperationRegistry + recipes + provenance"
+ours = "sstv_decode registered (Heavy) + Tauri/CLI bridges"
 status = "superset"
-notes = "sstv_decode registers as CostClass::Heavy op; results become blobs consumable by every other CyberCipher tool. Upstream is a standalone CLI."
+notes = "sstv_decode is a registry op composing with recipes; sstv_decode_audio/sstv_modes Tauri commands and the CLI sstv subcommand expose the pipeline; bytes never touch disk in the blob path (PR #52)."
 
 [entries.cross_tool_composition]
 ours = "planned acceptance flows G..J"

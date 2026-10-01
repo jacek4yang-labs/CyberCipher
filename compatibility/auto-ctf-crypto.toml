@@ -25,7 +25,7 @@
 upstream = "https://github.com/jacek4yang-labs/auto-ctf"
 baseline_date = 2026-09-28
 source = "upstream docs/CAPABILITIES.md + README capability table"
-notes = "This is the reference baseline for CyberCipher's attack engine (M4). Entries reflect implemented reality on main (5d5ab8e); branch work is marked 'PR in flight'."
+notes = "Reference baseline for the attack engine. Re-verified 2026-10-01 against current main (d9360db): dp+dq joint leak, Rabin e=2, NT/NetNTLM helpers and secp256k1/ETH are confirmed NOT implemented upstream-side (attack pipeline = known-pq/d/phi, dp-leak, common-modulus, hastad, shared-prime, low-e, coppersmith-hint, wiener, fermat, pollard-rho/p-1; no rabin, no dpdq). All 'PR in flight' phrasing removed — git is history."
 
 # ------------------------------------------------------------- RSA ----
 
