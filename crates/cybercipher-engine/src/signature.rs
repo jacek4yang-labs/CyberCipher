@@ -726,7 +726,7 @@ evidence; several independent shapes are needed for confidence.",
                 word: 4,
             },
             TableDef {
-                part: "s1",
+                part: "sboxes",
                 hex: BLOWFISH_S_HEX,
                 word: 4,
             },
@@ -747,7 +747,8 @@ evidence; several independent shapes are needed for confidence.",
         ],
         patterns: &[],
         explanation: "Blowfish P-array and S-boxes are the hexadecimal digits of pi; the \
-full tables (18 + 4x256 words) are distinctive. P and S1 are pinned here as anchors.",
+full tables (18 + 4x256 words) are distinctive. P and the concatenated S-boxes are pinned \
+here as anchors.",
     },
 ];
 
@@ -1944,10 +1945,15 @@ mod tests {
         assert_eq!(p.len(), 72);
         assert_eq!(u32_be(&p, 0), 0x243f6a88);
         assert_eq!(u32_be(&p, 1), 0x85a308d3);
-        let s1 = unhex(BLOWFISH_S_HEX);
-        assert_eq!(s1.len(), 1024);
-        assert_eq!(u32_be(&s1, 0), 0xd1310ba6);
-        assert_eq!(u32_be(&s1, 1), 0x98dfb5ac);
+        // All four S-boxes pinned contiguously (4096 bytes); they continue
+        // the pi digit stream right after the 18 P words.
+        let sboxes = unhex(BLOWFISH_S_HEX);
+        assert_eq!(sboxes.len(), 4096);
+        assert_eq!(u32_be(&sboxes, 0), 0xd1310ba6);
+        assert_eq!(u32_be(&sboxes, 1), 0x98dfb5ac);
+        assert_eq!(u32_be(&sboxes, 256), 0x4b7a70e9, "S2 starts at word 256");
+        assert_eq!(u32_be(&sboxes, 512), 0xe93d5a68, "S3 starts at word 512");
+        assert_eq!(u32_be(&sboxes, 768), 0x3a39ce37, "S4 starts at word 768");
     }
 
     #[test]
