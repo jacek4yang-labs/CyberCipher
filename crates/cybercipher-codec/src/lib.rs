@@ -21,6 +21,7 @@ mod inspect;
 mod integer;
 mod specialty;
 mod structured;
+mod wrappers;
 
 pub use encoding::decode_input;
 pub use fileinfo::{sniff_magic, MagicMatch};
@@ -40,4 +41,5 @@ pub fn register_all(reg: &mut OperationRegistry) {
     byteops::register(reg);
     inspect::register(reg);
     structured::register(reg);
+    wrappers::register(reg);
 }

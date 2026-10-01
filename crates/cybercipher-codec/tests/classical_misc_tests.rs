@@ -388,3 +388,41 @@ fn braille_errors() {
     // as digits (H = digit 8).
     assert_text(run_text(&r, "from-braille", "\u{283c}\u{2813}", &[]), "8");
 }
+
+// ------------------------------------------------------------ ROT13 ----
+
+#[test]
+fn rot13_known_answer_and_involution() {
+    let r = reg();
+    assert_text(
+        run_text(&r, "rot13", "Hello, World! 123", &[]),
+        "Uryyb, Jbeyq! 123",
+    );
+    // Involution: applying it twice reproduces the input.
+    let once = run_text(&r, "rot13", "flag{rot13_roundtrip}", &[]).unwrap();
+    let Value::Text(once) = once else { panic!() };
+    assert_text(run_text(&r, "rot13", &once, &[]), "flag{rot13_roundtrip}");
+}
+
+#[test]
+fn rot13_non_letters_pass_through() {
+    let r = reg();
+    assert_text(
+        run_text(&r, "rot13", "ABC-xyz_019 {[{}]}", &[]),
+        "NOP-klm_019 {[{}]}",
+    );
+}
+
+// ------------------------------------------------------------ Atbash ----
+
+#[test]
+fn atbash_known_answer_and_involution() {
+    let r = reg();
+    assert_text(
+        run_text(&r, "atbash", "Hello, World!", &[]),
+        "Svool, Dliow!",
+    );
+    let once = run_text(&r, "atbash", "flag{atbash_roundtrip}", &[]).unwrap();
+    let Value::Text(once) = once else { panic!() };
+    assert_text(run_text(&r, "atbash", &once, &[]), "flag{atbash_roundtrip}");
+}
