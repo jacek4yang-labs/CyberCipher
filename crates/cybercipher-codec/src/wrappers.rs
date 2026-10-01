@@ -2153,7 +2153,7 @@ mod tests {
         let Value::Text(enc) = enc else { panic!() };
         let body: String = enc
             .lines()
-            .filter(|l| !l.starts_with("begin ") && l != "end" && l != "`")
+            .filter(|&l| !l.starts_with("begin ") && l != "end" && l != "`")
             .collect::<Vec<&str>>()
             .join("\n");
         let out = from_uuencode_op(&Value::Text(body), &relaxed(), &ctx()).unwrap();
