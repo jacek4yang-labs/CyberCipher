@@ -881,7 +881,7 @@ fn random_binary_never_claimed_as_structured() {
 #[test]
 fn buddha_layer_detected() {
     let reg = registry();
-    let input = encode_with_op(&reg, "to-buddha", "flag{buddha_auto}");
+    let input = encode_with_op(&reg, "to-buddha", "flag{buddha_auto}".as_bytes());
     let c = find_candidate(&reg, input.as_bytes(), "from-buddha").expect("buddha candidate");
     assert!(
         c.preview.contains("flag{buddha_auto}"),
@@ -894,7 +894,7 @@ fn buddha_layer_detected() {
 #[test]
 fn bear_layer_detected() {
     let reg = registry();
-    let input = encode_with_op(&reg, "to-bear", "flag{bear_auto}");
+    let input = encode_with_op(&reg, "to-bear", "flag{bear_auto}".as_bytes());
     let c = find_candidate(&reg, input.as_bytes(), "from-bear").expect("bear candidate");
     assert!(
         c.preview.contains("flag{bear_auto}"),
@@ -907,7 +907,7 @@ fn bear_layer_detected() {
 #[test]
 fn core_values_layer_detected() {
     let reg = registry();
-    let input = encode_with_op(&reg, "to-core-values", "flag{core_auto}");
+    let input = encode_with_op(&reg, "to-core-values", "flag{core_auto}".as_bytes());
     let c = find_candidate(&reg, input.as_bytes(), "from-core-values").expect("core candidate");
     assert!(
         c.preview.contains("flag{core_auto}"),
@@ -920,7 +920,7 @@ fn core_values_layer_detected() {
 #[test]
 fn brainfuck_layer_detected() {
     let reg = registry();
-    let input = encode_with_op(&reg, "to-brainfuck", "flag{bf_auto}");
+    let input = encode_with_op(&reg, "to-brainfuck", "flag{bf_auto}".as_bytes());
     let c = find_candidate(&reg, input.as_bytes(), "run-brainfuck").expect("bf candidate");
     assert!(c.preview.contains("flag{bf_auto}"), "preview {}", c.preview);
     assert!(c.confident, "score {}", c.score);
@@ -929,7 +929,7 @@ fn brainfuck_layer_detected() {
 #[test]
 fn ook_layer_detected() {
     let reg = registry();
-    let input = encode_with_op(&reg, "to-ook", "flag{ook_auto}");
+    let input = encode_with_op(&reg, "to-ook", "flag{ook_auto}".as_bytes());
     let c = find_candidate(&reg, input.as_bytes(), "from-ook").expect("ook candidate");
     assert!(
         c.preview.contains("flag{ook_auto}"),
@@ -942,7 +942,7 @@ fn ook_layer_detected() {
 #[test]
 fn beast_layer_detected() {
     let reg = registry();
-    let input = encode_with_op(&reg, "to-beast", "flag{beast_auto}");
+    let input = encode_with_op(&reg, "to-beast", "flag{beast_auto}".as_bytes());
     let c = find_candidate(&reg, input.as_bytes(), "from-beast").expect("beast candidate");
     assert!(
         c.preview.contains("flag{beast_auto}"),
