@@ -247,10 +247,13 @@ function CandidateView({
 function AppliedView({
   applied,
   onSendBytes,
+  onSendAutoDecode,
 }: {
   applied: ExtractResult;
   onSendBytes: (base64: string) => void;
+  onSendAutoDecode: (base64: string) => void;
 }) {
+  const [copied, setCopied] = useState(false);
   return (
     <div className="sstv-applied">
       <div className="sstv-cand-head">
@@ -267,6 +270,25 @@ function AppliedView({
         >
           → Workbench
         </button>
+        <button
+          className="tool-btn"
+          onClick={() => onSendAutoDecode(bytesToBase64(applied.data))}
+          title="Run Auto Analyze on the extracted bytes"
+        >
+          → Auto Decode
+        </button>
+        <button
+          className={`tool-btn${copied ? " copied" : ""}`}
+          onClick={() => {
+            void navigator.clipboard.writeText(toHex(applied.data)).then(() => {
+              setCopied(true);
+              setTimeout(() => setCopied(false), 1200);
+            });
+          }}
+          title="Copy the full payload as lowercase hex"
+        >
+          {copied ? "Copied ✓" : "Copy Hex"}
+        </button>
       </div>
       {applied.data.length > 0 && <BytePreview bytes={applied.data} />}
     </div>
@@ -279,6 +301,8 @@ function ImageCard({ image }: { image: SstvImage }) {
   const runAutoLsb = useSstvStore((s) => s.runAutoLsb);
   const applyCandidate = useSstvStore((s) => s.applyCandidate);
   const sendToWorkbench = useSstvStore((s) => s.sendToWorkbench);
+  const sendToAutoDecode = useSstvStore((s) => s.sendToAutoDecode);
+  const openInStegoLab = useSstvStore((s) => s.openInStegoLab);
   const dataUrl = `data:image/png;base64,${image.png_base64}`;
   const lsb: LsbRun = run ?? {
     busy: false,
@@ -319,6 +343,13 @@ function ImageCard({ image }: { image: SstvImage }) {
           title="Put the PNG into the Workbench input (base64)"
         >
           → Workbench
+        </button>
+        <button
+          className="tool-btn"
+          onClick={() => openInStegoLab(image)}
+          title="Load this PNG as the Stego Lab's active image (in-memory, no temp files)"
+        >
+          → Stego Lab
         </button>
       </div>
 
@@ -364,7 +395,11 @@ function ImageCard({ image }: { image: SstvImage }) {
         )}
         <ErrorBanner error={lsb.applyError} />
         {lsb.applied && (
-          <AppliedView applied={lsb.applied} onSendBytes={sendToWorkbench} />
+          <AppliedView
+            applied={lsb.applied}
+            onSendBytes={sendToWorkbench}
+            onSendAutoDecode={sendToAutoDecode}
+          />
         )}
       </div>
     </div>
@@ -583,8 +618,8 @@ export function SstvLabPage() {
       <p className="dim sstv-expl">
         Automatic SSTV decode: VIS / sync-period mode detection, frequency-offset and clock
         recovery, and a full-resolution decode of the best candidates. Decoded images can be
-        saved, sent to the Workbench, or passed through the Auto LSB scanner — all analysis runs
-        in the Rust engine.
+        saved, sent to the Workbench or the Stego Lab, or passed through the Auto LSB scanner —
+        all analysis runs in the Rust engine.
       </p>
       <div className="sstv-layout">
         <div className="sstv-input-col">

@@ -199,6 +199,12 @@ export function roiString(x: string, y: string, w: string, h: string): string {
   return parts.join(",");
 }
 
+/** Decoded byte length of a base64 string (no full decode). */
+export function base64ByteLength(base64: string): number {
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
+}
+
 export interface StegoStore {
   // Tab selection (persists while the session lives, like the PKI Lab).
   tab: StegoTab;
@@ -209,6 +215,8 @@ export interface StegoStore {
   fileSize: number | null;
   fileBase64: string | null;
   loadFile: (file: File) => Promise<void>;
+  /** Cross-tool handoff: load image bytes (base64, e.g. an SSTV PNG) as the active image. */
+  loadFromBytes: (name: string, base64: string) => void;
   clearFile: () => void;
 
   // Image info (image_info op, run once per loaded file).
@@ -261,6 +269,8 @@ export interface StegoStore {
 
   // Handoff to the Workbench (binary travels as base64 input).
   sendToWorkbench: (base64: string) => void;
+  /** Handoff to Auto Analyze (binary travels as base64 input, scan auto-runs). */
+  sendToAutoDecode: (base64: string) => void;
 }
 
 export const useStegoStore = create<StegoStore>((set, get) => {
@@ -306,6 +316,34 @@ export const useStegoStore = create<StegoStore>((set, get) => {
     set({ transformCache: cache, transformCacheOrder: order });
   };
 
+  /**
+   * Shared loader for files and cross-tool handoffs: sets the active image
+   * bytes and runs image_info once for the new image.
+   */
+  const loadImageBytes = async (name: string, base64: string, size: number) => {
+    set({ fileName: name, fileSize: size, fileBase64: null });
+    resetResults();
+    set({ fileBase64: base64 });
+    // Image info runs once per loaded image.
+    set({ infoBusy: true });
+    try {
+      const resp = await runSingleOp("image_info", {}, base64);
+      if (resp.report.error) throw new Error(formatInvokeError(resp.report.error));
+      if (resp.blocked_at !== null) {
+        throw new Error(`run stopped at stage ${resp.blocked_at}`);
+      }
+      const out = resp.output;
+      if (out === null || out.kind !== "json") {
+        throw new Error("image_info returned no report");
+      }
+      if (superseded(base64)) return;
+      set({ info: out.value as StegoImageInfo, infoBusy: false });
+    } catch (e) {
+      if (superseded(base64)) return;
+      set({ infoBusy: false, infoError: e instanceof Error ? e.message : String(e) });
+    }
+  };
+
   return {
     tab: "transform",
     setTab: (tab) => set({ tab }),
@@ -314,30 +352,9 @@ export const useStegoStore = create<StegoStore>((set, get) => {
     fileSize: null,
     fileBase64: null,
     loadFile: async (file) => {
-      set({ fileName: file.name, fileSize: file.size, fileBase64: null });
-      resetResults();
       try {
         const buf = await file.arrayBuffer();
-        const base64 = bytesToBase64(new Uint8Array(buf));
-        set({ fileBase64: base64 });
-        // Image info runs once per loaded file.
-        set({ infoBusy: true });
-        try {
-          const resp = await runSingleOp("image_info", {}, base64);
-          if (resp.report.error) throw new Error(formatInvokeError(resp.report.error));
-          if (resp.blocked_at !== null) {
-            throw new Error(`run stopped at stage ${resp.blocked_at}`);
-          }
-          const out = resp.output;
-          if (out === null || out.kind !== "json") {
-            throw new Error("image_info returned no report");
-          }
-          if (superseded(base64)) return;
-          set({ info: out.value as StegoImageInfo, infoBusy: false });
-        } catch (e) {
-          if (superseded(base64)) return;
-          set({ infoBusy: false, infoError: e instanceof Error ? e.message : String(e) });
-        }
+        await loadImageBytes(file.name, bytesToBase64(new Uint8Array(buf)), file.size);
       } catch (e) {
         set({
           fileName: null,
@@ -345,6 +362,9 @@ export const useStegoStore = create<StegoStore>((set, get) => {
           infoError: `could not read file: ${e instanceof Error ? e.message : String(e)}`,
         });
       }
+    },
+    loadFromBytes: (name, base64) => {
+      void loadImageBytes(name, base64, base64ByteLength(base64));
     },
     clearFile: () => {
       set({ fileName: null, fileSize: null, fileBase64: null });
@@ -556,6 +576,10 @@ export const useStegoStore = create<StegoStore>((set, get) => {
       workbench.setInputEncoding("base64");
       workbench.setPage("workbench");
       void workbench.bake(false);
+    },
+
+    sendToAutoDecode: (base64) => {
+      useStore.getState().sendToAutoDecode(base64);
     },
   };
 });

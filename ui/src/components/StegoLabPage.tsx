@@ -411,6 +411,7 @@ function PlaneMaskGrid() {
 
 function ExtractReport({ result }: { result: StegoExtractResult }) {
   const sendToWorkbench = useStegoStore((s) => s.sendToWorkbench);
+  const sendToAutoDecode = useStegoStore((s) => s.sendToAutoDecode);
   return (
     <div className="sstv-applied">
       <div className="sstv-cand-head">
@@ -429,6 +430,13 @@ function ExtractReport({ result }: { result: StegoExtractResult }) {
           title="Put the extracted bytes into the Workbench input (base64)"
         >
           → Workbench
+        </button>
+        <button
+          className="tool-btn"
+          onClick={() => sendToAutoDecode(bytesToBase64(result.data))}
+          title="Run Auto Analyze on the extracted bytes"
+        >
+          → Auto Decode
         </button>
         <CopyHexButton bytes={result.data} />
       </div>
@@ -650,6 +658,7 @@ function CandidateView({
 
 function AppliedView({ applied }: { applied: StegoExtractResult }) {
   const sendToWorkbench = useStegoStore((s) => s.sendToWorkbench);
+  const sendToAutoDecode = useStegoStore((s) => s.sendToAutoDecode);
   return (
     <div className="sstv-applied">
       <div className="sstv-cand-head">
@@ -665,6 +674,13 @@ function AppliedView({ applied }: { applied: StegoExtractResult }) {
           title="Put the extracted bytes into the Workbench input (base64)"
         >
           → Workbench
+        </button>
+        <button
+          className="tool-btn"
+          onClick={() => sendToAutoDecode(bytesToBase64(applied.data))}
+          title="Run Auto Analyze on the extracted bytes"
+        >
+          → Auto Decode
         </button>
         <CopyHexButton bytes={applied.data} />
       </div>
