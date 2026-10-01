@@ -526,9 +526,11 @@ pub fn decode_html_entities(text: &str, strict: bool) -> OpResult<String> {
                         .with_actual(format!("U+{cp:04X}")));
                     }
                     None => {
-                        // Relaxed: keep the reference verbatim.
+                        // Relaxed: keep the reference verbatim. Advance past
+                        // the '&' only — a real hang existed here (i was not
+                        // advanced, so non-scalar references looped forever).
                         out.push('&');
-                        continue;
+                        i += 1;
                     }
                 }
                 i += 1 + consumed;
