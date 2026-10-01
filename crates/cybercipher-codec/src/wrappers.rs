@@ -1120,7 +1120,13 @@ fn xx_value(c: u8) -> Option<u8> {
 /// data lines. Strict mode requires the envelope, an octal mode, and the
 /// `end` line; relaxed mode also decodes envelope-less streams.
 fn find_envelope(text: &str, strict: bool, what: &str) -> OpResult<Vec<String>> {
-    let lines: Vec<&str> = text.lines().map(str::trim_end).collect();
+    // Only strip a trailing CR (CRLF input): trimming ALL trailing
+    // whitespace would destroy significant trailing spaces in uu/xx bodies
+    // (a zero byte encodes to spaces).
+    let lines: Vec<&str> = text
+        .lines()
+        .map(|l| l.strip_suffix('').unwrap_or(l))
+        .collect();
     let first = lines.iter().position(|l| !l.is_empty());
     let last = lines.iter().rposition(|l| !l.is_empty());
     let (Some(first), Some(last)) = (first, last) else {
