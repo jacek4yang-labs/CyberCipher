@@ -48,8 +48,8 @@ use serde::Serialize;
 
 use cybercipher_core::{
     Category, CostClass, ErrorKind, ExecutionContext, OpResult, OperationError, OperationRegistry,
-    ParamDefault, ParamKind, ParamMap, ParamOption, ParamSpec, Provenance, Security, Value,
-    ValueKind,
+    OperationSpec, ParamDefault, ParamKind, ParamMap, ParamOption, ParamSpec, Provenance, Security,
+    Value, ValueKind,
 };
 
 // ------------------------------------------------------------ constants ---
@@ -1011,6 +1011,8 @@ fn collect_single_hits(
                     continue;
                 }
                 let weight = if needle.len() >= 8 { 2 } else { 1 };
+                let extents: Vec<(usize, usize)> =
+                    live.iter().map(|&o| (o, o + needle.len())).collect();
                 hits.push(RawHit {
                     part: single.part,
                     weight,
@@ -1023,7 +1025,7 @@ fn collect_single_hits(
                         off = live[0]
                     ),
                     offsets: live,
-                    extents: live.iter().map(|&o| (o, o + needle.len())).collect(),
+                    extents,
                 });
                 break;
             }
