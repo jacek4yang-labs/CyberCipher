@@ -523,7 +523,7 @@ pub fn decode_html_entities(text: &str, strict: bool) -> OpResult<String> {
                 .iter()
                 .position(|b| !b.is_ascii_alphanumeric())
                 .unwrap_or(rest.len());
-            (2..=10).contains(&end) && rest.get(end) == Some(&b';')
+            end >= 2 && rest.get(end) == Some(&b';')
         };
         match parse_entity(&bytes[i + 1..]) {
             Some((Entity::Scalar(cp), consumed)) => {
@@ -542,6 +542,7 @@ pub fn decode_html_entities(text: &str, strict: bool) -> OpResult<String> {
                         // advanced, so non-scalar references looped forever).
                         out.push('&');
                         i += 1;
+                        continue;
                     }
                 }
                 i += 1 + consumed;
@@ -971,9 +972,9 @@ pub fn punycode_encode_body(text: &str) -> OpResult<String> {
                     .checked_add(1)
                     .ok_or_else(|| OperationError::decode("punycode encode overflow"))?;
             } else if value == n {
-                bias = puny_adapt(delta, handled + 1, first_time);
-                first_time = false;
                 // Emit delta as digits; the last digit carries the case flag.
+                // RFC 3492 adapts the bias AFTER emission — adapting first
+                // produced wrong labels (e.g. "85e" instead of "kva").
                 let mut q = delta;
                 let mut k = PUNY_BASE;
                 loop {
@@ -993,6 +994,8 @@ pub fn punycode_encode_body(text: &str) -> OpResult<String> {
                     k += PUNY_BASE;
                 }
                 output.push(puny_encode_digit(q, flag));
+                bias = puny_adapt(delta, handled + 1, first_time);
+                first_time = false;
                 delta = 0;
                 handled += 1;
             }
