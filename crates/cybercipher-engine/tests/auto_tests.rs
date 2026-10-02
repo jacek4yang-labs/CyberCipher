@@ -1049,3 +1049,40 @@ fn pathological_unicode_escape_wall_stays_bounded() {
         "the escape wall must decode"
     );
 }
+
+// ---------------------------------------------------- polluted hex tail ----
+
+/// Regression (user-reported bake failure): b64 -> b64 -> hex whose tail
+/// carries ONE junk character ('J' after the "==" padding, encoded as 3d3d).
+/// The strict hex gate refuses it; the relaxed step must recover the chain:
+/// b64 -> b64 -> from-hex(relaxed) -> from-base64 -> payload text.
+#[test]
+fn polluted_hex_tail_recovers_via_relaxed_step() {
+    let reg = registry();
+    let input = b"TlRRME5EWTROR1ExTnpVMk5EWXpORFUzTlRRMU1qVXhOR1UyWkRaak4yRTJNalU0Tm1Jek1UVXpObVUwWlRSak5UVTFOVFEyTmprMk16WmpOalEyWkRVeU5tVTBOak16TlRFek1UWmpOemsyTXpVM05UWTJZVFJsTkRZMFlUUmpOalUwTlRVeE16VTFNalpsTm1NME16VTNObVF6T1RVeU5XRTFOVE0wTXpJMk1UVTFORFkwTWpWaE5EVTNPRFExTlRZek1ETTFOMkUxTlRVNE5HRXpOVFJsTXpNMVlUUmtOalUwTnpVMk16STFORFUxTXpFMk9EVmhORFUxTWpjMU5qSXpNamMwTlRVMU1UWmxORFV6TVRVMU16QTBOalUzTlRJMU56VXlOemMyTVRkaE5qZzBPVFJsTlRVek1UTXlOakkxTmpaaU16STFNak16Tm1Zek1qVXpORGcyT0RabE5UYzFOalppTjJFMk1UWmtOamcwWlRVek16RTJZamM0TlRVek1EY3dOekUxTmpRM05URTNPRFl4Tm1VMk5EUTNOR1kxT0Raak5qZzFOelUyTlRZM01qVXhOVGcyTXpkaE5qTTJZalk0TmpFMFpUWmtOalEyWWpVMU5EYzFZVFUzTmpNek1qY3dObUkyTVRaaU5USTFOVFUxTnpjelpETks=";
+    let candidates = auto_decode(&reg, input, &ExecutionContext::new());
+    let relaxed = candidates
+        .iter()
+        .find(|c| c.path.contains(&"from-hex".to_string()) && c.path.len() >= 3)
+        .expect("relaxed-hex must continue the chain past the junk tail");
+    // The relaxed step's evidence must say what was ignored — no silent fixes.
+    let relaxed_idx = relaxed
+        .path
+        .iter()
+        .position(|p| p == "from-hex")
+        .unwrap();
+    assert!(
+        relaxed.evidence.iter().any(|e| e.contains("trailing junk")),
+        "evidence must name the relaxed handling: {:?}",
+        relaxed.evidence
+    );
+    let _ = relaxed_idx;
+    // The chain continues past the hex layer into another base64 layer.
+    assert!(
+        relaxed.path.len() >= 4,
+        "chain must continue: {:?}",
+        relaxed.path
+    );
+    // The final payload is printable text (the recovered answer).
+    assert!(relaxed.is_utf8, "payload {}", relaxed.preview);
+}
