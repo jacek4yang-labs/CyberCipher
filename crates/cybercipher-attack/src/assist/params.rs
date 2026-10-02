@@ -115,8 +115,7 @@ const PKCS7_OR_NONE: &[Padding] = &[Padding::Pkcs7, Padding::None];
 /// Hex first, raw ASCII second — the interpretations used by the non-AES
 /// profiles. Never silent guessing: each interpretation must decode to an
 /// accepted key length on its own or it is dropped.
-const HEX_THEN_ASCII: &[KeyInterpretation] =
-    &[KeyInterpretation::Hex, KeyInterpretation::Utf8];
+const HEX_THEN_ASCII: &[KeyInterpretation] = &[KeyInterpretation::Hex, KeyInterpretation::Utf8];
 
 /// Every IV source (explicit, CBC carve, zero fallback).
 const ALL_IV_SOURCES: &[IvSource] = &[
@@ -686,7 +685,12 @@ fn emit_iv_variants(
         if out.len() >= space.cap {
             return;
         }
-        if !source.applies(mode, explicit_iv.is_some(), ciphertext.len(), space.block_size) {
+        if !source.applies(
+            mode,
+            explicit_iv.is_some(),
+            ciphertext.len(),
+            space.block_size,
+        ) {
             continue;
         }
         let iv = match source {

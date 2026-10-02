@@ -100,7 +100,15 @@ fn hex_str(bytes: &[u8]) -> String {
 #[test]
 fn sm4_gbt32907_standard_vector() {
     let reg = registry();
-    let ct = block_encrypt(&reg, "sm4-encrypt", &hex_bytes(SM4_KEY), SM4_KEY, "ecb", "", "none");
+    let ct = block_encrypt(
+        &reg,
+        "sm4-encrypt",
+        &hex_bytes(SM4_KEY),
+        SM4_KEY,
+        "ecb",
+        "",
+        "none",
+    );
     assert_eq!(hex_str(&ct), "681edf34d206965e86b3e94f536e4246");
 }
 
@@ -109,15 +117,7 @@ fn sm4_gbt32907_standard_vector() {
 #[test]
 fn des_fips81_standard_vector() {
     let reg = registry();
-    let ct = block_encrypt(
-        &reg,
-        "des-encrypt",
-        b"Now is t",
-        DES_KEY,
-        "ecb",
-        "",
-        "none",
-    );
+    let ct = block_encrypt(&reg, "des-encrypt", b"Now is t", DES_KEY, "ecb", "", "none");
     assert_eq!(hex_str(&ct), "3fa40e8a984d4815");
 }
 
@@ -128,7 +128,15 @@ fn sm4_cbc_iv_prefix_ranked_first_with_evidence() {
     let reg = registry();
     let plaintext =
         b"Congratulations, the secret flag is flag{sm4_assist_rocks} and the rest is padding.";
-    let ct = block_encrypt(&reg, "sm4-encrypt", plaintext, SM4_KEY, "cbc", IV16, "pkcs7");
+    let ct = block_encrypt(
+        &reg,
+        "sm4-encrypt",
+        plaintext,
+        SM4_KEY,
+        "cbc",
+        IV16,
+        "pkcs7",
+    );
     // Classic transport layout: IV || body.
     let mut payload = hex_bytes(IV16);
     payload.extend_from_slice(&ct);
@@ -148,7 +156,11 @@ fn sm4_cbc_iv_prefix_ranked_first_with_evidence() {
     assert_eq!(top.key_interpretation, KeyInterpretation::Hex);
     assert_eq!(top.key_length, 16);
     assert!(top.confident, "score {}", top.score);
-    assert!(top.preview.contains("flag{sm4_assist_rocks}"), "{}", top.preview);
+    assert!(
+        top.preview.contains("flag{sm4_assist_rocks}"),
+        "{}",
+        top.preview
+    );
     assert!(top
         .evidence
         .iter()
@@ -183,7 +195,8 @@ fn des_cbc_ascii_key_ranked_first() {
     // An 8-character raw-ASCII key: the DES classic interpretation.
     let key = "goblue!!";
     assert_eq!(key.len(), 8);
-    let plaintext = b"the ordinary words of the language remain the same and the flag is flag{des_assist}";
+    let plaintext =
+        b"the ordinary words of the language remain the same and the flag is flag{des_assist}";
     let ct = block_encrypt(
         &reg,
         "des-encrypt",
@@ -268,8 +281,17 @@ fn tdes_16byte_key_ecb_ranked_first() {
 fn serpent_cbc_iv_prefix_ranked_first() {
     let reg = registry();
     let key = "00112233445566778899aabbccddeeff";
-    let plaintext = b"Congratulations, the secret flag is flag{serpent_rocks} and the rest is padding.";
-    let ct = block_encrypt(&reg, "serpent-encrypt", plaintext, key, "cbc", IV16, "pkcs7");
+    let plaintext =
+        b"Congratulations, the secret flag is flag{serpent_rocks} and the rest is padding.";
+    let ct = block_encrypt(
+        &reg,
+        "serpent-encrypt",
+        plaintext,
+        key,
+        "cbc",
+        IV16,
+        "pkcs7",
+    );
     let mut payload = hex_bytes(IV16);
     payload.extend_from_slice(&ct);
 
@@ -319,7 +341,15 @@ fn camellia_cbc_24byte_key_ranked_first() {
     let reg = registry();
     let key = "2b7e151628aed2a6abf7158809cf4f3cef0123456789abcd";
     let plaintext = ENGLISH;
-    let ct = block_encrypt(&reg, "camellia-encrypt", plaintext, key, "cbc", IV16, "pkcs7");
+    let ct = block_encrypt(
+        &reg,
+        "camellia-encrypt",
+        plaintext,
+        key,
+        "cbc",
+        IV16,
+        "pkcs7",
+    );
 
     let input = AssistInput {
         ciphertext: ct,
@@ -413,7 +443,15 @@ fn wrong_key_length_pruned_sm4() {
 fn wrong_iv_length_pruned_not_attempted_sm4() {
     let reg = registry();
     let plaintext = b"wrong length ivs must be pruned before any decryption is attempted!!";
-    let ct = block_encrypt(&reg, "sm4-encrypt", plaintext, SM4_KEY, "cbc", IV16, "pkcs7");
+    let ct = block_encrypt(
+        &reg,
+        "sm4-encrypt",
+        plaintext,
+        SM4_KEY,
+        "cbc",
+        IV16,
+        "pkcs7",
+    );
 
     // A 4-byte explicit IV is structurally impossible for SM4 CBC (needs 16).
     let cands = generate_profile_candidates(&Sm4Profile, SM4_KEY, Some(vec![0xab; 4]), &ct);
@@ -421,9 +459,7 @@ fn wrong_iv_length_pruned_not_attempted_sm4() {
         cands.iter().all(|c| c.iv.len() != 4),
         "the wrong-length explicit IV must never reach a candidate"
     );
-    assert!(cands
-        .iter()
-        .all(|c| !c.mode.uses_iv() || c.iv.len() == 16));
+    assert!(cands.iter().all(|c| !c.mode.uses_iv() || c.iv.len() == 16));
 
     let input = AssistInput {
         ciphertext: ct,
@@ -432,8 +468,13 @@ fn wrong_iv_length_pruned_not_attempted_sm4() {
         hint: None,
     };
     let result = sm4_assist(&reg, &input, &ExecutionContext::new()).unwrap();
-    assert!(result.hits.iter().all(|h| h.iv_hex.is_empty() || h.iv_hex.len() == 32),
-        "no candidate may run with the 4-byte IV");
+    assert!(
+        result
+            .hits
+            .iter()
+            .all(|h| h.iv_hex.is_empty() || h.iv_hex.len() == 32),
+        "no candidate may run with the 4-byte IV"
+    );
 }
 
 #[test]
@@ -456,9 +497,10 @@ fn unaligned_ciphertext_prunes_block_modes_serpent() {
         &[0x42u8; 30],
     );
     assert!(!cands.is_empty());
-    assert!(cands
-        .iter()
-        .all(|c| c.mode == Mode::Ctr || c.mode == Mode::Cfb || c.mode == Mode::Ofb),
+    assert!(
+        cands
+            .iter()
+            .all(|c| c.mode == Mode::Ctr || c.mode == Mode::Cfb || c.mode == Mode::Ofb),
         "unaligned input must leave only streaming modes, got {:?}",
         cands.iter().map(|c| c.mode).collect::<Vec<_>>()
     );
@@ -474,7 +516,10 @@ fn twofish_wrong_key_length_zero_candidates() {
         hint: None,
     };
     let result = twofish_assist(&reg, &input, &ExecutionContext::new());
-    assert!(result.is_err(), "8 bytes is not an accepted Twofish key length");
+    assert!(
+        result.is_err(),
+        "8 bytes is not an accepted Twofish key length"
+    );
 }
 
 #[test]
@@ -507,7 +552,15 @@ fn rc4_key_length_bounds() {
 fn wrong_key_scores_low_sm4() {
     let reg = registry();
     let plaintext = b"the flag is flag{sm4_secret} but the assist gets the wrong key here";
-    let ct = block_encrypt(&reg, "sm4-encrypt", plaintext, SM4_KEY, "cbc", IV16, "pkcs7");
+    let ct = block_encrypt(
+        &reg,
+        "sm4-encrypt",
+        plaintext,
+        SM4_KEY,
+        "cbc",
+        IV16,
+        "pkcs7",
+    );
     let input = AssistInput {
         ciphertext: ct,
         key_candidate: "00112233445566778899aabbccddeeff".to_string(),
@@ -519,7 +572,11 @@ fn wrong_key_scores_low_sm4() {
     assert!(
         result.hits.iter().all(|h| !h.confident),
         "a wrong key must never produce a confident candidate: {:?}",
-        result.hits.iter().map(|h| (h.rank, h.score)).collect::<Vec<_>>()
+        result
+            .hits
+            .iter()
+            .map(|h| (h.rank, h.score))
+            .collect::<Vec<_>>()
     );
 }
 
@@ -529,7 +586,15 @@ fn wrong_key_scores_low_sm4() {
 fn sm4_candidate_count_bounded() {
     let reg = registry();
     let plaintext = b"a fixed plaintext used for the bounded candidate count check";
-    let ct = block_encrypt(&reg, "sm4-encrypt", plaintext, SM4_KEY, "cbc", IV16, "pkcs7");
+    let ct = block_encrypt(
+        &reg,
+        "sm4-encrypt",
+        plaintext,
+        SM4_KEY,
+        "cbc",
+        IV16,
+        "pkcs7",
+    );
     assert_eq!(ct.len() % 16, 0);
 
     // One key (hex; the 32-char ASCII decoding is not 16 bytes) crossed with
@@ -586,15 +651,21 @@ fn rc4_candidate_count_small() {
 fn recipe_replay_sm4_cbc() {
     let reg = registry();
     let plaintext = b"deterministic sm4 recipe reproduction check.";
-    let ct = block_encrypt(&reg, "sm4-encrypt", plaintext, SM4_KEY, "cbc", IV16, "pkcs7");
+    let ct = block_encrypt(
+        &reg,
+        "sm4-encrypt",
+        plaintext,
+        SM4_KEY,
+        "cbc",
+        IV16,
+        "pkcs7",
+    );
 
     let cands = generate_profile_candidates(&Sm4Profile, SM4_KEY, Some(hex_bytes(IV16)), &ct);
     let cand = cands
         .iter()
         .find(|c| {
-            c.mode == Mode::Cbc
-                && c.iv_source == IvSource::Explicit
-                && c.key == hex_bytes(SM4_KEY)
+            c.mode == Mode::Cbc && c.iv_source == IvSource::Explicit && c.key == hex_bytes(SM4_KEY)
         })
         .unwrap()
         .clone();
@@ -646,11 +717,7 @@ fn recipe_replay_des_ecb() {
     let ct = block_encrypt(&reg, "des-encrypt", plaintext, DES_KEY, "ecb", "", "pkcs7");
 
     let cands = generate_profile_candidates(&DesProfile, DES_KEY, None, &ct);
-    let cand = cands
-        .iter()
-        .find(|c| c.mode == Mode::Ecb)
-        .unwrap()
-        .clone();
+    let cand = cands.iter().find(|c| c.mode == Mode::Ecb).unwrap().clone();
     let ops = recipe_ops_for_profile(&DesProfile, &cand, &[]);
     assert_eq!(ops[0].0, "des-decrypt");
 
@@ -671,7 +738,15 @@ fn sm4_zero_iv_fallback_still_found() {
     let reg = registry();
     let plaintext = b"the remainder of this sentence stays readable even when the leading block is scrambled flag{zero_iv_sm4}";
     let zero_iv = "00000000000000000000000000000000";
-    let ct = block_encrypt(&reg, "sm4-encrypt", plaintext, SM4_KEY, "cbc", zero_iv, "pkcs7");
+    let ct = block_encrypt(
+        &reg,
+        "sm4-encrypt",
+        plaintext,
+        SM4_KEY,
+        "cbc",
+        zero_iv,
+        "pkcs7",
+    );
 
     let input = AssistInput {
         ciphertext: ct,
@@ -694,7 +769,15 @@ fn twofish_cbc_last_block_carve() {
     let reg = registry();
     let key = "00112233445566778899aabbccddeeff00112233445566778899aabbccddeeff";
     let plaintext = b"twofish cbc with the iv appended after the ciphertext body still yields flag{twofish_last} here";
-    let ct = block_encrypt(&reg, "twofish-encrypt", plaintext, key, "cbc", IV16, "pkcs7");
+    let ct = block_encrypt(
+        &reg,
+        "twofish-encrypt",
+        plaintext,
+        key,
+        "cbc",
+        IV16,
+        "pkcs7",
+    );
     // Layout: body || IV (the IV trails the ciphertext).
     let mut payload = ct.clone();
     payload.extend_from_slice(&hex_bytes(IV16));
@@ -783,8 +866,8 @@ fn base64_interpretation_not_guessed_for_new_profiles() {
         iv_hex: None,
         hint: None,
     };
-    let aes = cybercipher_attack::assist::aes_assist(&reg, &aes_input, &ExecutionContext::new())
-        .unwrap();
+    let aes =
+        cybercipher_attack::assist::aes_assist(&reg, &aes_input, &ExecutionContext::new()).unwrap();
     assert!(aes
         .hits
         .iter()

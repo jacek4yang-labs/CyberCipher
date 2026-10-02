@@ -108,13 +108,7 @@ pub fn serpent_assist(
     input: &AssistInput,
     ctx: &ExecutionContext,
 ) -> OpResult<AssistResult> {
-    assist_with_profile(
-        registry,
-        &SerpentProfile,
-        input,
-        ctx,
-        DEFAULT_DEADLINE_MS,
-    )
+    assist_with_profile(registry, &SerpentProfile, input, ctx, DEFAULT_DEADLINE_MS)
 }
 
 /// Run the Twofish assist search over the input.
@@ -123,13 +117,7 @@ pub fn twofish_assist(
     input: &AssistInput,
     ctx: &ExecutionContext,
 ) -> OpResult<AssistResult> {
-    assist_with_profile(
-        registry,
-        &TwofishProfile,
-        input,
-        ctx,
-        DEFAULT_DEADLINE_MS,
-    )
+    assist_with_profile(registry, &TwofishProfile, input, ctx, DEFAULT_DEADLINE_MS)
 }
 
 /// Run the Camellia assist search over the input.
@@ -138,13 +126,7 @@ pub fn camellia_assist(
     input: &AssistInput,
     ctx: &ExecutionContext,
 ) -> OpResult<AssistResult> {
-    assist_with_profile(
-        registry,
-        &CamelliaProfile,
-        input,
-        ctx,
-        DEFAULT_DEADLINE_MS,
-    )
+    assist_with_profile(registry, &CamelliaProfile, input, ctx, DEFAULT_DEADLINE_MS)
 }
 
 /// Run the RC4 assist search over the input.
@@ -205,10 +187,7 @@ pub fn assist_with_profile(
             "no structurally possible candidate: the key candidate does not decode to \
              an accepted key length for this cipher",
         )
-        .with_expected(format!(
-            "a key decoding to {}",
-            profile.key_len_desc()
-        ))
+        .with_expected(format!("a key decoding to {}", profile.key_len_desc()))
         .with_actual(format!("\"{}\"", input.key_candidate))
         .with_details(format!(
             "Accepted interpretations are {}; keys are never truncated or padded.",
