@@ -267,7 +267,20 @@ function TransformTab() {
         </div>
       ) : (
         <>
-          <div className="pki-run-row">
+          <div
+            className="pki-run-row"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowLeft") {
+                e.preventDefault();
+                step(-1);
+              } else if (e.key === "ArrowRight") {
+                e.preventDefault();
+                step(1);
+              }
+            }}
+            title="Focus this row and use ← / → to step through transforms"
+          >
             <button
               className="tool-btn"
               onClick={() => stepGroup(-1)}
