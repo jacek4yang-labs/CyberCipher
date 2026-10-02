@@ -109,10 +109,7 @@ fn is_hex_polluted(data: &[u8]) -> bool {
         }
     }
     let total = data.iter().filter(|&&b| !b.is_ascii_whitespace()).count();
-    hex_digits >= 32
-        && hex_digits.is_multiple_of(2)
-        && tail_junk > 0
-        && tail_junk * 20 <= total
+    hex_digits >= 32 && hex_digits.is_multiple_of(2) && tail_junk > 0 && tail_junk * 20 <= total
 }
 
 /// Relaxed base64 gate: >=95% standard alphabet, mixed letters and digits,

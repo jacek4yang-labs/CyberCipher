@@ -1066,11 +1066,7 @@ fn polluted_hex_tail_recovers_via_relaxed_step() {
         .find(|c| c.path.contains(&"from-hex".to_string()) && c.path.len() >= 3)
         .expect("relaxed-hex must continue the chain past the junk tail");
     // The relaxed step's evidence must say what was ignored — no silent fixes.
-    let relaxed_idx = relaxed
-        .path
-        .iter()
-        .position(|p| p == "from-hex")
-        .unwrap();
+    let relaxed_idx = relaxed.path.iter().position(|p| p == "from-hex").unwrap();
     assert!(
         relaxed.evidence.iter().any(|e| e.contains("trailing junk")),
         "evidence must name the relaxed handling: {:?}",
