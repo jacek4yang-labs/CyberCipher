@@ -647,7 +647,7 @@ pub(crate) fn parse_hexdump(text: &str, strict: bool) -> OpResult<Vec<u8>> {
             .with_expected("a hex offset followed by whitespace")
             .with_actual(format!("`{}`", line.chars().take(24).collect::<String>())));
         } else {
-            (None, line)
+            (None, *line)
         };
 
         let (hex_part, ascii) = match body.find('|') {

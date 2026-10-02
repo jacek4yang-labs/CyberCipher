@@ -580,8 +580,9 @@ mod tests {
         assert_eq!(fletcher8(b""), 0);
         assert_eq!(fletcher16(b""), 0);
         assert_eq!(fletcher32(b""), 0);
-        // A trailing odd byte is folded into the running sums (CyberChef).
-        assert_eq!(fletcher32(b"a"), (0u32 << 16) | 0x61);
+        // A trailing odd byte is folded into both running sums (CyberChef):
+        // it acts as one 16-bit little-endian word, so a = b = 0x61.
+        assert_eq!(fletcher32(b"a"), 0x0061_0061);
     }
 
     #[test]

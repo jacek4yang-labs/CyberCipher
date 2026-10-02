@@ -376,6 +376,16 @@ fn cobs_decode(data: &[u8], strict: bool) -> OpResult<Vec<u8>> {
     } else {
         data
     };
+    // A valid COBS stream holds zeros only as the trailing delimiter; an
+    // interior zero is an interior frame delimiter (or corruption) and is a
+    // typed error in both modes — relaxed mode only recovers truncation.
+    if let Some(pos) = data.iter().position(|&b| b == 0) {
+        return Err(OperationError::decode(
+            "COBS input contains a zero byte inside the frame (interior delimiter)",
+        )
+        .with_expected("non-zero overhead bytes between delimiters")
+        .with_actual(format!("zero at offset {pos}")));
+    }
     let mut out = Vec::with_capacity(data.len());
     let mut i = 0usize;
     while i < data.len() {
@@ -453,7 +463,7 @@ fn from_netbios_name_op(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpRe
     for c in text.chars() {
         let upper = c.to_ascii_uppercase();
         if ('A'..='P').contains(&upper) {
-            nibbles.push(upper as u32 - 'A' as u32);
+            nibbles.push(upper as u8 - b'A');
         } else if strict {
             return Err(OperationError::decode(format!(
                 "NetBIOS encoded name contains the invalid character `{c}`"
@@ -517,7 +527,7 @@ fn from_base100_op(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<
 pub(crate) fn register(reg: &mut OperationRegistry) {
     use cybercipher_core::Category::Encoding as E;
     use cybercipher_core::CostClass::Instant;
-    use cybercipher_core::ValueKind::{B, T};
+    use cybercipher_core::ValueKind::{Bytes as B, Text as T};
 
     reg.add_simple(
         spec(
@@ -994,7 +1004,9 @@ mod tests {
 
     #[test]
     fn bcd_roundtrip_digits() {
-        for text in ["0", "7", "42", "0123456789", "9999999999999999"] {
+        // Even digit counts only: an odd count gets a zero nibble prepended,
+        // so the decoded text gains a leading zero by design.
+        for text in ["00", "07", "42", "0123456789", "9999999999999999"] {
             let enc = to_bcd_op(&Value::Text(text.into()), &ParamMap::new(), &ctx()).unwrap();
             assert_eq!(
                 from_bcd_op(&enc, &ParamMap::new(), &ctx()).unwrap(),
@@ -1025,9 +1037,10 @@ mod tests {
             Value::Bytes(data)
         );
         assert!(from_modhex_op(&Value::Text("zz".into()), &ParamMap::new(), &ctx()).is_err());
-        // Relaxed drops the invalid `z`, leaving the nibble pair "cz" -> 0x0C.
+        // Relaxed drops the invalid `z`; the surviving `c`,`r` nibble pair
+        // decodes to 0x0C.
         assert_eq!(
-            from_modhex_op(&Value::Text("cz".into()), &strict_off(), &ctx()).unwrap(),
+            from_modhex_op(&Value::Text("czr".into()), &strict_off(), &ctx()).unwrap(),
             Value::Bytes(vec![0x0C])
         );
     }
@@ -1081,7 +1094,7 @@ mod tests {
         map.insert("pad_to_16", false);
         let data = vec![0x00u8, 0xFF, 0x41];
         let enc = to_netbios_name_op(&Value::Bytes(data.clone()), &map, &ctx()).unwrap();
-        assert_eq!(enc, Value::Text("AAPBEB".into()));
+        assert_eq!(enc, Value::Text("AAPPEB".into()));
         assert_eq!(
             from_netbios_name_op(&enc, &ParamMap::new(), &ctx()).unwrap(),
             Value::Bytes(data)
