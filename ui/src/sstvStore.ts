@@ -8,6 +8,7 @@ import {
   type SstvModeInfo,
 } from "./api";
 import { useStore } from "./store";
+import { useStegoStore } from "./stegoStore";
 
 /** Channel override accepted by sstv_decode_audio: named choices or a zero-based index. */
 export type SstvChannelKind = "auto" | "mono" | "left" | "right" | "index";
@@ -176,6 +177,10 @@ export interface SstvStore {
 
   // Handoff to the Workbench (binary travels as base64 input).
   sendToWorkbench: (base64: string) => void;
+  /** Handoff to Auto Analyze (binary travels as base64 input, scan auto-runs). */
+  sendToAutoDecode: (base64: string) => void;
+  /** Handoff to the Stego Lab: a decoded PNG becomes the active Stego image. */
+  openInStegoLab: (image: SstvImage) => void;
 }
 
 export const useSstvStore = create<SstvStore>((set, get) => {
@@ -349,6 +354,20 @@ export const useSstvStore = create<SstvStore>((set, get) => {
       workbench.setInputEncoding("base64");
       workbench.setPage("workbench");
       void workbench.bake(false);
+    },
+
+    sendToAutoDecode: (base64) => {
+      useStore.getState().sendToAutoDecode(base64);
+    },
+
+    openInStegoLab: (image) => {
+      // The mandatory SSTV → Stego Lab flow: the decoded PNG (base64) is
+      // loaded in-memory as the Stego Lab's active image, no temp files.
+      useStegoStore.getState().loadFromBytes(
+        `sstv-${image.detection_index + 1}-${image.mode_slug}.png`,
+        image.png_base64,
+      );
+      useStore.getState().setPage("stego-lab");
     },
   };
 });
