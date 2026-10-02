@@ -211,10 +211,13 @@ fn detect_run(
 }
 
 fn reuse_run(input: &CoreValue, params: &ParamMap, _ctx: &ExecutionContext) -> OpResult<CoreValue> {
+    // Input-kind validation precedes the mandatory-param check so a wrong
+    // input kind is always the typed InvalidInput error (see
+    // `registry_rejects_wrong_input_kinds`).
+    let json = input_json(input)?;
     let curve = curve_from_params(params)?;
     let digest = digest_from_params(params, curve)?;
     let public_key = params.require_str("public_key")?;
-    let json = input_json(input)?;
     let object = json
         .as_object()
         .ok_or_else(|| missing_contract("nonce-reuse recovery"))?;
@@ -237,10 +240,10 @@ fn known_k_run(
     params: &ParamMap,
     _ctx: &ExecutionContext,
 ) -> OpResult<CoreValue> {
+    let json = input_json(input)?;
     let curve = curve_from_params(params)?;
     let digest = digest_from_params(params, curve)?;
     let public_key = params.require_str("public_key")?;
-    let json = input_json(input)?;
     let object = json
         .as_object()
         .ok_or_else(|| missing_contract("known-k recovery"))?;
@@ -259,11 +262,11 @@ fn small_k_run(
     params: &ParamMap,
     ctx: &ExecutionContext,
 ) -> OpResult<CoreValue> {
+    let json = input_json(input)?;
     let curve = curve_from_params(params)?;
     let digest = digest_from_params(params, curve)?;
     let public_key = params.require_str("public_key")?;
     let max_k = max_k_from_params(params)?;
-    let json = input_json(input)?;
     let object = json
         .as_object()
         .ok_or_else(|| missing_contract("small-k recovery"))?;
