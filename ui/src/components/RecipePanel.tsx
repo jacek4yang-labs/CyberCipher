@@ -7,6 +7,9 @@ export function RecipePanel() {
   const recipe = useStore((s) => s.recipe);
   const assistRecipeNote = useStore((s) => s.assistRecipeNote);
   const dismissAssistRecipeNote = useStore((s) => s.dismissAssistRecipeNote);
+  const bakeAlternates = useStore((s) => s.bakeAlternates);
+  const applyBakeAlternate = useStore((s) => s.applyBakeAlternate);
+  const dismissBakeNote = useStore((s) => s.dismissBakeNote);
   const { setNodeRef, isOver } = useDroppable({ id: "recipe-panel" });
 
   return (
@@ -20,12 +23,28 @@ export function RecipePanel() {
           <span>{assistRecipeNote}</span>
           <button
             className="icon-btn"
-            onClick={dismissAssistRecipeNote}
+            onClick={dismissAssistRecipeNote || dismissBakeNote}
             title="Dismiss this note"
-            aria-label="Dismiss assist recipe note"
+            aria-label="Dismiss recipe note"
           >
             ✕
           </button>
+        </div>
+      )}
+      {bakeAlternates.length > 1 && (
+        <div className="bake-alternates" role="list" aria-label="Alternative decodes">
+          <span className="hint">other decodes:</span>
+          {bakeAlternates.map((alt) => (
+            <button
+              key={`${alt.index}-${alt.label}`}
+              className="alt-chip"
+              role="listitem"
+              onClick={() => applyBakeAlternate(alt.index)}
+              title="Apply this decode as the recipe"
+            >
+              {alt.label}
+            </button>
+          ))}
         </div>
       )}
       <div

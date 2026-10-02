@@ -133,6 +133,30 @@ function defaultParamValue(spec: ParamSpec): ParamValue {
   return d.float;
 }
 
+/** Build recipe nodes from an auto candidate, overlaying the per-step
+ * parameter overrides the engine recorded (e.g. strict=false on the relaxed
+ * hex/base64 steps) over the operation defaults. */
+function nodesFromCandidate(
+  candidate: AutoCandidate,
+  opsById: Record<string, OperationInfo>,
+): Array<{ id: string; op: string; enabled: boolean; params: Record<string, ParamValue> }> {
+  nodeCounter = 0;
+  return candidate.path.map((opId, i) => {
+    nodeCounter += 1;
+    const op = opsById[opId];
+    const params = initParams(op);
+    const overrides = candidate.step_params?.[i];
+    if (overrides) {
+      for (const [key, value] of Object.entries(overrides)) {
+        if (typeof value === "boolean") params[key] = value;
+        else if (typeof value === "number") params[key] = value;
+        else if (typeof value === "string") params[key] = value;
+      }
+    }
+    return { id: `n${nodeCounter}`, op: opId, enabled: true, params };
+  });
+}
+
 function initParams(op: OperationInfo | undefined): Record<string, ParamValue> {
   const params: Record<string, ParamValue> = {};
   if (op) for (const p of op.params) params[p.key] = defaultParamValue(p);
@@ -151,6 +175,8 @@ export interface Store {
   report: ExecutionReport | null;
   inputStats: InputStats | null;
   autoCandidates: AutoCandidate[];
+  /** Alternate decodes (from the last empty-recipe Bake) as one-click chips. */
+  bakeAlternates: Array<{ index: number; label: string }>;
   autoRunning: boolean;
   autoBake: boolean;
   baking: boolean;
@@ -221,6 +247,9 @@ export interface Store {
   swapInputOutput: () => void;
   runAuto: () => Promise<void>;
   applyAutoCandidate: (index: number) => void;
+  /** Switch the applied decode to one of the Bake alternates. */
+  applyBakeAlternate: (index: number) => void;
+  dismissBakeNote: () => void;
   /** Cross-tool handoff: bytes (base64) become the input and Auto Analyze runs. */
   sendToAutoDecode: (base64: string) => void;
 }
@@ -237,6 +266,7 @@ export const useStore = create<Store>((set, get) => ({
   report: null,
   inputStats: null,
   autoCandidates: [],
+  bakeAlternates: [],
   autoRunning: false,
   autoBake: true,
   baking: false,
@@ -511,6 +541,62 @@ export const useStore = create<Store>((set, get) => ({
 
   bake: async (manual) => {
     const { recipe, inputText, inputEncoding } = get();
+    // One-interface bake: an explicit Bake click with an EMPTY recipe runs
+    // Auto Decode first and applies the best confident chain as the recipe,
+    // so multi-layer encodings unwrap on the same Bake button instead of
+    // requiring the Auto Analyze page. Auto-bake (typing) never triggers
+    // this — it would run the bounded-but-nontrivial search per keystroke.
+    if (manual && recipe.length === 0 && inputText.trim() !== "") {
+      try {
+        const cands = await api.autoAnalyze({
+          input_text: inputText,
+          input_encoding: inputEncoding,
+        });
+        // One-shot result: among confident candidates tied within a small
+        // score margin, take the DEEPEST chain — it unwraps the most layers
+        // so the output is the terminal payload, not an intermediate layer.
+        // A top flag-pattern hit still wins (nothing reaches its score).
+        const top = cands.length ? Math.max(...cands.map((c) => c.score)) : 0;
+        const best =
+          cands
+            .filter((c) => c.confident && c.score >= top - 0.05)
+            .sort((a, b) => b.path.length - a.path.length)[0] ?? cands[0];
+        if (best && best.path.length > 0) {
+          const { opsById } = get();
+          const nodes = nodesFromCandidate(best, opsById);
+          // Keep every confident candidate reachable: the recipe panel shows
+          // alternates as one-click chips so the user can switch decodes.
+          const seen = new Set<string>();
+          const alternates = cands
+            .filter((c) => c.confident && c.path.length > 0)
+            .filter((c) => {
+              const key = c.path.join(">");
+              if (seen.has(key)) return false;
+              seen.add(key);
+              return true;
+            })
+            .slice(0, 6)
+            .map((c) => ({
+              index: cands.indexOf(c),
+              label: `${c.path.join(" → ")} (${Math.round(c.score * 100)}%)`,
+            }));
+          set({
+            recipe: nodes,
+            autoCandidates: cands,
+            bakeAlternates: alternates,
+            assistRecipeNote: `Auto decoded: ${best.path.join(" → ")} (${Math.round(best.score * 100)}% confident) — applied as recipe`,
+          });
+          return void get().bake(manual);
+        }
+        set({
+          assistRecipeNote:
+            "Auto Analyze found no confident decoding for this input — inspect the full candidate list on the Auto Analyze page.",
+        });
+      } catch {
+        // Auto decode unavailable/failed: fall through to the plain bake,
+        // which reports the empty-recipe outcome as usual.
+      }
+    }
     runCounter += 1;
     const runId = `run-${runCounter}`;
     latestRunId = runId;
@@ -611,20 +697,16 @@ export const useStore = create<Store>((set, get) => ({
     const { autoCandidates, opsById } = get();
     const candidate = autoCandidates[index];
     if (!candidate) return;
-    nodeCounter = 0;
-    const nodes = candidate.path.map((opId) => {
-      nodeCounter += 1;
-      const op = opsById[opId];
-      return {
-        id: `n${nodeCounter}`,
-        op: opId,
-        enabled: true,
-        params: initParams(op),
-      };
-    });
+    const nodes = nodesFromCandidate(candidate, opsById);
     set({ recipe: nodes, page: "workbench" });
     void get().bake(false);
   },
+
+  applyBakeAlternate: (index) => {
+    get().applyAutoCandidate(index);
+  },
+
+  dismissBakeNote: () => set({ assistRecipeNote: null, bakeAlternates: [] }),
 
   sendToAutoDecode: (base64) => {
     // Same input buffer the Workbench bakes (auto-bake picks the change up on

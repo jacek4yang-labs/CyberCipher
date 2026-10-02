@@ -1164,6 +1164,31 @@ body {
   align-items: flex-start;
   gap: 6px;
 }
+.bake-alternates {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border, #2a3040);
+  font-size: 11px;
+}
+
+.bake-alternates .alt-chip {
+  padding: 2px 8px;
+  border: 1px solid var(--border, #2a3040);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--text-dim, #9aa4b5);
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.bake-alternates .alt-chip:hover {
+  border-color: var(--accent, #4a9eff);
+  color: var(--accent, #4a9eff);
+}
+
 
 .assist-note-banner span {
   flex: 1;
