@@ -517,6 +517,7 @@ fn from_base100_op(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<
 pub(crate) fn register(reg: &mut OperationRegistry) {
     use cybercipher_core::Category::Encoding as E;
     use cybercipher_core::CostClass::Instant;
+    use cybercipher_core::ValueKind::{B, T};
 
     reg.add_simple(
         spec(
