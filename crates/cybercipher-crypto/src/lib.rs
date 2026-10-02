@@ -10,6 +10,7 @@
 
 mod aead;
 mod ciphers;
+mod checksums;
 mod hashes;
 mod helpers;
 mod kdf;
@@ -23,6 +24,7 @@ use cybercipher_core::OperationRegistry;
 pub fn register_all(reg: &mut OperationRegistry) {
     aead::register(reg);
     ciphers::register(reg);
+    checksums::register(reg);
     hashes::register(reg);
     kdf::register(reg);
     mac::register(reg);
