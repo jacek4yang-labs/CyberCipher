@@ -441,7 +441,8 @@ mod tests {
         );
         assert_eq!(
             hex(&digest_bytes("md4", b"message digest", 32).unwrap()),
-            "d9130a207699bdb701c4d28e6b0c3808"
+            // RFC 1320 section A.5 test suite (verbatim).
+            "d9130a8164549fe818874806e1c7014b"
         );
     }
 
