@@ -62,9 +62,11 @@ pub fn decode_c_escapes(text: &str, strict: bool) -> OpResult<Vec<u8>> {
         }
         let Some(next) = chars.get(i + 1).copied() else {
             if strict {
-                return Err(OperationError::decode("input ends with a dangling backslash")
-                    .with_expected("an escape sequence")
-                    .with_actual("backslash at end of input"));
+                return Err(
+                    OperationError::decode("input ends with a dangling backslash")
+                        .with_expected("an escape sequence")
+                        .with_actual("backslash at end of input"),
+                );
             }
             out.push(b'\\');
             i += 1;
@@ -1106,9 +1108,7 @@ mod tests {
 
     #[test]
     fn netbios_strict_rejects_invalid_characters() {
-        assert!(
-            from_netbios_name_op(&Value::Text("Q!".into()), &ParamMap::new(), &ctx()).is_err()
-        );
+        assert!(from_netbios_name_op(&Value::Text("Q!".into()), &ParamMap::new(), &ctx()).is_err());
         // Relaxed ignores them; an all-invalid input decodes to empty bytes.
         assert_eq!(
             from_netbios_name_op(&Value::Text("Q!".into()), &strict_off(), &ctx()).unwrap(),
