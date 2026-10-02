@@ -593,13 +593,19 @@ pub(crate) fn parse_hexdump(text: &str, strict: bool) -> OpResult<Vec<u8>> {
     for (idx, line) in lines.iter().enumerate() {
         let is_last = idx + 1 == lines.len();
         let offset_len = line.chars().take_while(|c| c.is_ascii_hexdigit()).count();
-        let offset_only = (1..=16).contains(&offset_len) && offset_len == line.len();
-        let has_offset = (1..=16).contains(&offset_len)
+        // Offsets in the wild are 8 digits (hexdump -C, CyberChef); accept
+        // 4-16 so other dump widths still parse. Two leading digits are a
+        // data byte pair, never an offset.
+        let plausible_offset = (4..=16).contains(&offset_len);
+        let offset_only = plausible_offset && offset_len == line.len();
+        let has_offset = plausible_offset
             && offset_len < line.len()
             && line[offset_len..].starts_with(|c: char| c.is_whitespace());
 
-        // `hexdump -C` prints a bare total-offset row after the data.
-        if offset_only && (saw_data_row || strict) {
+        // `hexdump -C` prints a bare total-offset row after the data. Strict
+        // mode treats any bare offset row as the trailer; relaxed mode skips
+        // only the 8-digit form so offset-less hex data still decodes.
+        if offset_only && (strict || (saw_data_row && offset_len == 8)) {
             if !saw_data_row {
                 return Err(OperationError::decode(
                     "hexdump starts with a bare offset row without data",
