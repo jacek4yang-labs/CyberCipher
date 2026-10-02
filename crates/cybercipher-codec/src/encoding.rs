@@ -696,6 +696,8 @@ pub(crate) fn parse_hexdump(text: &str, strict: bool) -> OpResult<Vec<u8>> {
                     .with_expected(format!("at most {len} bytes"))
                     .with_actual(format!("{} bytes", row.len())));
                 }
+                // Both guards false: the final short row of a dump — no check.
+                Some(_) => {}
                 None => row_len = Some(row.len()),
             }
         }
