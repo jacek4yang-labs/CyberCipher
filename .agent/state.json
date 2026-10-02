@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "phase": "Wave-5: M9-IMAGE-04 (QR) + M9-IMAGE-05 (stereo/combine/frames) in flight",
-  "last_reconciled_sha": "d7b40b9",
+  "phase": "v0.1.0 RELEASED — post-release consolidation",
+  "last_reconciled_sha": "3962642",
   "active_branch": null,
   "active_pr": null,
   "current_task": null,
@@ -54,18 +54,21 @@
     "GUI-SSTV-LAB-01",
     "M9-IMAGE-03",
     "GUI-STEGO-LAB-01",
-    "CTF-SPECIALTY-01"
+    "CTF-SPECIALTY-01",
+    "M8-ECDSA-ATTACK-01",
+    "CRYPTO-PARITY-01",
+    "GUI-COMPOSE-01",
+    "RELEASE-01",
+    "DOCS-TRUTH-01",
+    "RELEASE-V0.1.0"
   ],
   "blocked": [],
-  "agent_lanes": {
-    "agent/qr": "QR/barcode scanning bytes-first (steg)",
-    "agent/stereo": "stereo + 13-mode combine + GIF frames (steg)"
-  },
+  "agent_lanes": {},
   "validation": {
-    "cargo_fmt": "pass",
-    "cargo_clippy": "pass",
-    "cargo_test": "pass",
-    "frontend": "pass"
+    "cargo_fmt": "pass (CI)",
+    "cargo_clippy": "pass (CI)",
+    "cargo_test": "pass (CI)",
+    "frontend": "pass (CI)"
   },
-  "notes": "Session 8 (continued): 13 PRs merged #44-#56. Main d7b40b9. Registry ~200 ops. All validation via GitHub Actions CI only (user policy: no local cargo/npm). Lanes completed this session: PKI Lab GUI, JWT/JWS, SSTV core+bridge, steg core (media/transforms/extract), Auto LSB, structure/carving, SSTV Lab GUI, Stego Lab GUI, CTF specialty (bf/ook/buddha/beast/bear/core-values/AA/JJ). In flight: QR/barcode, stereo/combine/frames. Next: Auto Decode v3, signature scanner, Assist profiles, ECDSA attacks, crypto parity mop-up, prerelease + dogfooding."
+  "notes": "Session 9-10: 26 PRs merged (#44-#71 range: matrices, PKI Lab GUI, JWT/JWS, SSTV core+bridge+GUI, steg core, Auto LSB, structure/carving, QR/barcode, stereo/combine/frames, CTF specialty, Auto Decode v3, signature scanner, Assist profiles, GUI composition, ECDSA attacks, parity mop-up, docs truth). RELEASE v0.1.0 published: tar.gz + sha256, Package+Smoke CI green (layout verified, CLI sha256 KAT passed, linkage recorded). Registry ~215+ ops. Validation is GitHub Actions CI only (no local cargo/npm per machine policy). Remaining follow-ups tracked in queue: PKI residual (secp256k1/ETH, DSA, Ed448/X448), file/data long-tail (YAML/XML/BSON/protobuf), KMAC/bcrypt/HC-256/Rabbit/ZUC, CTS/XTS/EAX/OCB/SIV modes, pixel-inspector op, APNG/WebP frames."
 }
