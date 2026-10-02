@@ -39,11 +39,23 @@ kuznyechik = "0.9"
 # Digests and MAC
 digest = "0.10"
 md-5 = "0.10"
+# Residual digest families for parity: all maintained RustCrypto crates from
+# the digest-0.10 generation. blake2 0.10 / ripemd 0.1 / md4 0.10 / whirlpool
+# 0.10 are new direct dependencies (ripemd uses its re-versioned 0.1 line,
+# which is the digest-0.10 generation of that crate).
+md4 = "0.10"
+ripemd = "0.1"
+blake2 = "0.10"
+whirlpool = "0.10"
 sha1 = "0.10"
 sha2 = "0.10"
 sha3 = "0.10"
 sm3 = "0.4"
 hmac = "0.12"
+
+# Non-cryptographic hashes (checksums.rs). xxhash-rust is already a workspace
+# dependency (engine/steg use xxh3); xxh32/xxh64 add no new crates.
+xxhash-rust.workspace = true
 
 # AEAD constructions (RustCrypto universal-hashes / aead 0.5 family)
 aead = { version = "0.5", features = ["alloc"] }

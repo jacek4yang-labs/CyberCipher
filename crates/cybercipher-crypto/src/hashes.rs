@@ -21,6 +21,13 @@ fn digest_bytes(algo: &str, data: &[u8], shake_len: usize) -> OpResult<Vec<u8>> 
         "sha3-512" => sha3::Sha3_512::digest(data).to_vec(),
         "keccak256" => sha3::Keccak256::digest(data).to_vec(),
         "keccak512" => sha3::Keccak512::digest(data).to_vec(),
+        "keccak224" => sha3::Keccak224::digest(data).to_vec(),
+        "keccak384" => sha3::Keccak384::digest(data).to_vec(),
+        "md4" => md4::Md4::digest(data).to_vec(),
+        "ripemd160" => ripemd::Ripemd160::digest(data).to_vec(),
+        "blake2b" => blake2::Blake2b512::digest(data).to_vec(),
+        "blake2s" => blake2::Blake2s256::digest(data).to_vec(),
+        "whirlpool" => whirlpool::Whirlpool::digest(data).to_vec(),
         "sm3" => sm3::Sm3::digest(data).to_vec(),
         "shake128" => {
             let mut hasher = sha3::Shake128::default();
@@ -133,6 +140,22 @@ fn sha3_spec(
                         ParamOption {
                             value: "shake256",
                             label: "SHAKE256",
+                        },
+                        ParamOption {
+                            value: "keccak224",
+                            label: "Keccak-224 (pre-standard padding)",
+                        },
+                        ParamOption {
+                            value: "keccak256",
+                            label: "Keccak-256 (pre-standard padding)",
+                        },
+                        ParamOption {
+                            value: "keccak384",
+                            label: "Keccak-384 (pre-standard padding)",
+                        },
+                        ParamOption {
+                            value: "keccak512",
+                            label: "Keccak-512 (pre-standard padding)",
                         },
                     ]
                     .into_boxed_slice(),
@@ -268,6 +291,57 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
     );
     reg.add_simple(spec, run);
 
+    for (id, name, desc, aliases, security, standard, vectors) in [
+        (
+            "md4",
+            "MD4",
+            "Computes the MD4 digest. Broken; predecessor of MD5, still requested for legacy NTLM work.",
+            &["md4 hash"][..],
+            Broken,
+            "RFC 1320",
+            "RFC 1320 test suite",
+        ),
+        (
+            "ripemd160",
+            "RIPEMD-160",
+            "Computes the RIPEMD-160 digest (Bitcoin address hashing, older PKI).",
+            &["ripemd160 hash", "ripemd"],
+            Legacy,
+            "ISO/IEC 10118-3 (RIPEMD-160)",
+            "RIPEMD-160 reference vectors (Dobbertin, Bosselaers, Preneel)",
+        ),
+        (
+            "blake2b",
+            "BLAKE2b-512",
+            "Computes the unkeyed BLAKE2b-512 digest.",
+            &["blake2b hash", "blake2"],
+            Modern,
+            "RFC 7693",
+            "RFC 7693 test vectors",
+        ),
+        (
+            "blake2s",
+            "BLAKE2s-256",
+            "Computes the unkeyed BLAKE2s-256 digest.",
+            &["blake2s hash", "blake2"],
+            Modern,
+            "RFC 7693",
+            "RFC 7693 test vectors",
+        ),
+        (
+            "whirlpool",
+            "Whirlpool",
+            "Computes the Whirlpool-1.0 digest (NESSIE-selected 512-bit hash).",
+            &["whirlpool hash"],
+            Legacy,
+            "ISO/IEC 10118-3 (Whirlpool)",
+            "NESSIE / ISO reference vectors",
+        ),
+    ] {
+        let (spec, run) = hash_op(id, name, desc, aliases, security, standard, vectors);
+        reg.add_simple(spec, run);
+    }
+
     // SHA-3 family with variant selection.
     let sha3_spec = sha3_spec(
         "sha3",
@@ -345,4 +419,89 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
         },
     }));
     reg.add_simple(hmac_spec, hmac_run);
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn md4_rfc1320_vectors() {
+        assert_eq!(
+            hex(&digest_bytes("md4", b"", 32).unwrap()),
+            "31d6cfe0d16ae931b73c59d7e0c089c0"
+        );
+        assert_eq!(
+            hex(&digest_bytes("md4", b"a", 32).unwrap()),
+            "bde52cb31de33e46245e05fbdbd6fb24"
+        );
+        assert_eq!(
+            hex(&digest_bytes("md4", b"abc", 32).unwrap()),
+            "a448017aaf21d8525fc10ae87aa6729d"
+        );
+        assert_eq!(
+            hex(&digest_bytes("md4", b"message digest", 32).unwrap()),
+            // RFC 1320 section A.5 test suite (verbatim).
+            "d9130a8164549fe818874806e1c7014b"
+        );
+    }
+
+    #[test]
+    fn ripemd160_reference_vectors() {
+        assert_eq!(
+            hex(&digest_bytes("ripemd160", b"", 32).unwrap()),
+            "9c1185a5c5e9fc54612808977ee8f548b2258d31"
+        );
+        assert_eq!(
+            hex(&digest_bytes("ripemd160", b"abc", 32).unwrap()),
+            "8eb208f7e05d987a9b044a8e98c6b087f15a0bfc"
+        );
+        assert_eq!(
+            hex(&digest_bytes("ripemd160", b"message digest", 32).unwrap()),
+            "5d0689ef49d2fae572b881b123a85ffa21595f36"
+        );
+    }
+
+    #[test]
+    fn blake2_rfc7693_vectors() {
+        assert_eq!(
+            hex(&digest_bytes("blake2b", b"abc", 32).unwrap()),
+            "ba80a53f981c4d0d6a2797b69f12f6e94c212f14685ac4b74b12bb6fdbffa2d1\
+             7d87c5392aab792dc252d5de4533cc9518d38aa8dbf1925ab92386edd4009923"
+        );
+        assert_eq!(
+            hex(&digest_bytes("blake2s", b"abc", 32).unwrap()),
+            "508c5e8c327c14e2e1a72ba34eeb452f37458b209ed63a294d999b4c86675982"
+        );
+    }
+
+    #[test]
+    fn whirlpool_reference_vector() {
+        assert_eq!(
+            hex(&digest_bytes(
+                "whirlpool",
+                b"The quick brown fox jumps over the lazy dog",
+                32
+            )
+            .unwrap()),
+            "b97de512e91e3828b40d2b0fdce9ceb3c4a71f9bea8d88e75c4fa854df36725f\
+             d2b52eb6544edcacd6f8beddfea403cb55ae31f03ad62a5ef54e42ee82c3fb35"
+        );
+    }
+
+    #[test]
+    fn keccak_variants_are_reachable() {
+        // The Keccak padding (pre-SHA-3) variants: Keccak-256's empty digest
+        // is the canonical Ethereum empty-trie root.
+        assert_eq!(
+            hex(&digest_bytes("keccak256", b"", 32).unwrap()),
+            "c5d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"
+        );
+        assert_eq!(
+            hex(&digest_bytes("keccak224", b"", 32).unwrap()),
+            "f71837502ba8e10837bdd8d365adb85591895602fc552b48b7390abd"
+        );
+        assert_eq!(digest_bytes("keccak384", b"", 32).unwrap().len(), 48);
+        assert_eq!(digest_bytes("keccak512", b"", 32).unwrap().len(), 64);
+    }
 }
