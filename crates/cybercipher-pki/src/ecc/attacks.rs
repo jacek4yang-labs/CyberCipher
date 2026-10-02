@@ -320,7 +320,11 @@ pub fn ecdsa_known_k_recover(
     let public = parse_ecc_public_key(curve, public_key_hex)?;
     let k = parse_scalar_component("k", k_hex, &resolved.n, resolved.field_len)?;
     let r_inverse = mod_inverse(&resolved.r, &resolved.n).ok_or_else(|| not_invertible("r"))?;
-    let d = (mod_sub(&((&resolved.s * &k) % &resolved.n), &resolved.h, &resolved.n) * &r_inverse)
+    let d = (mod_sub(
+        &((&resolved.s * &k) % &resolved.n),
+        &resolved.h,
+        &resolved.n,
+    ) * &r_inverse)
         % &resolved.n;
     finish_recovery(&resolved, d, "known-k", Some(&k), None, &public, None)
 }
