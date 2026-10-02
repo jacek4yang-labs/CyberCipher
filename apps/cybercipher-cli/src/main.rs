@@ -1111,8 +1111,7 @@ mod tests {
             cybercipher_pki::parse_ecc_private_key(cybercipher_pki::EccCurve::P256, "3039")
                 .unwrap();
         let compressed = nonce_key.public_compressed_hex;
-        let r =
-            num_bigint::BigUint::parse_bytes(&compressed.as_bytes()[2..], 16).unwrap();
+        let r = num_bigint::BigUint::parse_bytes(&compressed.as_bytes()[2..], 16).unwrap();
         let k_inv = k.modpow(&(&n - 2u32), &n);
         let sign = |h_hex: String| {
             let h = num_bigint::BigUint::parse_bytes(h_hex.as_bytes(), 16).unwrap();
