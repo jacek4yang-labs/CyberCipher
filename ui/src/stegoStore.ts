@@ -65,6 +65,88 @@ export interface StegoExtractResult {
   data: Uint8Array;
 }
 
+/**
+ * image_extract_appended JSON report header (first line of its Bytes output;
+ * fields mirror structure.rs image_extract_appended_op).
+ */
+export interface StegoAppendedHeader {
+  format?: string;
+  complete?: boolean;
+  present?: boolean;
+  offset?: number;
+  size?: number;
+  magic?: Record<string, unknown> | null;
+  preview_bytes?: number;
+  strings?: string[];
+  emitted_bytes?: number;
+  truncated?: boolean;
+  max_bytes?: number;
+}
+
+/** Result of one appended-data carve: header report plus the carved bytes. */
+export interface StegoAppendedResult {
+  header: StegoAppendedHeader | null;
+  data: Uint8Array;
+}
+
+/**
+ * One QR/barcode hit (qr.rs hit_json; bytes-first: the exact raw payload bytes
+ * travel as hex, the decoded text only when the decoder produced one).
+ */
+export interface QrHit {
+  format: string;
+  raw_payload_bytes: string;
+  decoded_text?: string;
+  position?: {
+    points?: [number, number][];
+    bounds?: { x: number; y: number; width: number; height: number } | null;
+  };
+  metadata: Record<string, unknown>;
+  payload_type: number;
+  payload_length: number;
+  preview_hex: string;
+}
+
+/** image_scan_qr JSON report (qr.rs image_scan_qr_op). */
+export interface QrScanResult {
+  scanned_area: { x: number; y: number; width: number; height: number };
+  symbol_count: number;
+  merged_count: number;
+  notes: string[];
+  hits: QrHit[];
+  merged: QrHit[];
+}
+
+/** image_stereo_auto JSON report (ops.rs image_stereo_auto_op). */
+export interface StereoAutoResult {
+  best_offset: number;
+  sample_step: number;
+  width: number;
+  height: number;
+  hint: string;
+}
+
+/** One frame of image_gif_info's report (ops.rs image_gif_info_op). */
+export interface GifFrameMeta {
+  index: number;
+  left: number;
+  top: number;
+  width: number;
+  height: number;
+  delay_cs: number;
+  disposal: string;
+  transparent_index: number | null;
+  interlaced: boolean;
+}
+
+/** image_gif_info JSON report (ops.rs image_gif_info_op). */
+export interface GifInfo {
+  screen: { width: number; height: number };
+  frame_count: number;
+  frames_truncated: boolean;
+  frames: GifFrameMeta[];
+}
+
 /** One catalog entry, hard-coded to match transforms::catalog() exactly. */
 export interface StegoTransformDef {
   index: number;
@@ -135,7 +217,14 @@ export const RGB_ORDERS: { code: number; label: string }[] = [
 const DEFAULT_PLANE_MASK = 0x01010100;
 
 /** Tabs of the Stego Lab page. */
-export type StegoTab = "transform" | "extract" | "autolsb";
+export type StegoTab =
+  | "transform"
+  | "extract"
+  | "autolsb"
+  | "structure"
+  | "qr"
+  | "stereo"
+  | "frames";
 
 let bakeCounter = 0;
 
@@ -163,20 +252,29 @@ function runSingleOp(
   });
 }
 
-/** Split image_extract_bits output (base64) into its JSON header and payload. */
-function splitExtractOutput(base64: string): StegoExtractResult {
+/**
+ * Split a header-line transport output (base64): a JSON report header line
+ * followed by the raw payload bytes (the engine's established carrier).
+ */
+export function splitHeaderPayload(base64: string): { header: unknown; data: Uint8Array } {
   const bin = atob(base64);
   const bytes = new Uint8Array(bin.length);
   for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
   const newline = bytes.indexOf(0x0a);
   if (newline < 0) return { header: null, data: bytes };
-  let header: StegoExtractHeader | null = null;
+  let header: unknown = null;
   try {
-    header = JSON.parse(new TextDecoder().decode(bytes.subarray(0, newline))) as StegoExtractHeader;
+    header = JSON.parse(new TextDecoder().decode(bytes.subarray(0, newline)));
   } catch {
     header = null;
   }
   return { header, data: bytes.subarray(newline + 1) };
+}
+
+/** Split image_extract_bits output (base64) into its JSON header and payload. */
+function splitExtractOutput(base64: string): StegoExtractResult {
+  const { header, data } = splitHeaderPayload(base64);
+  return { header: header === null ? null : (header as StegoExtractHeader), data };
 }
 
 /** Base64 of raw bytes (op input carries binary as base64). */
@@ -199,6 +297,40 @@ export function roiString(x: string, y: string, w: string, h: string): string {
   return parts.join(",");
 }
 
+/** Decoded byte length of a base64 string (no full decode). */
+export function base64ByteLength(base64: string): number {
+  const padding = base64.endsWith("==") ? 2 : base64.endsWith("=") ? 1 : 0;
+  return Math.max(0, Math.floor((base64.length * 3) / 4) - padding);
+}
+
+/** Container formats the structure analyzers understand (structure.rs). */
+export type StructureFormat = "png" | "jpeg" | "gif" | "bmp";
+
+/** Registry op ids of the per-format structure analyzers. */
+export type StructureOpId = `${StructureFormat}_structure`;
+
+/**
+ * Sniff the container magic from the first bytes of a base64 payload
+ * (structure.rs detect_format: PNG signature, JPEG FFD8, GIF87a/89a, BM).
+ * Decodes at most 24 base64 characters, never the whole payload.
+ */
+export function sniffImageFormat(base64: string): StructureFormat | null {
+  let bin: string;
+  try {
+    bin = atob(base64.slice(0, 24));
+  } catch {
+    return null;
+  }
+  const bytes = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+  const startsWith = (signature: number[]) => signature.every((b, i) => bytes[i] === b);
+  if (startsWith([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])) return "png";
+  if (startsWith([0xff, 0xd8])) return "jpeg";
+  if (bin.startsWith("GIF87a") || bin.startsWith("GIF89a")) return "gif";
+  if (bin.startsWith("BM")) return "bmp";
+  return null;
+}
+
 export interface StegoStore {
   // Tab selection (persists while the session lives, like the PKI Lab).
   tab: StegoTab;
@@ -209,6 +341,8 @@ export interface StegoStore {
   fileSize: number | null;
   fileBase64: string | null;
   loadFile: (file: File) => Promise<void>;
+  /** Cross-tool handoff: load image bytes (base64, e.g. an SSTV PNG) as the active image. */
+  loadFromBytes: (name: string, base64: string) => void;
   clearFile: () => void;
 
   // Image info (image_info op, run once per loaded file).
@@ -259,8 +393,73 @@ export interface StegoStore {
   runScan: (deep: boolean) => Promise<void>;
   applyCandidate: (candidate: StegoCandidate) => Promise<void>;
 
+  // Structure tab (png/jpeg/gif/bmp_structure + image_extract_appended ops).
+  structureBusy: boolean;
+  structureError: string | null;
+  structureOp: StructureOpId | null;
+  structureReport: unknown | null;
+  structureOpen: boolean;
+  setStructureOpen: (open: boolean) => void;
+  runStructure: () => Promise<void>;
+  appendedMaxBytes: number;
+  setAppendedMaxBytes: (v: number) => void;
+  appendedBusy: boolean;
+  appendedError: string | null;
+  appendedResult: StegoAppendedResult | null;
+  runAppended: () => Promise<void>;
+
+  // QR tab (image_scan_qr op: whole image or ROI, fallback stages).
+  qrRoiX: string;
+  qrRoiY: string;
+  qrRoiW: string;
+  qrRoiH: string;
+  qrTryInverted: boolean;
+  qrTryRotations: boolean;
+  qrTryRescale: boolean;
+  qrMaxSymbols: number;
+  setQrRoi: (field: "x" | "y" | "w" | "h", value: string) => void;
+  setQrTryInverted: (v: boolean) => void;
+  setQrTryRotations: (v: boolean) => void;
+  setQrTryRescale: (v: boolean) => void;
+  setQrMaxSymbols: (v: number) => void;
+  qrBusy: boolean;
+  qrError: string | null;
+  qrResult: QrScanResult | null;
+  runQrScan: () => Promise<void>;
+
+  // Stereo tab (image_stereo_shift / image_stereo_auto ops).
+  stereoOffset: number;
+  stereoEdgeHold: boolean;
+  stereoSampleStep: number;
+  setStereoOffset: (v: number) => void;
+  setStereoEdgeHold: (v: boolean) => void;
+  setStereoSampleStep: (v: number) => void;
+  stereoBusy: boolean;
+  stereoError: string | null;
+  stereoPng: string | null;
+  runStereoShift: () => Promise<void>;
+  stereoAutoBusy: boolean;
+  stereoAutoError: string | null;
+  stereoAuto: StereoAutoResult | null;
+  runStereoAuto: () => Promise<void>;
+  applyStereoAuto: () => void;
+
+  // Frames tab (image_gif_info / image_gif_frame ops; GIF files only).
+  framesInfo: GifInfo | null;
+  framesBusy: boolean;
+  framesError: string | null;
+  runFramesInfo: () => Promise<void>;
+  selectedFrame: number | null;
+  frameBusy: boolean;
+  frameError: string | null;
+  framePng: string | null;
+  previewFrame: (index: number) => Promise<void>;
+  analyzeFrame: () => void;
+
   // Handoff to the Workbench (binary travels as base64 input).
   sendToWorkbench: (base64: string) => void;
+  /** Handoff to Auto Analyze (binary travels as base64 input, scan auto-runs). */
+  sendToAutoDecode: (base64: string) => void;
 }
 
 export const useStegoStore = create<StegoStore>((set, get) => {
@@ -283,6 +482,29 @@ export const useStegoStore = create<StegoStore>((set, get) => {
       applyBusy: false,
       applyError: null,
       applied: null,
+      structureBusy: false,
+      structureError: null,
+      structureOp: null,
+      structureReport: null,
+      appendedBusy: false,
+      appendedError: null,
+      appendedResult: null,
+      qrBusy: false,
+      qrError: null,
+      qrResult: null,
+      stereoBusy: false,
+      stereoError: null,
+      stereoPng: null,
+      stereoAutoBusy: false,
+      stereoAutoError: null,
+      stereoAuto: null,
+      framesInfo: null,
+      framesBusy: false,
+      framesError: null,
+      selectedFrame: null,
+      frameBusy: false,
+      frameError: null,
+      framePng: null,
     });
 
   /**
@@ -306,6 +528,34 @@ export const useStegoStore = create<StegoStore>((set, get) => {
     set({ transformCache: cache, transformCacheOrder: order });
   };
 
+  /**
+   * Shared loader for files and cross-tool handoffs: sets the active image
+   * bytes and runs image_info once for the new image.
+   */
+  const loadImageBytes = async (name: string, base64: string, size: number) => {
+    set({ fileName: name, fileSize: size, fileBase64: null });
+    resetResults();
+    set({ fileBase64: base64 });
+    // Image info runs once per loaded image.
+    set({ infoBusy: true });
+    try {
+      const resp = await runSingleOp("image_info", {}, base64);
+      if (resp.report.error) throw new Error(formatInvokeError(resp.report.error));
+      if (resp.blocked_at !== null) {
+        throw new Error(`run stopped at stage ${resp.blocked_at}`);
+      }
+      const out = resp.output;
+      if (out === null || out.kind !== "json") {
+        throw new Error("image_info returned no report");
+      }
+      if (superseded(base64)) return;
+      set({ info: out.value as StegoImageInfo, infoBusy: false });
+    } catch (e) {
+      if (superseded(base64)) return;
+      set({ infoBusy: false, infoError: e instanceof Error ? e.message : String(e) });
+    }
+  };
+
   return {
     tab: "transform",
     setTab: (tab) => set({ tab }),
@@ -314,30 +564,9 @@ export const useStegoStore = create<StegoStore>((set, get) => {
     fileSize: null,
     fileBase64: null,
     loadFile: async (file) => {
-      set({ fileName: file.name, fileSize: file.size, fileBase64: null });
-      resetResults();
       try {
         const buf = await file.arrayBuffer();
-        const base64 = bytesToBase64(new Uint8Array(buf));
-        set({ fileBase64: base64 });
-        // Image info runs once per loaded file.
-        set({ infoBusy: true });
-        try {
-          const resp = await runSingleOp("image_info", {}, base64);
-          if (resp.report.error) throw new Error(formatInvokeError(resp.report.error));
-          if (resp.blocked_at !== null) {
-            throw new Error(`run stopped at stage ${resp.blocked_at}`);
-          }
-          const out = resp.output;
-          if (out === null || out.kind !== "json") {
-            throw new Error("image_info returned no report");
-          }
-          if (superseded(base64)) return;
-          set({ info: out.value as StegoImageInfo, infoBusy: false });
-        } catch (e) {
-          if (superseded(base64)) return;
-          set({ infoBusy: false, infoError: e instanceof Error ? e.message : String(e) });
-        }
+        await loadImageBytes(file.name, bytesToBase64(new Uint8Array(buf)), file.size);
       } catch (e) {
         set({
           fileName: null,
@@ -345,6 +574,9 @@ export const useStegoStore = create<StegoStore>((set, get) => {
           infoError: `could not read file: ${e instanceof Error ? e.message : String(e)}`,
         });
       }
+    },
+    loadFromBytes: (name, base64) => {
+      void loadImageBytes(name, base64, base64ByteLength(base64));
     },
     clearFile: () => {
       set({ fileName: null, fileSize: null, fileBase64: null });
@@ -550,12 +782,299 @@ export const useStegoStore = create<StegoStore>((set, get) => {
       }
     },
 
+    structureBusy: false,
+    structureError: null,
+    structureOp: null,
+    structureReport: null,
+    structureOpen: false,
+    setStructureOpen: (structureOpen) => set({ structureOpen }),
+    runStructure: async () => {
+      const { fileBase64, structureBusy } = get();
+      if (structureBusy || !fileBase64) return;
+      // The per-format analyzers walk raw container bytes; pick the op by magic.
+      const format = sniffImageFormat(fileBase64);
+      if (format === null) {
+        set({
+          structureBusy: false,
+          structureError:
+            "not a PNG/JPEG/GIF/BMP container — the structure analyzers walk raw file bytes",
+          structureOp: null,
+          structureReport: null,
+        });
+        return;
+      }
+      const opId: StructureOpId = `${format}_structure`;
+      set({ structureBusy: true, structureError: null, structureReport: null, structureOp: opId });
+      try {
+        const resp = await runSingleOp(opId, {}, fileBase64);
+        if (superseded(fileBase64)) return;
+        if (resp.report.error) throw new Error(formatInvokeError(resp.report.error));
+        if (resp.blocked_at !== null) {
+          throw new Error(`run stopped at stage ${resp.blocked_at}`);
+        }
+        const out = resp.output;
+        if (out === null || out.kind !== "json") {
+          throw new Error(`${opId} returned no report`);
+        }
+        set({ structureBusy: false, structureReport: out.value });
+      } catch (e) {
+        if (superseded(fileBase64)) return;
+        set({ structureBusy: false, structureError: e instanceof Error ? e.message : String(e) });
+      }
+    },
+
+    appendedMaxBytes: 65_536,
+    setAppendedMaxBytes: (appendedMaxBytes) => set({ appendedMaxBytes }),
+    appendedBusy: false,
+    appendedError: null,
+    appendedResult: null,
+    runAppended: async () => {
+      const { fileBase64, appendedBusy, appendedMaxBytes } = get();
+      if (appendedBusy || !fileBase64) return;
+      set({ appendedBusy: true, appendedError: null, appendedResult: null });
+      try {
+        const clampedMax = Math.min(Math.max(Math.trunc(appendedMaxBytes) || 0, 1), MAX_EXTRACT_BYTES);
+        const resp = await runSingleOp(
+          "image_extract_appended",
+          { max_bytes: clampedMax },
+          fileBase64,
+        );
+        if (superseded(fileBase64)) return;
+        if (resp.report.error) throw new Error(formatInvokeError(resp.report.error));
+        if (resp.blocked_at !== null) {
+          throw new Error(`run stopped at stage ${resp.blocked_at}`);
+        }
+        const out = resp.output;
+        if (out === null || out.kind !== "bytes") {
+          throw new Error("image_extract_appended returned no byte payload");
+        }
+        const { header, data } = splitHeaderPayload(out.base64);
+        set({
+          appendedBusy: false,
+          appendedResult: {
+            header: header === null ? null : (header as StegoAppendedHeader),
+            data,
+          },
+        });
+      } catch (e) {
+        if (superseded(fileBase64)) return;
+        set({ appendedBusy: false, appendedError: e instanceof Error ? e.message : String(e) });
+      }
+    },
+
+    qrRoiX: "",
+    qrRoiY: "",
+    qrRoiW: "",
+    qrRoiH: "",
+    qrTryInverted: true,
+    qrTryRotations: true,
+    qrTryRescale: false,
+    // Op default (qr.rs DEFAULT_MAX_SYMBOLS); the engine hard-caps at 64.
+    qrMaxSymbols: 16,
+    setQrRoi: (field, value) =>
+      set(
+        field === "x"
+          ? { qrRoiX: value }
+          : field === "y"
+            ? { qrRoiY: value }
+            : field === "w"
+              ? { qrRoiW: value }
+              : { qrRoiH: value },
+      ),
+    setQrTryInverted: (qrTryInverted) => set({ qrTryInverted }),
+    setQrTryRotations: (qrTryRotations) => set({ qrTryRotations }),
+    setQrTryRescale: (qrTryRescale) => set({ qrTryRescale }),
+    setQrMaxSymbols: (qrMaxSymbols) => set({ qrMaxSymbols }),
+    qrBusy: false,
+    qrError: null,
+    qrResult: null,
+    runQrScan: async () => {
+      const {
+        fileBase64,
+        qrBusy,
+        qrRoiX,
+        qrRoiY,
+        qrRoiW,
+        qrRoiH,
+        qrTryInverted,
+        qrTryRotations,
+        qrTryRescale,
+        qrMaxSymbols,
+      } = get();
+      if (qrBusy || !fileBase64) return;
+      set({ qrBusy: true, qrError: null, qrResult: null });
+      try {
+        const resp = await runSingleOp(
+          "image_scan_qr",
+          {
+            roi: roiString(qrRoiX, qrRoiY, qrRoiW, qrRoiH),
+            try_inverted: qrTryInverted,
+            try_rotations: qrTryRotations,
+            try_rescale: qrTryRescale,
+            max_symbols: Math.min(Math.max(Math.trunc(qrMaxSymbols) || 1, 1), 64),
+          },
+          fileBase64,
+        );
+        if (superseded(fileBase64)) return;
+        if (resp.report.error) throw new Error(formatInvokeError(resp.report.error));
+        if (resp.blocked_at !== null) {
+          throw new Error(`run stopped at stage ${resp.blocked_at}`);
+        }
+        const out = resp.output;
+        if (out === null || out.kind !== "json") {
+          throw new Error("image_scan_qr returned no report");
+        }
+        set({ qrBusy: false, qrResult: out.value as QrScanResult });
+      } catch (e) {
+        if (superseded(fileBase64)) return;
+        set({ qrBusy: false, qrError: e instanceof Error ? e.message : String(e) });
+      }
+    },
+
+    stereoOffset: 1,
+    stereoEdgeHold: false,
+    stereoSampleStep: 2,
+    setStereoOffset: (stereoOffset) =>
+      set({ stereoOffset: Math.max(Math.trunc(stereoOffset) || 1, 1) }),
+    setStereoEdgeHold: (stereoEdgeHold) => set({ stereoEdgeHold }),
+    setStereoSampleStep: (stereoSampleStep) =>
+      set({ stereoSampleStep: Math.max(Math.trunc(stereoSampleStep) || 1, 1) }),
+    stereoBusy: false,
+    stereoError: null,
+    stereoPng: null,
+    runStereoShift: async () => {
+      const { fileBase64, stereoBusy, stereoOffset, stereoEdgeHold } = get();
+      if (stereoBusy || !fileBase64) return;
+      set({ stereoBusy: true, stereoError: null, stereoPng: null });
+      try {
+        const resp = await runSingleOp(
+          "image_stereo_shift",
+          { offset: stereoOffset, edge_hold: stereoEdgeHold },
+          fileBase64,
+        );
+        if (superseded(fileBase64)) return;
+        if (resp.report.error) throw new Error(formatInvokeError(resp.report.error));
+        if (resp.blocked_at !== null) {
+          throw new Error(`run stopped at stage ${resp.blocked_at}`);
+        }
+        const out = resp.output;
+        if (out === null || out.kind !== "bytes") {
+          throw new Error("image_stereo_shift returned no PNG payload");
+        }
+        set({ stereoBusy: false, stereoPng: out.base64 });
+      } catch (e) {
+        if (superseded(fileBase64)) return;
+        set({ stereoBusy: false, stereoError: e instanceof Error ? e.message : String(e) });
+      }
+    },
+
+    stereoAutoBusy: false,
+    stereoAutoError: null,
+    stereoAuto: null,
+    runStereoAuto: async () => {
+      const { fileBase64, stereoAutoBusy, stereoSampleStep } = get();
+      if (stereoAutoBusy || !fileBase64) return;
+      set({ stereoAutoBusy: true, stereoAutoError: null, stereoAuto: null });
+      try {
+        const resp = await runSingleOp(
+          "image_stereo_auto",
+          { sample_step: stereoSampleStep },
+          fileBase64,
+        );
+        if (superseded(fileBase64)) return;
+        if (resp.report.error) throw new Error(formatInvokeError(resp.report.error));
+        if (resp.blocked_at !== null) {
+          throw new Error(`run stopped at stage ${resp.blocked_at}`);
+        }
+        const out = resp.output;
+        if (out === null || out.kind !== "json") {
+          throw new Error("image_stereo_auto returned no report");
+        }
+        set({ stereoAutoBusy: false, stereoAuto: out.value as StereoAutoResult });
+      } catch (e) {
+        if (superseded(fileBase64)) return;
+        set({ stereoAutoBusy: false, stereoAutoError: e instanceof Error ? e.message : String(e) });
+      }
+    },
+    applyStereoAuto: () => {
+      const best = get().stereoAuto?.best_offset ?? 0;
+      if (best > 0) set({ stereoOffset: best });
+    },
+
+    framesInfo: null,
+    framesBusy: false,
+    framesError: null,
+    runFramesInfo: async () => {
+      const { fileBase64, framesBusy } = get();
+      if (framesBusy || !fileBase64) return;
+      if (sniffImageFormat(fileBase64) !== "gif") {
+        set({
+          framesBusy: false,
+          framesError: "the loaded file is not a GIF — frame indexing needs GIF file bytes",
+          framesInfo: null,
+        });
+        return;
+      }
+      set({ framesBusy: true, framesError: null, framesInfo: null });
+      try {
+        const resp = await runSingleOp("image_gif_info", {}, fileBase64);
+        if (superseded(fileBase64)) return;
+        if (resp.report.error) throw new Error(formatInvokeError(resp.report.error));
+        if (resp.blocked_at !== null) {
+          throw new Error(`run stopped at stage ${resp.blocked_at}`);
+        }
+        const out = resp.output;
+        if (out === null || out.kind !== "json") {
+          throw new Error("image_gif_info returned no report");
+        }
+        set({ framesBusy: false, framesInfo: out.value as GifInfo });
+      } catch (e) {
+        if (superseded(fileBase64)) return;
+        set({ framesBusy: false, framesError: e instanceof Error ? e.message : String(e) });
+      }
+    },
+
+    selectedFrame: null,
+    frameBusy: false,
+    frameError: null,
+    framePng: null,
+    previewFrame: async (index) => {
+      const { fileBase64, frameBusy } = get();
+      if (frameBusy || !fileBase64) return;
+      set({ selectedFrame: index, frameBusy: true, frameError: null, framePng: null });
+      try {
+        const resp = await runSingleOp("image_gif_frame", { frame: index }, fileBase64);
+        if (superseded(fileBase64)) return;
+        if (resp.report.error) throw new Error(formatInvokeError(resp.report.error));
+        if (resp.blocked_at !== null) {
+          throw new Error(`run stopped at stage ${resp.blocked_at}`);
+        }
+        const out = resp.output;
+        if (out === null || out.kind !== "bytes") {
+          throw new Error("image_gif_frame returned no PNG payload");
+        }
+        set({ frameBusy: false, framePng: out.base64 });
+      } catch (e) {
+        if (superseded(fileBase64)) return;
+        set({ frameBusy: false, frameError: e instanceof Error ? e.message : String(e) });
+      }
+    },
+    analyzeFrame: () => {
+      const { selectedFrame, framePng, loadFromBytes } = get();
+      if (selectedFrame === null || framePng === null) return;
+      loadFromBytes(`frame-${selectedFrame + 1}.png`, framePng);
+    },
+
     sendToWorkbench: (base64) => {
       const workbench = useStore.getState();
       workbench.setInputText(base64);
       workbench.setInputEncoding("base64");
       workbench.setPage("workbench");
       void workbench.bake(false);
+    },
+
+    sendToAutoDecode: (base64) => {
+      useStore.getState().sendToAutoDecode(base64);
     },
   };
 });

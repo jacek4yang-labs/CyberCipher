@@ -221,6 +221,8 @@ export interface Store {
   swapInputOutput: () => void;
   runAuto: () => Promise<void>;
   applyAutoCandidate: (index: number) => void;
+  /** Cross-tool handoff: bytes (base64) become the input and Auto Analyze runs. */
+  sendToAutoDecode: (base64: string) => void;
 }
 
 export const useStore = create<Store>((set, get) => ({
@@ -622,6 +624,13 @@ export const useStore = create<Store>((set, get) => ({
     });
     set({ recipe: nodes, page: "workbench" });
     void get().bake(false);
+  },
+
+  sendToAutoDecode: (base64) => {
+    // Same input buffer the Workbench bakes (auto-bake picks the change up on
+    // mount), then Auto Analyze runs on it immediately; old candidates go.
+    set({ inputText: base64, inputEncoding: "base64", autoCandidates: [], page: "auto" });
+    void get().runAuto();
   },
 
   outputToInput: () => {

@@ -7,7 +7,9 @@ import {
   TRANSFORM_GROUPS,
   bytesToBase64,
   useStegoStore,
+  type StegoAppendedResult,
   type StegoCandidate,
+  type QrHit,
   type StegoExtractResult,
   type StegoTab,
 } from "../stegoStore";
@@ -88,20 +90,33 @@ function downloadPng(pngBase64: string, fileName: string) {
 }
 
 /** Copy button with the transient "copied ✓" feedback used by DataPanel. */
-function CopyHexButton({ bytes }: { bytes: Uint8Array }) {
+function CopyButton({
+  text,
+  label = "Copy Hex",
+  disabled = false,
+  disabledTitle,
+  title,
+}: {
+  text: string;
+  label?: string;
+  disabled?: boolean;
+  disabledTitle?: string;
+  title?: string;
+}) {
   const [copied, setCopied] = useState(false);
   return (
     <button
       className="tool-btn"
+      disabled={disabled}
       onClick={() => {
-        void navigator.clipboard.writeText(toHex(bytes)).then(() => {
+        void navigator.clipboard.writeText(text).then(() => {
           setCopied(true);
           setTimeout(() => setCopied(false), 1200);
         });
       }}
-      title="Copy the full payload as lowercase hex"
+      title={disabled ? disabledTitle : title ?? `Copy ${label.toLowerCase()}`}
     >
-      {copied ? "Copied ✓" : "Copy Hex"}
+      {copied ? "Copied ✓" : label}
     </button>
   );
 }
@@ -252,7 +267,20 @@ function TransformTab() {
         </div>
       ) : (
         <>
-          <div className="pki-run-row">
+          <div
+            className="pki-run-row"
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === "ArrowLeft") {
+                e.preventDefault();
+                step(-1);
+              } else if (e.key === "ArrowRight") {
+                e.preventDefault();
+                step(1);
+              }
+            }}
+            title="Focus this row and use ← / → to step through transforms"
+          >
             <button
               className="tool-btn"
               onClick={() => stepGroup(-1)}
@@ -411,6 +439,7 @@ function PlaneMaskGrid() {
 
 function ExtractReport({ result }: { result: StegoExtractResult }) {
   const sendToWorkbench = useStegoStore((s) => s.sendToWorkbench);
+  const sendToAutoDecode = useStegoStore((s) => s.sendToAutoDecode);
   return (
     <div className="sstv-applied">
       <div className="sstv-cand-head">
@@ -430,7 +459,14 @@ function ExtractReport({ result }: { result: StegoExtractResult }) {
         >
           → Workbench
         </button>
-        <CopyHexButton bytes={result.data} />
+        <button
+          className="tool-btn"
+          onClick={() => sendToAutoDecode(bytesToBase64(result.data))}
+          title="Run Auto Analyze on the extracted bytes"
+        >
+          → Auto Decode
+        </button>
+        <CopyButton text={toHex(result.data)} label="Copy Hex" />
       </div>
       <BytePreview bytes={result.data} />
     </div>
@@ -650,6 +686,7 @@ function CandidateView({
 
 function AppliedView({ applied }: { applied: StegoExtractResult }) {
   const sendToWorkbench = useStegoStore((s) => s.sendToWorkbench);
+  const sendToAutoDecode = useStegoStore((s) => s.sendToAutoDecode);
   return (
     <div className="sstv-applied">
       <div className="sstv-cand-head">
@@ -666,7 +703,14 @@ function AppliedView({ applied }: { applied: StegoExtractResult }) {
         >
           → Workbench
         </button>
-        <CopyHexButton bytes={applied.data} />
+        <button
+          className="tool-btn"
+          onClick={() => sendToAutoDecode(bytesToBase64(applied.data))}
+          title="Run Auto Analyze on the extracted bytes"
+        >
+          → Auto Decode
+        </button>
+        <CopyButton text={toHex(applied.data)} label="Copy Hex" />
       </div>
       <BytePreview bytes={applied.data} />
     </div>
@@ -741,12 +785,812 @@ function AutoLsbTab() {
   );
 }
 
+// ------------------------------------------------------------- structure ----
+
+const STRUCTURE_OP_NAMES: Record<string, string> = {
+  png_structure: "PNG Structure",
+  jpeg_structure: "JPEG Structure",
+  gif_structure: "GIF Structure",
+  bmp_structure: "BMP Structure",
+};
+
+function AppendedView({ result }: { result: StegoAppendedResult }) {
+  const sendToWorkbench = useStegoStore((s) => s.sendToWorkbench);
+  const sendToAutoDecode = useStegoStore((s) => s.sendToAutoDecode);
+  const header = result.header;
+  const magicId =
+    typeof header?.magic?.id === "string" ? header.magic.id : null;
+  return (
+    <div className="sstv-applied">
+      <div className="sstv-cand-head">
+        {header?.present ? (
+          <>
+            <span className="pki-kind-chip">
+              appended {formatSize(result.data.length)}
+              {header.size !== undefined ? ` of ${formatSize(header.size)}` : ""}
+            </span>
+            {header.offset !== undefined && (
+              <span className="pki-kind-chip">
+                at 0x{header.offset.toString(16)}
+              </span>
+            )}
+            {magicId && <span className="pki-kind-chip">looks like {magicId}</span>}
+            {header.truncated && <span className="pki-kind-chip">truncated</span>}
+            <span className="spacer" />
+            <button
+              className="tool-btn"
+              onClick={() => sendToWorkbench(bytesToBase64(result.data))}
+              title="Put the carved bytes into the Workbench input (base64)"
+            >
+              → Workbench
+            </button>
+            <button
+              className="tool-btn"
+              onClick={() => sendToAutoDecode(bytesToBase64(result.data))}
+              title="Run Auto Analyze on the carved bytes"
+            >
+              → Auto Decode
+            </button>
+            <CopyButton text={toHex(result.data)} label="Copy Hex" />
+          </>
+        ) : (
+          <span className="dim">no data after the container's logical end of file</span>
+        )}
+      </div>
+      {header?.strings && header.strings.length > 0 && (
+        <div className="dim sstv-cand-reason">
+          printable strings: {header.strings.join(" · ")}
+        </div>
+      )}
+      {header?.present && result.data.length > 0 && <BytePreview bytes={result.data} />}
+    </div>
+  );
+}
+
+function StructureTab() {
+  const fileBase64 = useStegoStore((s) => s.fileBase64);
+  const structureBusy = useStegoStore((s) => s.structureBusy);
+  const structureError = useStegoStore((s) => s.structureError);
+  const structureOp = useStegoStore((s) => s.structureOp);
+  const structureReport = useStegoStore((s) => s.structureReport);
+  const structureOpen = useStegoStore((s) => s.structureOpen);
+  const setStructureOpen = useStegoStore((s) => s.setStructureOpen);
+  const runStructure = useStegoStore((s) => s.runStructure);
+  const appendedMaxBytes = useStegoStore((s) => s.appendedMaxBytes);
+  const setAppendedMaxBytes = useStegoStore((s) => s.setAppendedMaxBytes);
+  const appendedBusy = useStegoStore((s) => s.appendedBusy);
+  const appendedError = useStegoStore((s) => s.appendedError);
+  const appendedResult = useStegoStore((s) => s.appendedResult);
+  const runAppended = useStegoStore((s) => s.runAppended);
+
+  // Analyze once per loaded file while the tab is visible; a retry after an
+  // error (or a re-run) goes through the button.
+  useEffect(() => {
+    if (!fileBase64) return;
+    if (structureBusy || structureError !== null || structureOp !== null) return;
+    void runStructure();
+  }, [fileBase64, structureBusy, structureError, structureOp, runStructure]);
+
+  const report = (structureReport ?? null) as Record<string, unknown> | null;
+  const reportJson = useMemo(
+    () => (structureReport !== null ? JSON.stringify(structureReport, null, 2) : ""),
+    [structureReport],
+  );
+  const appendedFlag = report?.["appended"] as { present?: boolean } | null | undefined;
+  const complete = report?.["complete"] === true;
+  const truncatedWalk = report?.["truncated"] === true;
+  const fileSize = typeof report?.["file_size"] === "number" ? report["file_size"] : null;
+
+  return (
+    <>
+      <Section title="Container structure">
+        {!fileBase64 ? (
+          <div className="rsa-empty dim">
+            Load a PNG, JPEG, GIF or BMP to walk its raw container bytes: chunks / segments /
+            blocks with offsets and CRC validity, header geometry, comments, and the logical end
+            of file with appended-data detection.
+          </div>
+        ) : (
+          <>
+            <div className="pki-run-row">
+              <button
+                className="bake-btn"
+                onClick={() => void runStructure()}
+                disabled={structureBusy}
+                title={
+                  structureOp
+                    ? `Re-run ${STRUCTURE_OP_NAMES[structureOp] ?? structureOp} on the original file bytes`
+                    : "Run the matching structure analyzer on the original file bytes"
+                }
+              >
+                {structureBusy ? "Walking…" : structureOp ? "Re-analyze" : "Analyze structure"}
+              </button>
+              {structureBusy && (
+                <span className="dim sstv-busy-note">
+                  the walk runs to completion on the engine side — not cancellable
+                </span>
+              )}
+            </div>
+            <ErrorBanner error={structureError} />
+            {report !== null && (
+              <>
+                <Chips
+                  items={[
+                    structureOp ? (STRUCTURE_OP_NAMES[structureOp] ?? structureOp) : null,
+                    fileSize !== null ? `file size ${formatSize(fileSize)}` : null,
+                    complete ? "walk complete" : "walk incomplete",
+                    truncatedWalk ? "report truncated" : null,
+                    appendedFlag?.present ? "appended data found" : "no appended data",
+                  ]}
+                />
+                <button
+                  className="pki-advanced-toggle"
+                  onClick={() => setStructureOpen(!structureOpen)}
+                  title="The analyzer's full bounded report, exactly as the engine produced it"
+                >
+                  <span className="pki-twist">{structureOpen ? "▾" : "▸"}</span> Raw report JSON (
+                  {formatSize(reportJson.length)})
+                </button>
+                {structureOpen && <pre className="sstv-evidence">{reportJson}</pre>}
+              </>
+            )}
+          </>
+        )}
+      </Section>
+
+      <Section title="Appended data">
+        {!fileBase64 ? (
+          <div className="rsa-empty dim">
+            Carve bytes appended after the container's logical end of file (PNG IEND, JPEG EOI,
+            GIF trailer, BMP pixel-array end) with the image_extract_appended op.
+          </div>
+        ) : (
+          <>
+            <div className="pki-run-row">
+              <label
+                className="pki-select-label"
+                title="Bounded carve size; the header reports the total appended size and a truncated flag. Hard cap 16 MiB."
+              >
+                max bytes
+                <input
+                  type="number"
+                  min={1}
+                  max={MAX_EXTRACT_BYTES}
+                  step={1}
+                  value={appendedMaxBytes}
+                  onChange={(e) => setAppendedMaxBytes(Number(e.target.value))}
+                />
+              </label>
+              <button
+                className="bake-btn"
+                onClick={() => void runAppended()}
+                disabled={appendedBusy}
+                title="Run image_extract_appended on the original file bytes"
+              >
+                {appendedBusy ? "Carving…" : "Extract appended"}
+              </button>
+              {appendedBusy && (
+                <span className="dim sstv-busy-note">
+                  the carve runs to completion on the engine side — not cancellable
+                </span>
+              )}
+            </div>
+            <ErrorBanner error={appendedError} />
+            {appendedResult && <AppendedView result={appendedResult} />}
+          </>
+        )}
+      </Section>
+    </>
+  );
+}
+
+// -------------------------------------------------------------------- qr ----
+
+function QrHitCard({ hit }: { hit: QrHit }) {
+  const sendToWorkbench = useStegoStore((s) => s.sendToWorkbench);
+  const sendToAutoDecode = useStegoStore((s) => s.sendToAutoDecode);
+  const payloadBytes = useMemo(() => hexToBytes(hit.raw_payload_bytes), [hit.raw_payload_bytes]);
+  const hasPayload = payloadBytes.length > 0;
+  const bounds = hit.position?.bounds ?? null;
+  return (
+    <div className="sstv-candidate">
+      <div className="sstv-cand-head">
+        <span className="pki-kind-chip">{hit.format}</span>
+        <span className="pki-kind-chip">{formatSize(hit.payload_length)} payload</span>
+        {!hasPayload && (
+          <span className="pki-kind-chip" title="A text-only symbol: the decoder emitted no raw payload bytes, so none are invented">
+            text-only
+          </span>
+        )}
+        {bounds && (
+          <span className="pki-kind-chip">
+            at {bounds.x},{bounds.y} · {bounds.width}×{bounds.height}
+          </span>
+        )}
+        <span className="spacer" />
+        <CopyButton
+          text={hit.decoded_text ?? ""}
+          label="Copy Text"
+          disabled={hit.decoded_text === undefined}
+          disabledTitle="The decoder produced no decoded text for this symbol"
+        />
+        <CopyButton
+          text={toHex(payloadBytes)}
+          label="Copy Hex"
+          disabled={!hasPayload}
+          disabledTitle="No raw payload bytes — text-only symbols carry none"
+        />
+        <button
+          className="tool-btn"
+          disabled={!hasPayload}
+          onClick={() => sendToWorkbench(bytesToBase64(payloadBytes))}
+          title={
+            hasPayload
+              ? "Put the payload bytes into the Workbench input (base64)"
+              : "No raw payload bytes — text-only symbols carry none"
+          }
+        >
+          → Workbench
+        </button>
+        <button
+          className="tool-btn"
+          disabled={!hasPayload}
+          onClick={() => sendToAutoDecode(bytesToBase64(payloadBytes))}
+          title={
+            hasPayload
+              ? "Run Auto Analyze on the payload bytes"
+              : "No raw payload bytes — text-only symbols carry none"
+          }
+        >
+          → Auto Decode
+        </button>
+      </div>
+      {hit.decoded_text !== undefined && (
+        <pre className="sstv-cand-preview">{hit.decoded_text}</pre>
+      )}
+      {hasPayload && <BytePreview bytes={payloadBytes} cap={256} />}
+    </div>
+  );
+}
+
+function QrTab() {
+  const fileBase64 = useStegoStore((s) => s.fileBase64);
+  const qrRoiX = useStegoStore((s) => s.qrRoiX);
+  const qrRoiY = useStegoStore((s) => s.qrRoiY);
+  const qrRoiW = useStegoStore((s) => s.qrRoiW);
+  const qrRoiH = useStegoStore((s) => s.qrRoiH);
+  const qrTryInverted = useStegoStore((s) => s.qrTryInverted);
+  const qrTryRotations = useStegoStore((s) => s.qrTryRotations);
+  const qrTryRescale = useStegoStore((s) => s.qrTryRescale);
+  const qrMaxSymbols = useStegoStore((s) => s.qrMaxSymbols);
+  const setQrRoi = useStegoStore((s) => s.setQrRoi);
+  const setQrTryInverted = useStegoStore((s) => s.setQrTryInverted);
+  const setQrTryRotations = useStegoStore((s) => s.setQrTryRotations);
+  const setQrTryRescale = useStegoStore((s) => s.setQrTryRescale);
+  const setQrMaxSymbols = useStegoStore((s) => s.setQrMaxSymbols);
+  const qrBusy = useStegoStore((s) => s.qrBusy);
+  const qrError = useStegoStore((s) => s.qrError);
+  const qrResult = useStegoStore((s) => s.qrResult);
+  const runQrScan = useStegoStore((s) => s.runQrScan);
+
+  const roiPartiallyFilled =
+    [qrRoiX, qrRoiY, qrRoiW, qrRoiH].some((v) => v.trim() !== "") &&
+    [qrRoiX, qrRoiY, qrRoiW, qrRoiH].some((v) => v.trim() === "");
+
+  return (
+    <Section title="QR / barcode scan">
+      {!fileBase64 ? (
+        <div className="rsa-empty dim">
+          Load an image to scan it for QR codes and 1D/2D barcodes: every hit reports the exact
+          raw payload bytes, the decoded text when printable, its position and metadata — with
+          inverted, rotated and rescaled fallback stages.
+        </div>
+      ) : (
+        <>
+          <div className="pki-run-row">
+            <label className="pki-select-label" title="Region x (0-based, whole image when blank)">
+              ROI x
+              <input
+                type="number"
+                min={0}
+                value={qrRoiX}
+                onChange={(e) => setQrRoi("x", e.target.value)}
+              />
+            </label>
+            <label className="pki-select-label" title="Region y">
+              y
+              <input
+                type="number"
+                min={0}
+                value={qrRoiY}
+                onChange={(e) => setQrRoi("y", e.target.value)}
+              />
+            </label>
+            <label className="pki-select-label" title="Region width">
+              w
+              <input
+                type="number"
+                min={0}
+                value={qrRoiW}
+                onChange={(e) => setQrRoi("w", e.target.value)}
+              />
+            </label>
+            <label className="pki-select-label" title="Region height">
+              h
+              <input
+                type="number"
+                min={0}
+                value={qrRoiH}
+                onChange={(e) => setQrRoi("h", e.target.value)}
+              />
+            </label>
+            <label
+              className="pki-select-label"
+              title="Maximum number of reported symbols (engine hard cap 64)"
+            >
+              max symbols
+              <input
+                type="number"
+                min={1}
+                max={64}
+                step={1}
+                value={qrMaxSymbols}
+                onChange={(e) => setQrMaxSymbols(Number(e.target.value))}
+              />
+            </label>
+          </div>
+          {roiPartiallyFilled && (
+            <div className="dim sstv-busy-note">
+              region incomplete — all four values (x, y, w, h) make a region; using the whole image
+            </div>
+          )}
+
+          <div className="pki-run-row">
+            <label
+              className="pki-select-label"
+              title="Also scans an inverted copy, for light symbols on a dark background"
+            >
+              try inverted
+              <input
+                type="checkbox"
+                checked={qrTryInverted}
+                onChange={(e) => setQrTryInverted(e.target.checked)}
+              />
+            </label>
+            <label
+              className="pki-select-label"
+              title="Also tries quarter turns when nothing decoded upright"
+            >
+              try rotations
+              <input
+                type="checkbox"
+                checked={qrTryRotations}
+                onChange={(e) => setQrTryRotations(e.target.checked)}
+              />
+            </label>
+            <label
+              className="pki-select-label"
+              title="Adds rescaled copies (for very small/very large images) and the alternate binarizer when everything else failed"
+            >
+              try rescale
+              <input
+                type="checkbox"
+                checked={qrTryRescale}
+                onChange={(e) => setQrTryRescale(e.target.checked)}
+              />
+            </label>
+          </div>
+
+          <div className="pki-run-row">
+            <button
+              className="bake-btn"
+              onClick={() => void runQrScan()}
+              disabled={qrBusy}
+              title="Run image_scan_qr on the original image bytes"
+            >
+              {qrBusy ? "Scanning…" : "Scan"}
+            </button>
+            {qrBusy && (
+              <span className="dim sstv-busy-note">
+                the scan runs to completion on the engine side — not cancellable
+              </span>
+            )}
+          </div>
+          <ErrorBanner error={qrError} />
+
+          {qrResult && (
+            <>
+              <Chips
+                items={[
+                  `${qrResult.symbol_count} symbol${qrResult.symbol_count === 1 ? "" : "s"}`,
+                  qrResult.merged_count > 0
+                    ? `${qrResult.merged_count} merged Structured Append sequence${qrResult.merged_count === 1 ? "" : "s"}`
+                    : null,
+                  `scanned ${qrResult.scanned_area.width}×${qrResult.scanned_area.height} at ${qrResult.scanned_area.x},${qrResult.scanned_area.y}`,
+                ]}
+              />
+              {qrResult.notes.length > 0 && (
+                <div className="pki-alternatives">notes: {qrResult.notes.join(" · ")}</div>
+              )}
+              {qrResult.symbol_count === 0 && (
+                <div className="dim">
+                  no symbol found in the scanned region — for very small or very large images try
+                  the rescale fallback
+                </div>
+              )}
+              {qrResult.merged.length > 0 && (
+                <>
+                  <div className="pki-subhead dim">merged Structured Append sequences</div>
+                  {qrResult.merged.map((hit, i) => (
+                    <QrHitCard key={`merged-${i}`} hit={hit} />
+                  ))}
+                </>
+              )}
+              {qrResult.hits.length > 0 && (
+                <>
+                  <div className="pki-subhead dim">symbols</div>
+                  {qrResult.hits.map((hit, i) => (
+                    <QrHitCard key={`hit-${i}`} hit={hit} />
+                  ))}
+                </>
+              )}
+            </>
+          )}
+        </>
+      )}
+    </Section>
+  );
+}
+
+// ---------------------------------------------------------------- stereo ----
+
+function StereoTab() {
+  const fileBase64 = useStegoStore((s) => s.fileBase64);
+  const fileName = useStegoStore((s) => s.fileName);
+  const stereoOffset = useStegoStore((s) => s.stereoOffset);
+  const stereoEdgeHold = useStegoStore((s) => s.stereoEdgeHold);
+  const stereoSampleStep = useStegoStore((s) => s.stereoSampleStep);
+  const setStereoOffset = useStegoStore((s) => s.setStereoOffset);
+  const setStereoEdgeHold = useStegoStore((s) => s.setStereoEdgeHold);
+  const setStereoSampleStep = useStegoStore((s) => s.setStereoSampleStep);
+  const stereoBusy = useStegoStore((s) => s.stereoBusy);
+  const stereoError = useStegoStore((s) => s.stereoError);
+  const stereoPng = useStegoStore((s) => s.stereoPng);
+  const runStereoShift = useStegoStore((s) => s.runStereoShift);
+  const stereoAutoBusy = useStegoStore((s) => s.stereoAutoBusy);
+  const stereoAutoError = useStegoStore((s) => s.stereoAutoError);
+  const stereoAuto = useStegoStore((s) => s.stereoAuto);
+  const runStereoAuto = useStegoStore((s) => s.runStereoAuto);
+  const applyStereoAuto = useStegoStore((s) => s.applyStereoAuto);
+  const sendToWorkbench = useStegoStore((s) => s.sendToWorkbench);
+
+  return (
+    <Section title="Stereo shift">
+      {!fileBase64 ? (
+        <div className="rsa-empty dim">
+          Load an autostereogram to solve it: the shift XORs the image with a horizontally shifted
+          copy of itself, revealing the depth map once the shift matches the repeating pattern
+          width. Auto-detect scans offsets for the strongest self-similarity.
+        </div>
+      ) : (
+        <>
+          <div className="pki-run-row">
+            <button
+              className="tool-btn"
+              onClick={() => setStereoOffset(stereoOffset - 1)}
+              disabled={stereoOffset <= 1}
+              title="Previous offset"
+            >
+              ◀
+            </button>
+            <label
+              className="pki-select-label"
+              title="Horizontal shift in pixels; the engine wraps values at or beyond the width"
+            >
+              offset
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={stereoOffset}
+                onChange={(e) => setStereoOffset(Number(e.target.value))}
+              />
+            </label>
+            <button
+              className="tool-btn"
+              onClick={() => setStereoOffset(stereoOffset + 1)}
+              title="Next offset"
+            >
+              ▶
+            </button>
+            <label
+              className="pki-select-label"
+              title="Clamp the sample at the right edge instead of wrapping, removing the wrap-around seam on the last columns"
+            >
+              edge hold
+              <input
+                type="checkbox"
+                checked={stereoEdgeHold}
+                onChange={(e) => setStereoEdgeHold(e.target.checked)}
+              />
+            </label>
+            <button
+              className="bake-btn"
+              onClick={() => void runStereoShift()}
+              disabled={stereoBusy}
+              title="Run image_stereo_shift with this offset on the original image bytes"
+            >
+              {stereoBusy ? "Shifting…" : "Stereo Shift"}
+            </button>
+          </div>
+          <ErrorBanner error={stereoError} />
+
+          <div className="pki-run-row">
+            <label
+              className="pki-select-label"
+              title="Compare only every Nth row and column during the scan (1 = exhaustive); the scan is O(width² · height / step)"
+            >
+              sample step
+              <input
+                type="number"
+                min={1}
+                step={1}
+                value={stereoSampleStep}
+                onChange={(e) => setStereoSampleStep(Number(e.target.value))}
+              />
+            </label>
+            <button
+              className="bake-btn"
+              onClick={() => void runStereoAuto()}
+              disabled={stereoAutoBusy}
+              title="Run image_stereo_auto: rank offsets 1..width/2 by self similarity, smallest offset wins ties"
+            >
+              {stereoAutoBusy ? "Scanning…" : "Auto-detect offset"}
+            </button>
+            {stereoAutoBusy && (
+              <span className="dim sstv-busy-note">
+                the scan runs to completion on the engine side — not cancellable
+              </span>
+            )}
+          </div>
+          <ErrorBanner error={stereoAutoError} />
+          {stereoAuto && (
+            <div className="sstv-applied">
+              <div className="sstv-cand-head">
+                <span className="pki-kind-chip">best offset {stereoAuto.best_offset}</span>
+                <Chips
+                  items={[
+                    `sampled every ${stereoAuto.sample_step} px`,
+                    `${stereoAuto.width}×${stereoAuto.height}`,
+                  ]}
+                />
+                <span className="spacer" />
+                {stereoAuto.best_offset > 0 && (
+                  <button
+                    className="tool-btn"
+                    onClick={applyStereoAuto}
+                    title="Set the shift offset to the detected value"
+                  >
+                    Use offset {stereoAuto.best_offset}
+                  </button>
+                )}
+              </div>
+              <div className="dim sstv-cand-reason">{stereoAuto.hint}</div>
+            </div>
+          )}
+
+          {stereoPng !== null && (
+            <div className="stego-viewport">
+              <img
+                src={`data:image/png;base64,${stereoPng}`}
+                alt={`stereo shift at offset ${stereoOffset}`}
+              />
+              <div className="sstv-image-head">
+                <span className="pki-kind-chip">offset {stereoOffset}</span>
+                {stereoEdgeHold && <span className="pki-kind-chip">edge hold</span>}
+                <span className="spacer" />
+                <button
+                  className="tool-btn"
+                  onClick={() =>
+                    downloadPng(stereoPng, `${fileName ?? "image"}-stereo-${stereoOffset}.png`)
+                  }
+                  title="Download the result PNG through the browser"
+                >
+                  Save PNG
+                </button>
+                <button
+                  className="tool-btn"
+                  onClick={() => sendToWorkbench(stereoPng)}
+                  title="Put the result PNG into the Workbench input (base64)"
+                >
+                  → Workbench
+                </button>
+              </div>
+            </div>
+          )}
+        </>
+      )}
+    </Section>
+  );
+}
+
+// ---------------------------------------------------------------- frames ----
+
+/** Bounded number of frame metadata rows rendered at once. */
+const FRAMES_RENDER_LIMIT = 256;
+
+function FramesTab() {
+  const fileBase64 = useStegoStore((s) => s.fileBase64);
+  const fileName = useStegoStore((s) => s.fileName);
+  const framesInfo = useStegoStore((s) => s.framesInfo);
+  const framesBusy = useStegoStore((s) => s.framesBusy);
+  const framesError = useStegoStore((s) => s.framesError);
+  const runFramesInfo = useStegoStore((s) => s.runFramesInfo);
+  const selectedFrame = useStegoStore((s) => s.selectedFrame);
+  const frameBusy = useStegoStore((s) => s.frameBusy);
+  const frameError = useStegoStore((s) => s.frameError);
+  const framePng = useStegoStore((s) => s.framePng);
+  const previewFrame = useStegoStore((s) => s.previewFrame);
+  const analyzeFrame = useStegoStore((s) => s.analyzeFrame);
+  const setTab = useStegoStore((s) => s.setTab);
+  const sendToWorkbench = useStegoStore((s) => s.sendToWorkbench);
+
+  // Index once per loaded file while the tab is visible; retry goes through the button.
+  useEffect(() => {
+    if (!fileBase64) return;
+    if (framesBusy || framesError !== null || framesInfo !== null) return;
+    void runFramesInfo();
+  }, [fileBase64, framesBusy, framesError, framesInfo, runFramesInfo]);
+
+  const frames = framesInfo?.frames ?? [];
+  const shown = frames.slice(0, FRAMES_RENDER_LIMIT);
+
+  const analyze = () => {
+    analyzeFrame();
+    setTab("transform");
+  };
+
+  return (
+    <Section title="GIF frames">
+      {!fileBase64 ? (
+        <div className="rsa-empty dim">
+          Load an animated GIF to index its frames without decoding pixel data: per-frame region,
+          delay, disposal method, transparency and interlace — then preview any frame and analyze
+          it with the rest of the Stego Lab.
+        </div>
+      ) : (
+        <>
+          <div className="pki-run-row">
+            <button
+              className="bake-btn"
+              onClick={() => void runFramesInfo()}
+              disabled={framesBusy}
+              title="Re-run image_gif_info on the original file bytes"
+            >
+              {framesBusy ? "Indexing…" : framesInfo ? "Re-index" : "Index frames"}
+            </button>
+            {framesBusy && (
+              <span className="dim sstv-busy-note">
+                the index runs to completion on the engine side — not cancellable
+              </span>
+            )}
+          </div>
+          <ErrorBanner error={framesError} />
+          {framesInfo && (
+            <>
+              <Chips
+                items={[
+                  `screen ${framesInfo.screen.width}×${framesInfo.screen.height}`,
+                  `${framesInfo.frame_count} frame${framesInfo.frame_count === 1 ? "" : "s"}`,
+                  framesInfo.frames_truncated
+                    ? "frame index truncated (engine cap 4096)"
+                    : null,
+                ]}
+              />
+              <div className="stego-frames">
+                <div className="stego-frame-row stego-frame-head dim">
+                  <span>#</span>
+                  <span>region</span>
+                  <span>delay</span>
+                  <span>disposal</span>
+                  <span>flags</span>
+                  <span />
+                </div>
+                {shown.map((f) => (
+                  <div
+                    key={f.index}
+                    className={`stego-frame-row${selectedFrame === f.index ? " selected" : ""}`}
+                  >
+                    <span className="stego-frame-idx">{f.index}</span>
+                    <span className="stego-frame-region">
+                      {f.left},{f.top} · {f.width}×{f.height}
+                    </span>
+                    <span>{(f.delay_cs / 100).toFixed(2)} s</span>
+                    <span>{f.disposal}</span>
+                    <span className="dim">
+                      {[
+                        f.interlaced ? "interlaced" : null,
+                        f.transparent_index !== null && f.transparent_index !== undefined
+                          ? `transparent ${f.transparent_index}`
+                          : null,
+                      ]
+                        .filter(Boolean)
+                        .join(" · ") || "—"}
+                    </span>
+                    <button
+                      className="tool-btn"
+                      disabled={frameBusy}
+                      onClick={() => void previewFrame(f.index)}
+                      title="Decode and compose this frame as PNG (image_gif_frame)"
+                    >
+                      {selectedFrame === f.index && frameBusy ? "Decoding…" : "Preview"}
+                    </button>
+                  </div>
+                ))}
+              </div>
+              {frames.length > shown.length && (
+                <div className="dim sstv-cand-total">
+                  +{frames.length - shown.length} more frames not listed (render bound{" "}
+                  {FRAMES_RENDER_LIMIT})
+                </div>
+              )}
+              <ErrorBanner error={frameError} />
+              {framePng !== null && selectedFrame !== null && (
+                <div className="stego-viewport">
+                  <img
+                    src={`data:image/png;base64,${framePng}`}
+                    alt={`GIF frame ${selectedFrame}`}
+                  />
+                  <div className="sstv-image-head">
+                    <span className="pki-kind-chip">frame {selectedFrame}</span>
+                    <span className="dim">
+                      composed onto the logical screen, as a viewer shows it
+                    </span>
+                    <span className="spacer" />
+                    <button
+                      className="tool-btn"
+                      onClick={analyze}
+                      title="Load this frame as the Stego Lab's active image (transforms, extract, QR, …)"
+                    >
+                      Analyze frame
+                    </button>
+                    <button
+                      className="tool-btn"
+                      onClick={() =>
+                        downloadPng(framePng, `${fileName ?? "gif"}-frame-${selectedFrame}.png`)
+                      }
+                      title="Download the frame PNG through the browser"
+                    >
+                      Save PNG
+                    </button>
+                    <button
+                      className="tool-btn"
+                      onClick={() => sendToWorkbench(framePng)}
+                      title="Put the frame PNG into the Workbench input (base64)"
+                    >
+                      → Workbench
+                    </button>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </>
+      )}
+    </Section>
+  );
+}
+
 // ----------------------------------------------------------------- page ----
 
 const TABS: [StegoTab, string][] = [
   ["transform", "Transforms"],
   ["extract", "Extract"],
   ["autolsb", "Auto LSB"],
+  ["structure", "Structure"],
+  ["qr", "QR"],
+  ["stereo", "Stereo"],
+  ["frames", "Frames"],
 ];
 
 export function StegoLabPage() {
@@ -759,7 +1603,8 @@ export function StegoLabPage() {
       <p className="dim sstv-expl">
         Steganography workbench over the StegSolve-compatible engine: step through the 42-transform
         catalog, extract bit streams with full control over planes, order and traversal, and let
-        Auto LSB rank the likely configurations. Every operation runs in the Rust engine on the
+        Auto LSB rank the likely configurations. Structure, QR/barcode, stereo and GIF-frame tabs
+        cover the rest of the container toolkit. Every operation runs in the Rust engine on the
         original image bytes.
       </p>
       <div className="sstv-layout">
@@ -783,6 +1628,10 @@ export function StegoLabPage() {
             {tab === "transform" && <TransformTab />}
             {tab === "extract" && <ExtractTab />}
             {tab === "autolsb" && <AutoLsbTab />}
+            {tab === "structure" && <StructureTab />}
+            {tab === "qr" && <QrTab />}
+            {tab === "stereo" && <StereoTab />}
+            {tab === "frames" && <FramesTab />}
           </div>
         </div>
       </div>

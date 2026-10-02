@@ -66,6 +66,7 @@ export interface PkiStore {
   rsaDecryptCiphertext: string;
   rsaDecryptResult: PkiBytes | null;
   rsaEncBusy: boolean;
+  rsaDecBusy: boolean;
   rsaEncError: string | null;
   setRsaPublicPem: (v: string) => void;
   setRsaPrivatePem: (v: string) => void;
@@ -191,6 +192,7 @@ export interface PkiStore {
   sm2DecCiphertext: string;
   sm2DecResult: PkiBytes | null;
   sm2EncBusy: boolean;
+  sm2DecBusy: boolean;
   sm2EncError: string | null;
   setSm2UserId: (v: string) => void;
   setSm2PrivateHex: (v: string) => void;
@@ -279,6 +281,7 @@ export const usePkiStore = create<PkiStore>((set, get) => ({
   rsaDecryptCiphertext: "",
   rsaDecryptResult: null,
   rsaEncBusy: false,
+  rsaDecBusy: false,
   rsaEncError: null,
   setRsaPublicPem: (rsaPublicPem) => set({ rsaPublicPem }),
   setRsaPrivatePem: (rsaPrivatePem) => set({ rsaPrivatePem }),
@@ -313,8 +316,8 @@ export const usePkiStore = create<PkiStore>((set, get) => ({
     }
   },
   rsaDecrypt: async () => {
-    if (get().rsaEncBusy) return;
-    set({ rsaEncBusy: true, rsaEncError: null });
+    if (get().rsaDecBusy) return;
+    set({ rsaDecBusy: true, rsaEncError: null });
     try {
       const label = get().rsaLabel.trim();
       const result = await api.pkiRsaDecrypt({
@@ -329,7 +332,7 @@ export const usePkiStore = create<PkiStore>((set, get) => ({
     } catch (e) {
       set({ rsaEncError: formatInvokeError(e) });
     } finally {
-      set({ rsaEncBusy: false });
+      set({ rsaDecBusy: false });
     }
   },
 
@@ -615,6 +618,7 @@ export const usePkiStore = create<PkiStore>((set, get) => ({
   sm2DecCiphertext: "",
   sm2DecResult: null,
   sm2EncBusy: false,
+  sm2DecBusy: false,
   sm2EncError: null,
   setSm2UserId: (sm2UserId) => set({ sm2UserId }),
   setSm2PrivateHex: (sm2PrivateHex) => set({ sm2PrivateHex }),
@@ -702,8 +706,8 @@ export const usePkiStore = create<PkiStore>((set, get) => ({
     }
   },
   runSm2Decrypt: async () => {
-    if (get().sm2EncBusy) return;
-    set({ sm2EncBusy: true, sm2EncError: null });
+    if (get().sm2DecBusy) return;
+    set({ sm2DecBusy: true, sm2EncError: null });
     try {
       const result = await api.pkiSm2Decrypt({
         private_hex: get().sm2DecPrivateHex,
@@ -714,7 +718,7 @@ export const usePkiStore = create<PkiStore>((set, get) => ({
     } catch (e) {
       set({ sm2EncError: formatInvokeError(e) });
     } finally {
-      set({ sm2EncBusy: false });
+      set({ sm2DecBusy: false });
     }
   },
 
