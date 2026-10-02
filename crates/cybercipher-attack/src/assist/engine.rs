@@ -264,17 +264,24 @@ pub fn assist_with_profile(
         if cand.mode.uses_iv() {
             evidence.push(format!("IV from {}", cand.iv_source.name()));
         }
-        if let Some(pad) = cand.padding {
+        if cand.mode == Mode::Stream {
+            // A pure stream cipher has no padding parameter at all — the
+            // evidence line must fire here, not inside the padding match
+            // (stream candidates carry Padding::None and never entered it).
+            evidence.push("stream cipher: no mode, IV, or padding".to_string());
+        } else if let Some(pad) = cand.padding {
             match pad {
                 Padding::Pkcs7 | Padding::Iso7816 => {
                     // Reaching here means the op's decrypt-side validation
-                    // accepted the padding.
+                    // accepted the padding. Valid structured padding is real
+                    // evidence, not just decoration: lift it (the old code
+                    // recorded the line but left borderline candidates at
+                    // 0.69, below confidence).
                     evidence.push(format!("{} padding valid", pad.name()));
+                    total = (total + 0.05).min(1.0);
                 }
                 Padding::None => {
-                    if cand.mode == Mode::Stream {
-                        evidence.push("stream cipher: no mode, IV, or padding".to_string());
-                    } else if cand.mode.is_stream() {
+                    if cand.mode.is_stream() {
                         evidence.push("stream mode: no padding applied".to_string());
                     } else {
                         evidence.push("no padding (raw blocks)".to_string());
