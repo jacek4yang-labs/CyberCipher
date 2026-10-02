@@ -365,8 +365,7 @@ fn required_field(object: &serde_json::Map<String, Value>, key: &str) -> OpResul
     object
         .get(key)
         .ok_or_else(|| {
-            OperationError::invalid_input(format!("missing `{key}` field"))
-                .with_parameter(key)
+            OperationError::invalid_input(format!("missing `{key}` field")).with_parameter(key)
         })
         .and_then(|value| field_str(value, key))
 }
@@ -403,10 +402,7 @@ fn preimage_field(
 
 /// The shared-r convenience: one `r` field applies to both signatures;
 /// otherwise `r1`/`r2` are required (and the library re-checks their equality).
-fn shared_r_field(
-    object: &serde_json::Map<String, Value>,
-    suffix: &str,
-) -> OpResult<String> {
+fn shared_r_field(object: &serde_json::Map<String, Value>, suffix: &str) -> OpResult<String> {
     if let Some(value) = object.get("r") {
         return field_str(value, "r");
     }
@@ -446,12 +442,11 @@ fn digest_from_params(params: &ParamMap, curve: EccCurve) -> OpResult<EcdsaDiges
         },
         "sha256" => Ok(EcdsaDigest::Sha256),
         "sha384" => Ok(EcdsaDigest::Sha384),
-        other => Err(OperationError::invalid_param(
-            "hash",
-            format!("unknown hash '{other}'"),
-        )
-        .with_expected("auto, sha256, or sha384")
-        .with_actual(other)),
+        other => Err(
+            OperationError::invalid_param("hash", format!("unknown hash '{other}'"))
+                .with_expected("auto, sha256, or sha384")
+                .with_actual(other),
+        ),
     }
 }
 
@@ -485,10 +480,20 @@ mod tests {
 
     fn fixture(k: u64) -> (crate::ecc::EccKeyPair, String, String, String, String) {
         let keypair = generate_ecc_keypair(EccCurve::P256).unwrap();
-        let (r1, s1) =
-            sign_with_k(EccCurve::P256, EcdsaDigest::Sha256, &keypair.private_hex, MSG1, k);
-        let (_r2, s2) =
-            sign_with_k(EccCurve::P256, EcdsaDigest::Sha256, &keypair.private_hex, MSG2, k);
+        let (r1, s1) = sign_with_k(
+            EccCurve::P256,
+            EcdsaDigest::Sha256,
+            &keypair.private_hex,
+            MSG1,
+            k,
+        );
+        let (_r2, s2) = sign_with_k(
+            EccCurve::P256,
+            EcdsaDigest::Sha256,
+            &keypair.private_hex,
+            MSG2,
+            k,
+        );
         (keypair, r1, s1, s2, crate::keys::to_hex(MSG2))
     }
 
@@ -510,7 +515,9 @@ mod tests {
         }
         // Snake-case aliases are searchable.
         let hits = reg.search("ecdsa_nonce_reuse_recover", None);
-        assert!(hits.iter().any(|(op, _)| op.spec().id == "ecdsa-nonce-reuse-recover"));
+        assert!(hits
+            .iter()
+            .any(|(op, _)| op.spec().id == "ecdsa-nonce-reuse-recover"));
     }
 
     #[test]
@@ -673,7 +680,11 @@ mod tests {
         let error = reg
             .get("ecdsa-duplicate-r-detect")
             .unwrap()
-            .execute(&CoreValue::Integer(1.into()), &ParamMap::new(), &ExecutionContext::new())
+            .execute(
+                &CoreValue::Integer(1.into()),
+                &ParamMap::new(),
+                &ExecutionContext::new(),
+            )
             .unwrap_err();
         assert_eq!(error.kind, ErrorKind::InvalidInput);
     }

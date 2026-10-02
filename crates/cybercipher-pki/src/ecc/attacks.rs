@@ -201,11 +201,11 @@ pub fn ecdsa_duplicate_r_detect(
     check_ecdsa_curve(curve)?;
     check_digest_pairing(curve, digest)?;
     if signatures.is_empty() {
-        return Err(PkiError::invalid_input(
-            "no signatures provided for duplicate-r detection",
-        )
-        .with_expected("at least one signature")
-        .with_actual("an empty list"));
+        return Err(
+            PkiError::invalid_input("no signatures provided for duplicate-r detection")
+                .with_expected("at least one signature")
+                .with_actual("an empty list"),
+        );
     }
     let field_len = curve.private_key_size();
     let mut rs = Vec::with_capacity(signatures.len());
@@ -610,7 +610,9 @@ where
 {
     let field = elliptic_curve::FieldBytes::<C>::clone_from_slice(bytes);
     let secret = elliptic_curve::SecretKey::<C>::from_bytes(&field).ok()?;
-    Some(to_hex(secret.public_key().to_encoded_point(true).as_bytes()))
+    Some(to_hex(
+        secret.public_key().to_encoded_point(true).as_bytes(),
+    ))
 }
 
 /// Evidence check: does the recovered nonce reproduce the signature's `r`
@@ -669,7 +671,9 @@ fn finish_recovery(
         ));
     }
     if let Some(tried) = candidates_tried {
-        evidence.push(format!("candidate nonces tried before the verified match: {tried}"));
+        evidence.push(format!(
+            "candidate nonces tried before the verified match: {tried}"
+        ));
     }
     if nonce_r_matches == Some(true) {
         evidence.push("x(k*G) == r: the recovered nonce reproduces the signature's r".to_string());
@@ -781,8 +785,13 @@ mod tests {
     #[test]
     fn fixed_nonce_signature_verifies_with_real_verifier_p256() {
         let keypair = generate_ecc_keypair(EccCurve::P256).unwrap();
-        let (r_hex, s_hex) =
-            sign_with_k(EccCurve::P256, EcdsaDigest::Sha256, &keypair.private_hex, MSG1, 42);
+        let (r_hex, s_hex) = sign_with_k(
+            EccCurve::P256,
+            EcdsaDigest::Sha256,
+            &keypair.private_hex,
+            MSG1,
+            42,
+        );
         let signature = format!("{r_hex}{s_hex}");
         let verdict = ecdsa_verify(
             EccCurve::P256,
@@ -793,14 +802,23 @@ mod tests {
             &signature,
         )
         .unwrap();
-        assert!(verdict.valid, "fixed-nonce signature must verify: {:?}", verdict.reason);
+        assert!(
+            verdict.valid,
+            "fixed-nonce signature must verify: {:?}",
+            verdict.reason
+        );
     }
 
     #[test]
     fn fixed_nonce_signature_verifies_with_real_verifier_p384() {
         let keypair = generate_ecc_keypair(EccCurve::P384).unwrap();
-        let (r_hex, s_hex) =
-            sign_with_k(EccCurve::P384, EcdsaDigest::Sha384, &keypair.private_hex, MSG1, 7);
+        let (r_hex, s_hex) = sign_with_k(
+            EccCurve::P384,
+            EcdsaDigest::Sha384,
+            &keypair.private_hex,
+            MSG1,
+            7,
+        );
         let signature = format!("{r_hex}{s_hex}");
         let verdict = ecdsa_verify(
             EccCurve::P384,
@@ -811,16 +829,30 @@ mod tests {
             &signature,
         )
         .unwrap();
-        assert!(verdict.valid, "fixed-nonce signature must verify: {:?}", verdict.reason);
+        assert!(
+            verdict.valid,
+            "fixed-nonce signature must verify: {:?}",
+            verdict.reason
+        );
     }
 
     #[test]
     fn nonce_reuse_recovers_p256_key() {
         let keypair = generate_ecc_keypair(EccCurve::P256).unwrap();
-        let (r1, s1) =
-            sign_with_k(EccCurve::P256, EcdsaDigest::Sha256, &keypair.private_hex, MSG1, 42);
-        let (r2, s2) =
-            sign_with_k(EccCurve::P256, EcdsaDigest::Sha256, &keypair.private_hex, MSG2, 42);
+        let (r1, s1) = sign_with_k(
+            EccCurve::P256,
+            EcdsaDigest::Sha256,
+            &keypair.private_hex,
+            MSG1,
+            42,
+        );
+        let (r2, s2) = sign_with_k(
+            EccCurve::P256,
+            EcdsaDigest::Sha256,
+            &keypair.private_hex,
+            MSG2,
+            42,
+        );
         assert_eq!(r1, r2, "same nonce must produce the same r");
         let report = ecdsa_nonce_reuse_recover(
             EccCurve::P256,
@@ -833,17 +865,30 @@ mod tests {
         assert!(report.recovered && report.verified);
         assert_eq!(report.method, "nonce-reuse");
         assert_eq!(report.private_key_hex, keypair.private_hex);
-        assert_eq!(report.public_key_compressed_hex, keypair.public_compressed_hex);
+        assert_eq!(
+            report.public_key_compressed_hex,
+            keypair.public_compressed_hex
+        );
         assert_eq!(report.nonce_r_matches, Some(true));
     }
 
     #[test]
     fn nonce_reuse_recovers_p384_key_with_compressed_public_key() {
         let keypair = generate_ecc_keypair(EccCurve::P384).unwrap();
-        let (r1, s1) =
-            sign_with_k(EccCurve::P384, EcdsaDigest::Sha384, &keypair.private_hex, MSG1, 999);
-        let (r2, s2) =
-            sign_with_k(EccCurve::P384, EcdsaDigest::Sha384, &keypair.private_hex, MSG2, 999);
+        let (r1, s1) = sign_with_k(
+            EccCurve::P384,
+            EcdsaDigest::Sha384,
+            &keypair.private_hex,
+            MSG1,
+            999,
+        );
+        let (r2, s2) = sign_with_k(
+            EccCurve::P384,
+            EcdsaDigest::Sha384,
+            &keypair.private_hex,
+            MSG2,
+            999,
+        );
         let report = ecdsa_nonce_reuse_recover(
             EccCurve::P384,
             EcdsaDigest::Sha384,
@@ -853,17 +898,30 @@ mod tests {
         )
         .unwrap();
         assert_eq!(report.private_key_hex, keypair.private_hex);
-        assert_eq!(report.nonce_k_hex, Some(scalar_to_fixed_hex(&999u32.into(), 48)));
+        assert_eq!(
+            report.nonce_k_hex,
+            Some(scalar_to_fixed_hex(&999u32.into(), 48))
+        );
     }
 
     #[test]
     fn nonce_reuse_wrong_public_key_is_typed_error() {
         let keypair = generate_ecc_keypair(EccCurve::P256).unwrap();
         let other = generate_ecc_keypair(EccCurve::P256).unwrap();
-        let (r1, s1) =
-            sign_with_k(EccCurve::P256, EcdsaDigest::Sha256, &keypair.private_hex, MSG1, 42);
-        let (r2, s2) =
-            sign_with_k(EccCurve::P256, EcdsaDigest::Sha256, &keypair.private_hex, MSG2, 42);
+        let (r1, s1) = sign_with_k(
+            EccCurve::P256,
+            EcdsaDigest::Sha256,
+            &keypair.private_hex,
+            MSG1,
+            42,
+        );
+        let (r2, s2) = sign_with_k(
+            EccCurve::P256,
+            EcdsaDigest::Sha256,
+            &keypair.private_hex,
+            MSG2,
+            42,
+        );
         let error = ecdsa_nonce_reuse_recover(
             EccCurve::P256,
             EcdsaDigest::Sha256,
@@ -879,8 +937,13 @@ mod tests {
     #[test]
     fn nonce_reuse_identical_signatures_is_typed_error() {
         let keypair = generate_ecc_keypair(EccCurve::P256).unwrap();
-        let (r, s) =
-            sign_with_k(EccCurve::P256, EcdsaDigest::Sha256, &keypair.private_hex, MSG1, 42);
+        let (r, s) = sign_with_k(
+            EccCurve::P256,
+            EcdsaDigest::Sha256,
+            &keypair.private_hex,
+            MSG1,
+            42,
+        );
         let error = ecdsa_nonce_reuse_recover(
             EccCurve::P256,
             EcdsaDigest::Sha256,
@@ -896,8 +959,13 @@ mod tests {
     #[test]
     fn nonce_reuse_identical_digests_is_typed_error() {
         let keypair = generate_ecc_keypair(EccCurve::P256).unwrap();
-        let (r, s1) =
-            sign_with_k(EccCurve::P256, EcdsaDigest::Sha256, &keypair.private_hex, MSG1, 42);
+        let (r, s1) = sign_with_k(
+            EccCurve::P256,
+            EcdsaDigest::Sha256,
+            &keypair.private_hex,
+            MSG1,
+            42,
+        );
         // Same r and same digest, different s: the numerator (h1 - h2) is zero.
         let s2 = scalar_to_fixed_hex(
             &(&BigUint::from_bytes_be(&decode_hex("s", &s1).unwrap()) + 1u32),
@@ -918,10 +986,20 @@ mod tests {
     #[test]
     fn nonce_reuse_different_r_is_typed_error() {
         let keypair = generate_ecc_keypair(EccCurve::P256).unwrap();
-        let (r1, s1) =
-            sign_with_k(EccCurve::P256, EcdsaDigest::Sha256, &keypair.private_hex, MSG1, 42);
-        let (r2, s2) =
-            sign_with_k(EccCurve::P256, EcdsaDigest::Sha256, &keypair.private_hex, MSG2, 43);
+        let (r1, s1) = sign_with_k(
+            EccCurve::P256,
+            EcdsaDigest::Sha256,
+            &keypair.private_hex,
+            MSG1,
+            42,
+        );
+        let (r2, s2) = sign_with_k(
+            EccCurve::P256,
+            EcdsaDigest::Sha256,
+            &keypair.private_hex,
+            MSG2,
+            43,
+        );
         assert_ne!(r1, r2);
         let error = ecdsa_nonce_reuse_recover(
             EccCurve::P256,
@@ -937,8 +1015,13 @@ mod tests {
     #[test]
     fn nonce_reuse_zero_components_are_typed_errors() {
         let keypair = generate_ecc_keypair(EccCurve::P256).unwrap();
-        let (r, s) =
-            sign_with_k(EccCurve::P256, EcdsaDigest::Sha256, &keypair.private_hex, MSG1, 42);
+        let (r, s) = sign_with_k(
+            EccCurve::P256,
+            EcdsaDigest::Sha256,
+            &keypair.private_hex,
+            MSG1,
+            42,
+        );
         let sig = EcdsaAttackSignature::from_message(&to_hex(MSG1), &r, &s);
         let zero_s = EcdsaAttackSignature::from_message(&to_hex(MSG1), &r, "00");
         let zero_r = EcdsaAttackSignature::from_message(&to_hex(MSG1), "00", &s);
@@ -990,8 +1073,13 @@ mod tests {
     #[test]
     fn nonce_reuse_enforces_digest_curve_pairing_and_curve() {
         let keypair = generate_ecc_keypair(EccCurve::P256).unwrap();
-        let (r, s) =
-            sign_with_k(EccCurve::P256, EcdsaDigest::Sha256, &keypair.private_hex, MSG1, 42);
+        let (r, s) = sign_with_k(
+            EccCurve::P256,
+            EcdsaDigest::Sha256,
+            &keypair.private_hex,
+            MSG1,
+            42,
+        );
         let sig = EcdsaAttackSignature::from_message(&to_hex(MSG1), &r, &s);
         let error = ecdsa_nonce_reuse_recover(
             EccCurve::P256,
@@ -1002,14 +1090,9 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(error.kind, cybercipher_core::ErrorKind::InvalidParam);
-        let error = ecdsa_nonce_reuse_recover(
-            EccCurve::Ed25519,
-            EcdsaDigest::Sha256,
-            &sig,
-            &sig,
-            "00",
-        )
-        .unwrap_err();
+        let error =
+            ecdsa_nonce_reuse_recover(EccCurve::Ed25519, EcdsaDigest::Sha256, &sig, &sig, "00")
+                .unwrap_err();
         assert_eq!(error.kind, cybercipher_core::ErrorKind::InvalidInput);
         assert!(error.message.contains("wrong curve"));
     }
@@ -1017,8 +1100,13 @@ mod tests {
     #[test]
     fn nonce_reuse_digest_length_is_enforced() {
         let keypair = generate_ecc_keypair(EccCurve::P256).unwrap();
-        let (r, s) =
-            sign_with_k(EccCurve::P256, EcdsaDigest::Sha256, &keypair.private_hex, MSG1, 42);
+        let (r, s) = sign_with_k(
+            EccCurve::P256,
+            EcdsaDigest::Sha256,
+            &keypair.private_hex,
+            MSG1,
+            42,
+        );
         let short = EcdsaAttackSignature::from_digest(&"11".repeat(16), &r, &s);
         let error = ecdsa_nonce_reuse_recover(
             EccCurve::P256,
@@ -1034,8 +1122,13 @@ mod tests {
     #[test]
     fn known_k_recovers_p256_key() {
         let keypair = generate_ecc_keypair(EccCurve::P256).unwrap();
-        let (r, s) =
-            sign_with_k(EccCurve::P256, EcdsaDigest::Sha256, &keypair.private_hex, MSG1, 12345);
+        let (r, s) = sign_with_k(
+            EccCurve::P256,
+            EcdsaDigest::Sha256,
+            &keypair.private_hex,
+            MSG1,
+            12345,
+        );
         let report = ecdsa_known_k_recover(
             EccCurve::P256,
             EcdsaDigest::Sha256,
@@ -1046,15 +1139,23 @@ mod tests {
         .unwrap();
         assert_eq!(report.method, "known-k");
         assert_eq!(report.private_key_hex, keypair.private_hex);
-        assert_eq!(report.nonce_k_hex, Some(scalar_to_fixed_hex(&12345u32.into(), 32)));
+        assert_eq!(
+            report.nonce_k_hex,
+            Some(scalar_to_fixed_hex(&12345u32.into(), 32))
+        );
         assert_eq!(report.nonce_r_matches, Some(true));
     }
 
     #[test]
     fn known_k_wrong_k_fails_verification() {
         let keypair = generate_ecc_keypair(EccCurve::P256).unwrap();
-        let (r, s) =
-            sign_with_k(EccCurve::P256, EcdsaDigest::Sha256, &keypair.private_hex, MSG1, 12345);
+        let (r, s) = sign_with_k(
+            EccCurve::P256,
+            EcdsaDigest::Sha256,
+            &keypair.private_hex,
+            MSG1,
+            12345,
+        );
         let error = ecdsa_known_k_recover(
             EccCurve::P256,
             EcdsaDigest::Sha256,
@@ -1070,8 +1171,13 @@ mod tests {
     #[test]
     fn known_k_zero_and_out_of_range_k_are_typed_errors() {
         let keypair = generate_ecc_keypair(EccCurve::P256).unwrap();
-        let (r, s) =
-            sign_with_k(EccCurve::P256, EcdsaDigest::Sha256, &keypair.private_hex, MSG1, 42);
+        let (r, s) = sign_with_k(
+            EccCurve::P256,
+            EcdsaDigest::Sha256,
+            &keypair.private_hex,
+            MSG1,
+            42,
+        );
         let sig = EcdsaAttackSignature::from_message(&to_hex(MSG1), &r, &s);
         let error = ecdsa_known_k_recover(
             EccCurve::P256,
@@ -1097,8 +1203,13 @@ mod tests {
     #[test]
     fn small_k_recovers_k_12345_with_candidate_evidence() {
         let keypair = generate_ecc_keypair(EccCurve::P256).unwrap();
-        let (r, s) =
-            sign_with_k(EccCurve::P256, EcdsaDigest::Sha256, &keypair.private_hex, MSG1, 12345);
+        let (r, s) = sign_with_k(
+            EccCurve::P256,
+            EcdsaDigest::Sha256,
+            &keypair.private_hex,
+            MSG1,
+            12345,
+        );
         let report = ecdsa_small_k_recover(
             EccCurve::P256,
             EcdsaDigest::Sha256,
@@ -1111,14 +1222,22 @@ mod tests {
         assert_eq!(report.method, "small-k");
         assert_eq!(report.private_key_hex, keypair.private_hex);
         assert_eq!(report.candidates_tried, Some(12345));
-        assert_eq!(report.nonce_k_hex, Some(scalar_to_fixed_hex(&12345u32.into(), 32)));
+        assert_eq!(
+            report.nonce_k_hex,
+            Some(scalar_to_fixed_hex(&12345u32.into(), 32))
+        );
     }
 
     #[test]
     fn small_k_exhausted_bound_is_typed_error() {
         let keypair = generate_ecc_keypair(EccCurve::P256).unwrap();
-        let (r, s) =
-            sign_with_k(EccCurve::P256, EcdsaDigest::Sha256, &keypair.private_hex, MSG1, 12345);
+        let (r, s) = sign_with_k(
+            EccCurve::P256,
+            EcdsaDigest::Sha256,
+            &keypair.private_hex,
+            MSG1,
+            12345,
+        );
         let error = ecdsa_small_k_recover(
             EccCurve::P256,
             EcdsaDigest::Sha256,
@@ -1135,8 +1254,13 @@ mod tests {
     #[test]
     fn small_k_rejects_bounds_outside_the_cap() {
         let keypair = generate_ecc_keypair(EccCurve::P256).unwrap();
-        let (r, s) =
-            sign_with_k(EccCurve::P256, EcdsaDigest::Sha256, &keypair.private_hex, MSG1, 42);
+        let (r, s) = sign_with_k(
+            EccCurve::P256,
+            EcdsaDigest::Sha256,
+            &keypair.private_hex,
+            MSG1,
+            42,
+        );
         let sig = EcdsaAttackSignature::from_message(&to_hex(MSG1), &r, &s);
         for bad in [0u64, SMALL_K_HARD_CAP + 1] {
             let error = ecdsa_small_k_recover(
@@ -1155,8 +1279,13 @@ mod tests {
     #[test]
     fn small_k_respects_deadline_and_cancellation() {
         let keypair = generate_ecc_keypair(EccCurve::P256).unwrap();
-        let (r, s) =
-            sign_with_k(EccCurve::P256, EcdsaDigest::Sha256, &keypair.private_hex, MSG1, 12345);
+        let (r, s) = sign_with_k(
+            EccCurve::P256,
+            EcdsaDigest::Sha256,
+            &keypair.private_hex,
+            MSG1,
+            12345,
+        );
         let sig = EcdsaAttackSignature::from_message(&to_hex(MSG1), &r, &s);
         let past = ExecutionContext::new().with_deadline(Instant::now() - Duration::from_secs(1));
         let error = ecdsa_small_k_recover(
@@ -1186,12 +1315,27 @@ mod tests {
     #[test]
     fn duplicate_r_detects_the_sharing_pair() {
         let keypair = generate_ecc_keypair(EccCurve::P256).unwrap();
-        let (r, s1) =
-            sign_with_k(EccCurve::P256, EcdsaDigest::Sha256, &keypair.private_hex, MSG1, 42);
-        let (_r2, s2) =
-            sign_with_k(EccCurve::P256, EcdsaDigest::Sha256, &keypair.private_hex, MSG2, 42);
-        let (_r3, s3) =
-            sign_with_k(EccCurve::P256, EcdsaDigest::Sha256, &keypair.private_hex, MSG2, 43);
+        let (r, s1) = sign_with_k(
+            EccCurve::P256,
+            EcdsaDigest::Sha256,
+            &keypair.private_hex,
+            MSG1,
+            42,
+        );
+        let (_r2, s2) = sign_with_k(
+            EccCurve::P256,
+            EcdsaDigest::Sha256,
+            &keypair.private_hex,
+            MSG2,
+            42,
+        );
+        let (_r3, s3) = sign_with_k(
+            EccCurve::P256,
+            EcdsaDigest::Sha256,
+            &keypair.private_hex,
+            MSG2,
+            43,
+        );
         let report = ecdsa_duplicate_r_detect(
             EccCurve::P256,
             EcdsaDigest::Sha256,
@@ -1237,10 +1381,20 @@ mod tests {
     #[test]
     fn duplicate_r_accepts_prehashed_digest_form() {
         let keypair = generate_ecc_keypair(EccCurve::P256).unwrap();
-        let (r, s1) =
-            sign_with_k(EccCurve::P256, EcdsaDigest::Sha256, &keypair.private_hex, MSG1, 42);
-        let (_r2, s2) =
-            sign_with_k(EccCurve::P256, EcdsaDigest::Sha256, &keypair.private_hex, MSG2, 42);
+        let (r, s1) = sign_with_k(
+            EccCurve::P256,
+            EcdsaDigest::Sha256,
+            &keypair.private_hex,
+            MSG1,
+            42,
+        );
+        let (_r2, s2) = sign_with_k(
+            EccCurve::P256,
+            EcdsaDigest::Sha256,
+            &keypair.private_hex,
+            MSG2,
+            42,
+        );
         let h1 = {
             let resolved = resolve_signature(
                 EccCurve::P256,
@@ -1266,9 +1420,13 @@ mod tests {
     fn duplicate_r_rejects_empty_lists_and_bad_components() {
         let error = ecdsa_duplicate_r_detect(EccCurve::P256, EcdsaDigest::Sha256, &[]).unwrap_err();
         assert_eq!(error.kind, cybercipher_core::ErrorKind::InvalidInput);
-        let bad = [EcdsaAttackSignature::from_message(&to_hex(MSG1), "42", "00")];
-        let error = ecdsa_duplicate_r_detect(EccCurve::P256, EcdsaDigest::Sha256, &bad)
-            .unwrap_err();
+        let bad = [EcdsaAttackSignature::from_message(
+            &to_hex(MSG1),
+            "42",
+            "00",
+        )];
+        let error =
+            ecdsa_duplicate_r_detect(EccCurve::P256, EcdsaDigest::Sha256, &bad).unwrap_err();
         assert!(error.message.contains("zero"));
     }
 

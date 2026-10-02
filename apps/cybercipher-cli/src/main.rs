@@ -672,7 +672,10 @@ fn ecdsa_attack_value(
     if let Some(key) = public_key {
         map.insert("public_key", key);
     }
-    map.insert("max_k", ParamValue::Int(i64::try_from(max_k).unwrap_or(i64::MAX)));
+    map.insert(
+        "max_k",
+        ParamValue::Int(i64::try_from(max_k).unwrap_or(i64::MAX)),
+    );
     let value = Value::from_bytes(input.to_vec());
     match op.execute(&value, &map, ctx) {
         Ok(out) => out,
@@ -682,7 +685,9 @@ fn ecdsa_attack_value(
 
 /// Public-key argument: hex text, a file path, or `-` for stdin.
 fn read_key_arg(spec: &str) -> String {
-    String::from_utf8_lossy(&read_input(spec)).trim().to_string()
+    String::from_utf8_lossy(&read_input(spec))
+        .trim()
+        .to_string()
 }
 
 /// Deadline context for bounded subcommands; 0 means no deadline.
@@ -1102,11 +1107,9 @@ mod tests {
         .unwrap();
         let d = num_bigint::BigUint::parse_bytes(d_hex.as_bytes(), 16).unwrap();
         let k = num_bigint::BigUint::from(12345u32);
-        let nonce_key = cybercipher_pki::parse_ecc_private_key(
-            cybercipher_pki::EccCurve::P256,
-            "3039",
-        )
-        .unwrap();
+        let nonce_key =
+            cybercipher_pki::parse_ecc_private_key(cybercipher_pki::EccCurve::P256, "3039")
+                .unwrap();
         let compressed = nonce_key.public_compressed_hex;
         let r = num_bigint::BigUint::parse_bytes(compressed[2..].as_bytes(), 16).unwrap();
         let k_inv = k.modpow(&(&n - 2u32), &n);
