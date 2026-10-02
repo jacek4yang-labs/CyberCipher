@@ -1094,7 +1094,11 @@ fn polluted_hex_tail_recovers_via_relaxed_step() {
     // The step params ride along so Apply-as-recipe reproduces the decode
     // (the relaxed hex/base64 steps must apply with strict=false).
     let hex_idx = relaxed.path.iter().position(|p| p == "from-hex").unwrap();
-    let b64_idx = relaxed.path.iter().rposition(|p| p == "from-base64").unwrap();
+    let b64_idx = relaxed
+        .path
+        .iter()
+        .rposition(|p| p == "from-base64")
+        .unwrap();
     let hex_params = relaxed
         .step_params
         .get(hex_idx)
