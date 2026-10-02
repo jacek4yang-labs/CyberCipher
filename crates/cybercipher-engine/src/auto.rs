@@ -96,19 +96,19 @@ fn is_hex_polluted(data: &[u8]) -> bool {
     let mut seen_junk = false;
     for &b in data {
         if b.is_ascii_hexdigit() {
+            // A hex digit AFTER junk means the junk is interior, not a tail.
+            if seen_junk {
+                return false;
+            }
             hex_digits += 1;
-            seen_junk = false;
         } else if b.is_ascii_whitespace() {
             continue;
         } else {
-            // Junk is only tolerated at the tail: an interior non-hex byte
-            // would make any decode ambiguous.
-            if seen_junk {
-                tail_junk += 1;
-            } else {
-                return false;
-            }
+            // First non-hex byte opens the junk tail; everything after must
+            // stay non-hex (an interior non-hex byte would make any decode
+            // ambiguous).
             seen_junk = true;
+            tail_junk += 1;
         }
     }
     let total = data.iter().filter(|&&b| !b.is_ascii_whitespace()).count();
@@ -932,6 +932,12 @@ const STEPS: &[Step] = &[
         params: None,
     },
     Step {
+        op: "from-base64",
+        applies: |d, _| is_base64_like(d),
+        evidence: "base64 alphabet (relaxed: padding/whitespace repaired)",
+        params: Some(&[("strict", "false")]),
+    },
+    Step {
         op: "from-base32",
         applies: |d, _| is_base32_like(d),
         evidence: "valid Base32 alphabet",
@@ -1193,7 +1199,15 @@ pub fn auto_decode(
                 let mut params = ParamMap::new();
                 if let Some(extra) = step.params {
                     for (key, value) in extra {
-                        params.insert(*key, ParamValue::Str((*value).to_string()));
+                        // Static step params are authored as &str; convert
+                        // the common scalar forms so op-side bool_or/int_or
+                        // see native values (a Str("false") is NOT a bool).
+                        let pv = match *value {
+                            "true" => ParamValue::Bool(true),
+                            "false" => ParamValue::Bool(false),
+                            other => ParamValue::Str(other.to_string()),
+                        };
+                        params.insert(*key, pv);
                     }
                 }
                 let Ok(out) = op.execute(&coerced, &params, ctx) else {
