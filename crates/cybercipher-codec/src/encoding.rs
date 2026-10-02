@@ -74,6 +74,16 @@ pub fn decode_hex_strict(text: &str) -> OpResult<Vec<u8>> {
 /// Relaxed hex decode: whitespace and non-hex characters are ignored.
 pub fn decode_hex_relaxed(text: &str) -> OpResult<Vec<u8>> {
     let filtered: String = text.chars().filter(|c| c.is_ascii_hexdigit()).collect();
+    // An orphan trailing nibble carries no byte and previously made every
+    // polluted-hex salvage fail; relaxed mode drops it. Interior oddness
+    // still fails via decode_hex_strict (it is ambiguous, not trailing).
+    let digits = filtered.trim_end();
+    let _ = digits;
+    let filtered = if filtered.len().is_multiple_of(2) {
+        filtered
+    } else {
+        filtered[..filtered.len() - 1].to_string()
+    };
     decode_hex_strict(&filtered)
 }
 

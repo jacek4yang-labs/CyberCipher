@@ -11,7 +11,9 @@
 
 use crate::payload::value_cache_bytes;
 use cybercipher_core::util::printable_ratio;
-use cybercipher_core::{ExecutionContext, OperationRegistry, ParamMap, Value, ValueKind};
+use cybercipher_core::{
+    ExecutionContext, OperationRegistry, ParamMap, ParamValue, Value, ValueKind,
+};
 use serde::Serialize;
 use std::collections::HashSet;
 use std::time::{Duration, Instant};
@@ -61,6 +63,9 @@ struct Step {
     /// Cheap applicability gate over (bytes, value-kind). Never executes.
     applies: fn(&[u8], &str) -> bool,
     evidence: &'static str,
+    /// Optional static parameters passed to the op (e.g. strict = false for
+    /// the relaxed-hex fallback step). `None` runs the op with defaults.
+    params: Option<&'static [(&'static str, &'static str)]>,
 }
 
 /// Strict hex gate: only hex digits + whitespace, even digit count.
@@ -74,6 +79,42 @@ fn is_hex_strict(data: &[u8]) -> bool {
         }
     }
     digits >= 4 && digits.is_multiple_of(2)
+}
+
+/// Relaxed hex gate for polluted inputs: at least 32 hex digits forming
+/// at least 95 percent of the printable content, with every non-hex
+/// character at the tail (classic CTF pollution: junk appended after an
+/// otherwise clean hex string). Strict hex still owns pure inputs; this only
+/// fires when strict refuses, and the decode runs in the op's relaxed mode
+/// with explicit evidence about what was ignored.
+///
+/// The tail-only rule exists because an interior non-hex byte would make any
+/// single decode ambiguous.
+fn is_hex_polluted(data: &[u8]) -> bool {
+    let mut hex_digits = 0usize;
+    let mut tail_junk = 0usize;
+    let mut seen_junk = false;
+    for &b in data {
+        if b.is_ascii_hexdigit() {
+            // A hex digit AFTER junk means the junk is interior, not a tail.
+            if seen_junk {
+                return false;
+            }
+            hex_digits += 1;
+        } else if b.is_ascii_whitespace() {
+            continue;
+        } else {
+            // First non-hex byte opens the junk tail; everything after must
+            // stay non-hex (an interior non-hex byte would make any decode
+            // ambiguous).
+            seen_junk = true;
+            tail_junk += 1;
+        }
+    }
+    let total = data.iter().filter(|&&b| !b.is_ascii_whitespace()).count();
+    // An orphan trailing nibble is handled by the op's relaxed mode (it
+    // drops the incomplete byte), so parity is not required here.
+    hex_digits >= 32 && tail_junk > 0 && tail_junk * 20 <= total
 }
 
 /// Relaxed base64 gate: >=95% standard alphabet, mixed letters and digits,
@@ -840,182 +881,230 @@ const STEPS: &[Step] = &[
         op: "from-gzip",
         applies: |d, _| is_gzip(d),
         evidence: "gzip magic 1f 8b",
+        params: None,
     },
     Step {
         op: "from-zlib",
         applies: |d, _| is_zlib(d),
         evidence: "zlib header 0x78",
+        params: None,
     },
     Step {
         op: "from-bzip2",
         applies: |d, _| is_bzip2_magic(d),
         evidence: "bzip2 magic 'BZh' + level digit",
+        params: None,
     },
     Step {
         op: "from-xz",
         applies: |d, _| is_xz_magic(d),
         evidence: "xz magic fd 37 7a 58 5a 00",
+        params: None,
     },
     Step {
         op: "from-zstd",
         applies: |d, _| is_zstd_magic(d),
         evidence: "zstd magic 28 b5 2f fd",
+        params: None,
     },
     Step {
         op: "from-lz4",
         applies: |d, _| is_lz4_magic(d),
         evidence: "lz4 frame magic 04 22 4d 18",
+        params: None,
     },
     Step {
         op: "from-cbor",
         applies: |d, _| is_cbor_like(d),
         evidence: "valid CBOR structure",
+        params: None,
     },
     Step {
         op: "from-msgpack",
         applies: |d, _| is_msgpack_like(d),
         evidence: "valid MessagePack structure",
+        params: None,
     },
     Step {
         op: "from-base64",
         applies: |d, _| is_base64_like(d),
         evidence: "valid Base64 alphabet and length",
+        params: None,
+    },
+    Step {
+        op: "from-base64",
+        applies: |d, _| is_base64_like(d),
+        evidence: "base64 alphabet (relaxed: padding/whitespace repaired)",
+        params: Some(&[("strict", "false")]),
     },
     Step {
         op: "from-base32",
         applies: |d, _| is_base32_like(d),
         evidence: "valid Base32 alphabet",
+        params: None,
     },
     Step {
         op: "from-base58",
         applies: |d, _| d.len() <= BIGNUM_EXPLORE_LIMIT && is_base58_like(d),
         evidence: "Base58 alphabet match",
+        params: None,
     },
     Step {
         op: "from-base62",
         applies: |d, _| d.len() <= BIGNUM_EXPLORE_LIMIT && is_base62_like(d),
         evidence: "Base62 alphabet match",
+        params: None,
     },
     Step {
         op: "from-ascii85",
         applies: |d, _| is_ascii85_like(d),
         evidence: "Ascii85 alphabet match",
+        params: None,
     },
     Step {
         op: "from-z85",
         applies: |d, _| is_z85_like(d),
         evidence: "Z85 alphabet and length match",
+        params: None,
     },
     Step {
         op: "from-base91",
         applies: |d, _| is_base91_like(d),
         evidence: "basE91 alphabet match",
+        params: None,
     },
     Step {
         op: "from-base36",
         applies: |d, _| d.len() <= BIGNUM_EXPLORE_LIMIT && is_base36_like(d),
         evidence: "Base36 alphabet match",
+        params: None,
     },
     Step {
         op: "from-hex",
         applies: |d, _| is_hex_strict(d),
         evidence: "strict hex syntax",
+        params: None,
+    },
+    Step {
+        op: "from-hex",
+        applies: |d, _| !is_hex_strict(d) && is_hex_polluted(d),
+        evidence: "hex with trailing junk (relaxed: non-hex tail ignored)",
+        params: Some(&[("strict", "false")]),
     },
     Step {
         op: "from-url",
         applies: |d, _| is_url_encoded(d),
         evidence: "percent escapes",
+        params: None,
     },
     // ---- v3 wrapper vocabulary ----
     Step {
         op: "from-unicode-escapes",
         applies: |d, _| is_unicode_escapes(d),
         evidence: "unicode escape sequences (\\uXXXX / \\u{...} / \\xXX)",
+        params: None,
     },
     Step {
         op: "from-html-entities",
         applies: |d, _| is_html_entities(d),
         evidence: "HTML entities",
+        params: None,
     },
     Step {
         op: "from-quoted-printable",
         applies: |d, _| is_quoted_printable(d),
         evidence: "quoted-printable =XX escapes",
+        params: None,
     },
     Step {
         op: "from-punycode",
         applies: |d, _| d.len() <= PUNYCODE_EXPLORE_LIMIT && is_punycode_ace(d),
         evidence: "ACE (xn--) punycode label",
+        params: None,
     },
     Step {
         op: "from-uuencode",
         applies: |d, _| is_uu_envelope(d),
         evidence: "uuencode begin/end envelope",
+        params: None,
     },
     Step {
         op: "from-xxencode",
         applies: |d, _| is_uu_envelope(d),
         evidence: "xxencode begin/end envelope",
+        params: None,
     },
     Step {
         op: "from-yenc",
         applies: |d, _| is_yenc_envelope(d),
         evidence: "yEnc =ybegin envelope",
+        params: None,
     },
     Step {
         op: "from-buddha",
         applies: |d, _| is_buddha_payload(d),
         evidence: "Buddha (佛曰/魔曰) envelope",
+        params: None,
     },
     Step {
         op: "from-buddha-pbe",
         applies: |d, _| is_buddha_pbe_payload(d),
         evidence: "new Buddha (佛又曰) envelope",
+        params: None,
     },
     Step {
         op: "from-bear",
         applies: |d, _| is_bear_payload(d),
         evidence: "bear says (熊曰) envelope",
+        params: None,
     },
     Step {
         op: "from-beast",
         applies: |d, _| is_beast_payload(d),
         evidence: "beast speak (~呜嗷…啊) envelope",
+        params: None,
     },
     Step {
         op: "from-core-values",
         applies: |d, _| is_core_values(d),
         evidence: "socialist core values phrase table",
+        params: None,
     },
     Step {
         op: "run-brainfuck",
         applies: |d, _| is_brainfuck_program(d),
         evidence: "Brainfuck command vocabulary",
+        params: None,
     },
     Step {
         op: "from-ook",
         applies: |d, _| is_ook_program(d),
         evidence: "Ook! token pairs",
+        params: None,
     },
     Step {
         op: "rot13",
         applies: |d, _| is_shifted_language(d, rot13_char),
         evidence: "ROT13 letter-frequency sanity",
+        params: None,
     },
     Step {
         op: "atbash",
         applies: |d, _| is_shifted_language(d, atbash_char),
         evidence: "Atbash letter-frequency sanity",
+        params: None,
     },
     Step {
         op: "reverse",
         applies: |d, _| is_reversed_flag(d),
         evidence: "reversed flag-like text",
+        params: None,
     },
     Step {
         op: "decode-text",
         applies: |d, k| k == "bytes" && std::str::from_utf8(d).is_ok(),
         evidence: "valid UTF-8",
+        params: None,
     },
 ];
 
@@ -1107,7 +1196,21 @@ pub fn auto_decode(
                 };
                 // Lossless adaptation matching the executor's coercion rule.
                 let coerced = adapt(&node.value, op.spec().input_kinds);
-                let Ok(out) = op.execute(&coerced, &ParamMap::new(), ctx) else {
+                let mut params = ParamMap::new();
+                if let Some(extra) = step.params {
+                    for (key, value) in extra {
+                        // Static step params are authored as &str; convert
+                        // the common scalar forms so op-side bool_or/int_or
+                        // see native values (a Str("false") is NOT a bool).
+                        let pv = match *value {
+                            "true" => ParamValue::Bool(true),
+                            "false" => ParamValue::Bool(false),
+                            other => ParamValue::Str(other.to_string()),
+                        };
+                        params.insert(*key, pv);
+                    }
+                }
+                let Ok(out) = op.execute(&coerced, &params, ctx) else {
                     continue;
                 };
                 let mut path = node.path.clone();
