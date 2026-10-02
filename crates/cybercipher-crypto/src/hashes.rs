@@ -477,14 +477,12 @@ mod tests {
     #[test]
     fn whirlpool_reference_vector() {
         assert_eq!(
-            hex(
-                &digest_bytes(
-                    "whirlpool",
-                    b"The quick brown fox jumps over the lazy dog",
-                    32
-                )
-                .unwrap()
-            ),
+            hex(&digest_bytes(
+                "whirlpool",
+                b"The quick brown fox jumps over the lazy dog",
+                32
+            )
+            .unwrap()),
             "b97de512e91e3828b40d2b0fdce9ceb3c4a71f9bea8d88e75c4fa854df36725f\
              d2b52eb6544edcacd6f8beddfea403cb55ae31f03ad62a5ef54e42ee82c3fb35"
         );

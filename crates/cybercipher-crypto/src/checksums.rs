@@ -8,7 +8,7 @@
 //! official FNV vectors, CyberChef's Fletcher definitions, xxHash sanity
 //! vectors) so cross-tool values match.
 
-use crate::helpers::input_bytes;
+use crate::helpers::{input_bytes, input_text};
 use cybercipher_core::prelude::*;
 
 const TAGS: &[&str] = &["hash", "checksum", "ctf"];
@@ -166,10 +166,11 @@ fn djb2(data: &[u8]) -> u32 {
 fn sdbm(data: &[u8]) -> u32 {
     let mut hash: u32 = 0;
     for &byte in data {
-        hash = byte
-            .wrapping_add(hash << 6)
-            .wrapping_add(hash << 16)
-            .wrapping_sub(hash);
+        let h = hash;
+        hash = (byte as u32)
+            .wrapping_add(h << 6)
+            .wrapping_add(h << 16)
+            .wrapping_sub(h);
     }
     hash
 }
@@ -659,10 +660,7 @@ mod tests {
             run(&reg, "java-hash-code", "hello", &[("format", "hex")]),
             "05e918d2"
         );
-        assert_eq!(
-            run(&reg, "xxhash", "", &[("variant", "xxh32")]),
-            "02cc5d05"
-        );
+        assert_eq!(run(&reg, "xxhash", "", &[("variant", "xxh32")]), "02cc5d05");
         assert_eq!(
             run(&reg, "xxhash", "", &[("variant", "xxh64")]),
             "ef46db3751d8e999"
@@ -677,7 +675,9 @@ mod tests {
     fn java_hash_code_uses_utf16_units() {
         // "𝕏" is U+1D54F: two UTF-16 units, so 31*0xD835 + 0xDD4F (mod 2^32).
         let hash = java_hash_code("\u{1D54F}");
-        let expected = 31i32.wrapping_mul(0xD835u32 as i32).wrapping_add(0xDD4Fu32 as i32);
+        let expected = 31i32
+            .wrapping_mul(0xD835u32 as i32)
+            .wrapping_add(0xDD4Fu32 as i32);
         assert_eq!(hash, expected);
     }
 }

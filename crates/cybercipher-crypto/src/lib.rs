@@ -9,8 +9,8 @@
 //! with explicit expected/actual lengths.
 
 mod aead;
-mod ciphers;
 mod checksums;
+mod ciphers;
 mod hashes;
 mod helpers;
 mod kdf;
