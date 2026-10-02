@@ -1,27 +1,33 @@
 # Handoff
 
-## main = d7b40b9 — 53 PRs, ~200 ops, ~830 tests. CI green. Validation: GitHub Actions ONLY (no local cargo per user policy).
+## main = 3962642 (v0.1.0) — 72 PRs merged, ~215+ registry ops, 1200+ tests.
+## RELEASE: https://github.com/jacek4yang-labs/CyberCipher/releases/tag/v0.1.0
+## Validation: GitHub Actions CI ONLY (machine policy: no local cargo/npm).
 
-## Session 8 merged (13 PRs)
-#44 steg/sstv parity matrices + design doc | #45 PKI Lab GUI | #46 JWT/JWS
-#47 SSTV core migration | #48 steg core (media+transforms+extract) | #49 CI timeout 60m
-#50 state | #51 Auto LSB scanner | #52 SSTV op+Tauri/CLI bridge | #53 SSTV Lab GUI
-#54 structure/carving | #55 CTF specialty (provenance-first) | #56 Stego Lab GUI
+## RELEASE v0.1.0 (published)
+- CyberCipher-v0.1.0-linux-x86_64.tar.gz (12.7 MB) + .sha256 attached.
+- Package job: tar.gz from scripts/package-linux.sh (exec bit fixed in #72).
+- Smoke job: layout verified, CLI --help OK, sha256("abc") KAT OK, GUI linkage recorded.
+- sha256 verified on the downloaded artifact; canonical layout confirmed (12 entries).
 
-## In flight (CI-only loops)
-- agent/qr: image_scan_qr op (rxing/rqrr, bytes-first payloads, inverted/rotated/rescaled fallbacks)
-- agent/stereo: image_stereo_shift/auto, image_combine (13 modes), image_gif_info/frame
+## Merged this session (#58-#72)
+stereogram/combine/frames (#58) · queue reconcile (#61) · QR/barcode (#62) ·
+Auto Decode v3 (#63) · signature scanner (#64) · matrices reconcile (#65) ·
+GUI composition (#66) · Assist profiles (#67) · docs truth (#68) ·
+parity mop-up (#69) · release notes (#70) · ECDSA attacks (#71) ·
+release exec-bit fix (#72).
 
-## Next
-1. Auto Decode v3 expansion (wrap existing ops)
-2. Crypto signature scanner (M7-SIG-01)
-3. Crypto Assist profiles (SM4/DES/Serpent/RC4...)
-4. ECDSA attacks (nonce reuse, duplicate-r)
-5. Crypto parity mop-up (SEED/KMAC/HC-256/...)
-6. Prerelease v0.1.0-alpha + tar dogfooding
-7. Stego Lab: wire structure/QR tabs once ops land; pixel inspector op
+## Remaining (tracked in queue.yaml, all P2/P3)
+- PKI residual: secp256k1/ETH address, DSA, Ed448/X448.
+- File/data: YAML, XML, BSON, protobuf wire inspection.
+- Crypto long-tail: KMAC, bcrypt, HC-256/Rabbit/ZUC, CTS/XTS/EAX/OCB/SIV.
+- Pixel inspector op + GUI tab; APNG/animated-WebP frames.
 
-## Coordination notes
-- Worker quota deaths: finish WIP as coordinator from checkpoints (checkpoint policy held: zero lost work)
-- JJ decode lesson: payload-tail boundary drift between encoders; walker accepts unterminated final run
-- Rust CI job is 60m; full workspace test on CI ~40m — do not add heavy work without need
+## Lessons (regression pins + process)
+- Conflicting PRs get NO CI runs — keep branches merge-clean (cost a QR-lane debug cycle).
+- rustfmt CI diffs apply mechanically line-anchored (apply_fmt.py pattern in session log).
+- JJ tail/run boundary, base64url canonical trailing bits, Java Random LCG,
+  uu/xx per-line budgets, punycode adapt-after-emit + delta increments —
+  all pinned by tests; do not regress.
+- Workers die at quota; checkpoint-push per coherent block means zero lost work
+  (proven repeatedly this session).
