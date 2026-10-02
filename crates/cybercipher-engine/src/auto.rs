@@ -112,7 +112,9 @@ fn is_hex_polluted(data: &[u8]) -> bool {
         }
     }
     let total = data.iter().filter(|&&b| !b.is_ascii_whitespace()).count();
-    hex_digits >= 32 && hex_digits.is_multiple_of(2) && tail_junk > 0 && tail_junk * 20 <= total
+    // An orphan trailing nibble is handled by the op's relaxed mode (it
+    // drops the incomplete byte), so parity is not required here.
+    hex_digits >= 32 && tail_junk > 0 && tail_junk * 20 <= total
 }
 
 /// Relaxed base64 gate: >=95% standard alphabet, mixed letters and digits,

@@ -1063,22 +1063,28 @@ fn polluted_hex_tail_recovers_via_relaxed_step() {
     let candidates = auto_decode(&reg, input, &ExecutionContext::new());
     let relaxed = candidates
         .iter()
-        .find(|c| c.path.contains(&"from-hex".to_string()) && c.path.len() >= 3)
+        .find(|c| c.path.contains(&"from-hex".to_string()))
         .expect("relaxed-hex must continue the chain past the junk tail");
     // The relaxed step's evidence must say what was ignored — no silent fixes.
-    let relaxed_idx = relaxed.path.iter().position(|p| p == "from-hex").unwrap();
     assert!(
         relaxed.evidence.iter().any(|e| e.contains("trailing junk")),
         "evidence must name the relaxed handling: {:?}",
         relaxed.evidence
     );
-    let _ = relaxed_idx;
-    // The chain continues past the hex layer into another base64 layer.
-    assert!(
-        relaxed.path.len() >= 4,
-        "chain must continue: {:?}",
+    // The chain continues past the hex layer into another base64 layer:
+    // b64 -> b64 -> from-hex(relaxed) -> from-base64 -> payload text.
+    assert_eq!(
+        relaxed.path,
+        vec![
+            "from-base64".to_string(),
+            "from-base64".to_string(),
+            "from-hex".to_string(),
+            "from-base64".to_string(),
+        ],
+        "chain {:?}",
         relaxed.path
     );
     // The final payload is printable text (the recovered answer).
     assert!(relaxed.is_utf8, "payload {}", relaxed.preview);
+    assert!(relaxed.confident, "score {}", relaxed.score);
 }
