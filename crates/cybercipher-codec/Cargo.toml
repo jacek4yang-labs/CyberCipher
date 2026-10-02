@@ -7,6 +7,9 @@ repository.workspace = true
 description = "Encoding, radix, and byte-level operations for CyberCipher"
 
 [dependencies]
+serde_yaml = "0.9"
+quick-xml = "0.36"
+bson = "2"
 cybercipher-core.workspace = true
 serde.workspace = true
 serde_json.workspace = true
