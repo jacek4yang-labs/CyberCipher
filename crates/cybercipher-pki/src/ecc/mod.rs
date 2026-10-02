@@ -8,6 +8,12 @@
 //! formats interoperate (an OpenSSL-generated `openssl pkey -text` EC key
 //! parses here and vice versa).
 //!
+//! The [`attacks`] module adds ECDSA attack helpers (duplicate-`r`
+//! detection, nonce-reuse / known-`k` / bounded small-`k` private-key
+//! recovery) with mandatory verification of every recovered key against the
+//! provided public key; [`registry`] wires them into the operation registry
+//! (`cybercipher_pki::ecc::register`).
+//!
 //! Conventions (shared with the rest of CyberCipher):
 //! - Keys, points, and signatures cross the boundary as lowercase big-endian
 //!   hex strings (the big-int transport); messages are raw bytes.
@@ -26,12 +32,20 @@
 //! Signature-verification failures are *results* (`valid: false` + a
 //! `reason`), not errors — mirroring [`crate::ops::sign`].
 
+pub mod attacks;
 pub mod curve;
 pub mod ecdh;
 pub mod ecdsa;
 pub mod ed25519;
+pub mod registry;
 pub mod x25519;
 
+pub use attacks::{
+    ecdsa_duplicate_r_detect, ecdsa_known_k_recover, ecdsa_nonce_reuse_recover,
+    ecdsa_small_k_recover, EcdsaAttackSignature, EcdsaDuplicateRGroup, EcdsaDuplicateRPair,
+    EcdsaDuplicateRReport, EcdsaKeyRecoveryReport, EcdsaPreimage, SMALL_K_DEFAULT,
+    SMALL_K_HARD_CAP,
+};
 pub use curve::{
     ecc_private_key_from_pkcs8_der, ecc_private_key_from_pkcs8_pem, ecc_private_key_to_pkcs8_der,
     ecc_private_key_to_pkcs8_pem, ecc_public_key_from_spki_der, ecc_public_key_from_spki_pem,
@@ -44,6 +58,7 @@ pub use ecdsa::{
     EcdsaDigest, EcdsaNonceMode, EcdsaSignatureFormat, EcdsaVerifyResult,
 };
 pub use ed25519::{ed25519_sign, ed25519_verify, Ed25519VerifyResult};
+pub use registry::register;
 pub use x25519::x25519_shared_secret;
 
 use crate::error::PkiError;
