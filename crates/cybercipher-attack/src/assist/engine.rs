@@ -255,6 +255,9 @@ pub fn assist_with_profile(
         };
 
         let score = AssistScore::of(&decrypted);
+        // Set when the decrypt-side validation accepted structured padding;
+        // strong evidence lifted into the total below.
+        let mut padding_valid = false;
         let mut evidence = score.evidence();
         evidence.push(format!(
             "key decoded to {} bytes from {}",
@@ -274,11 +277,9 @@ pub fn assist_with_profile(
                 Padding::Pkcs7 | Padding::Iso7816 => {
                     // Reaching here means the op's decrypt-side validation
                     // accepted the padding. Valid structured padding is real
-                    // evidence, not just decoration: lift it (the old code
-                    // recorded the line but left borderline candidates at
-                    // 0.69, below confidence).
+                    // evidence, not just decoration.
                     evidence.push(format!("{} padding valid", pad.name()));
-                    total = (total + 0.05).min(1.0);
+                    padding_valid = true;
                 }
                 Padding::None => {
                     if cand.mode.is_stream() {
@@ -301,6 +302,9 @@ pub fn assist_with_profile(
         }
 
         let mut total = score.total;
+        if padding_valid {
+            total = (total + 0.05).min(1.0);
+        }
         // Zero padding is ambiguous (any zero tail "matches") and a zero IV is
         // a low-confidence CTF fallback — apply small honesty penalties so
         // structurally stronger candidates rank above them at equal scores.
