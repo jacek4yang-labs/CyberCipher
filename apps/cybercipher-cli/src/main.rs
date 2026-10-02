@@ -54,6 +54,13 @@ enum Command {
         #[command(subcommand)]
         cmd: JwtCmd,
     },
+    /// ECDSA attacks: duplicate-r detection and nonce-reuse / known-k /
+    /// small-k private-key recovery (JSON input; every recovered key is
+    /// verified against the provided public key).
+    EcdsaAttack {
+        #[command(subcommand)]
+        cmd: EcdsaAttackCmd,
+    },
     /// SSTV decode: automatic mode detection + image recovery from audio.
     Sstv {
         #[command(subcommand)]
@@ -159,6 +166,76 @@ enum PrngCmd {
     },
 }
 
+#[derive(Subcommand)]
+enum EcdsaAttackCmd {
+    /// Detect duplicate r values across a list of signatures (nonce-reuse
+    /// fingerprint). Input: JSON array of {message | digest, r, s} objects,
+    /// or an object with a `signatures` array.
+    Detect {
+        /// JSON file path, `-` for stdin, or a literal JSON string.
+        input: String,
+        /// Curve: p256 | p384.
+        #[arg(long, default_value = "p256")]
+        curve: String,
+        /// Hash: auto | sha256 | sha384.
+        #[arg(long, default_value = "auto")]
+        hash: String,
+    },
+    /// Recover the private key from two signatures sharing a nonce (same r):
+    /// k = (h1-h2)/(s1-s2) mod n, d = (s1*k-h1)/r mod n.
+    /// Input: {"msg1"|"digest1", "msg2"|"digest2", "r", "s1", "s2"} (hex).
+    Reuse {
+        /// JSON file path, `-` for stdin, or a literal JSON string.
+        input: String,
+        /// Curve: p256 | p384.
+        #[arg(long, default_value = "p256")]
+        curve: String,
+        /// Hash: auto | sha256 | sha384.
+        #[arg(long, default_value = "auto")]
+        hash: String,
+        /// Signer public key: SEC1 hex, a file path, or `-` for stdin.
+        #[arg(long)]
+        public_key: String,
+    },
+    /// Recover the private key from one signature with a known nonce k:
+    /// d = (s*k-h)/r mod n. Input: {"message"|"digest", "r", "s", "k"} (hex).
+    Knownk {
+        /// JSON file path, `-` for stdin, or a literal JSON string.
+        input: String,
+        /// Curve: p256 | p384.
+        #[arg(long, default_value = "p256")]
+        curve: String,
+        /// Hash: auto | sha256 | sha384.
+        #[arg(long, default_value = "auto")]
+        hash: String,
+        /// Signer public key: SEC1 hex, a file path, or `-` for stdin.
+        #[arg(long)]
+        public_key: String,
+    },
+    /// Brute-force small nonces k in 1..=max_k against one signature (the
+    /// first candidate whose derived public key matches is reported).
+    /// Input: {"message"|"digest", "r", "s"} (hex).
+    Smallk {
+        /// JSON file path, `-` for stdin, or a literal JSON string.
+        input: String,
+        /// Curve: p256 | p384.
+        #[arg(long, default_value = "p256")]
+        curve: String,
+        /// Hash: auto | sha256 | sha384.
+        #[arg(long, default_value = "auto")]
+        hash: String,
+        /// Signer public key: SEC1 hex, a file path, or `-` for stdin.
+        #[arg(long)]
+        public_key: String,
+        /// Upper nonce bound (default 100000, hard cap 10000000).
+        #[arg(long, default_value = "100000")]
+        max_k: u64,
+        /// Time budget in milliseconds (0 = no deadline).
+        #[arg(long, default_value = "0")]
+        budget_ms: u64,
+    },
+}
+
 fn main() {
     let cli = Cli::parse();
     // Default registry plus the PKI JWT and SSTV operations (the extra crates
@@ -166,6 +243,7 @@ fn main() {
     // consumers opt in).
     let mut reg = cybercipher_engine::default_registry();
     cybercipher_pki::jwt::register(&mut reg);
+    cybercipher_pki::ecc::register(&mut reg);
     cybercipher_sstv::register_all(&mut reg);
     let registry = Arc::new(reg);
     let engine = RecipeEngine::new(registry.clone());
@@ -173,6 +251,7 @@ fn main() {
     match cli.command {
         Command::Prng { cmd } => run_prng(cmd),
         Command::Jwt { cmd } => run_jwt(cmd),
+        Command::EcdsaAttack { cmd } => run_ecdsa_attack(cmd, &registry),
         Command::Sstv { cmd } => run_sstv(cmd),
         Command::Ops => {
             for info in registry.info() {
@@ -485,6 +564,139 @@ fn run_jwt(cmd: JwtCmd) {
                 Err(e) => fail(&e),
             }
         }
+    }
+}
+
+/// Run one ECDSA attack subaction through the registry (shared with tests).
+fn run_ecdsa_attack(cmd: EcdsaAttackCmd, registry: &OperationRegistry) {
+    match cmd {
+        EcdsaAttackCmd::Detect { input, curve, hash } => {
+            let data = read_input(&input);
+            let value = ecdsa_attack_value(
+                registry,
+                "ecdsa-duplicate-r-detect",
+                &data,
+                &curve,
+                &hash,
+                None,
+                cybercipher_pki::SMALL_K_DEFAULT,
+                &ExecutionContext::new(),
+            );
+            print_value(&value);
+        }
+        EcdsaAttackCmd::Reuse {
+            input,
+            curve,
+            hash,
+            public_key,
+        } => {
+            let key = read_key_arg(&public_key);
+            let data = read_input(&input);
+            let value = ecdsa_attack_value(
+                registry,
+                "ecdsa-nonce-reuse-recover",
+                &data,
+                &curve,
+                &hash,
+                Some(&key),
+                cybercipher_pki::SMALL_K_DEFAULT,
+                &ExecutionContext::new(),
+            );
+            print_value(&value);
+        }
+        EcdsaAttackCmd::Knownk {
+            input,
+            curve,
+            hash,
+            public_key,
+        } => {
+            let key = read_key_arg(&public_key);
+            let data = read_input(&input);
+            let value = ecdsa_attack_value(
+                registry,
+                "ecdsa-known-k-recover",
+                &data,
+                &curve,
+                &hash,
+                Some(&key),
+                cybercipher_pki::SMALL_K_DEFAULT,
+                &ExecutionContext::new(),
+            );
+            print_value(&value);
+        }
+        EcdsaAttackCmd::Smallk {
+            input,
+            curve,
+            hash,
+            public_key,
+            max_k,
+            budget_ms,
+        } => {
+            let key = read_key_arg(&public_key);
+            let data = read_input(&input);
+            let ctx = deadline_ctx(budget_ms);
+            let value = ecdsa_attack_value(
+                registry,
+                "ecdsa-small-k-recover",
+                &data,
+                &curve,
+                &hash,
+                Some(&key),
+                max_k,
+                &ctx,
+            );
+            print_value(&value);
+        }
+    }
+}
+
+/// Execute an ECDSA attack operation by id with the common parameter shape.
+#[allow(clippy::too_many_arguments)]
+fn ecdsa_attack_value(
+    registry: &OperationRegistry,
+    op_id: &str,
+    input: &[u8],
+    curve: &str,
+    hash: &str,
+    public_key: Option<&str>,
+    max_k: u64,
+    ctx: &ExecutionContext,
+) -> Value {
+    let op = registry.get(op_id).unwrap_or_else(|| {
+        eprintln!("error: `{op_id}` is not registered");
+        std::process::exit(2);
+    });
+    let mut map = ParamMap::new();
+    map.insert("curve", curve);
+    map.insert("hash", hash);
+    if let Some(key) = public_key {
+        map.insert("public_key", key);
+    }
+    map.insert(
+        "max_k",
+        ParamValue::Int(i64::try_from(max_k).unwrap_or(i64::MAX)),
+    );
+    let value = Value::from_bytes(input.to_vec());
+    match op.execute(&value, &map, ctx) {
+        Ok(out) => out,
+        Err(e) => fail(&e),
+    }
+}
+
+/// Public-key argument: hex text, a file path, or `-` for stdin.
+fn read_key_arg(spec: &str) -> String {
+    String::from_utf8_lossy(&read_input(spec))
+        .trim()
+        .to_string()
+}
+
+/// Deadline context for bounded subcommands; 0 means no deadline.
+fn deadline_ctx(budget_ms: u64) -> ExecutionContext {
+    if budget_ms > 0 {
+        ExecutionContext::new()
+            .with_deadline(std::time::Instant::now() + std::time::Duration::from_millis(budget_ms))
+    } else {
+        ExecutionContext::new()
     }
 }
 
@@ -873,8 +1085,135 @@ mod tests {
     fn test_registry() -> Arc<OperationRegistry> {
         let mut reg = cybercipher_engine::default_registry();
         cybercipher_pki::jwt::register(&mut reg);
+        cybercipher_pki::ecc::register(&mut reg);
         cybercipher_sstv::register_all(&mut reg);
         Arc::new(reg)
+    }
+
+    /// Deterministic P-256 nonce-reuse fixture built from the public pki API
+    /// plus plain big-integer math: r = x(k*G) comes from parsing the nonce
+    /// k = 12345 as a private key, and s = k^-1 * (h + r*d) mod n over the
+    /// FIPS 186-4 group order (a test-only constant). Digests are supplied
+    /// directly ("01"*32 / "02"*32), so no hashing is needed here.
+    fn p256_nonce_fixture() -> (String, String, String, String, String) {
+        // (private_key_hex, public_key_hex, r_hex, s1_hex, s2_hex)
+        let d_hex = "2b7e151628aed2a6abf7158809cf4f3c762e7160f38b4da56a784d9045190cfe";
+        let keypair =
+            cybercipher_pki::parse_ecc_private_key(cybercipher_pki::EccCurve::P256, d_hex).unwrap();
+        let n = num_bigint::BigUint::parse_bytes(
+            b"ffffffff00000000ffffffffffffffffbce6faada7179e84f3b9cac2fc632551",
+            16,
+        )
+        .unwrap();
+        let d = num_bigint::BigUint::parse_bytes(d_hex.as_bytes(), 16).unwrap();
+        let k = num_bigint::BigUint::from(12345u32);
+        let nonce_key =
+            cybercipher_pki::parse_ecc_private_key(cybercipher_pki::EccCurve::P256, "3039")
+                .unwrap();
+        let compressed = nonce_key.public_compressed_hex;
+        let r = num_bigint::BigUint::parse_bytes(&compressed.as_bytes()[2..], 16).unwrap();
+        let k_inv = k.modpow(&(&n - 2u32), &n);
+        let sign = |h_hex: String| {
+            let h = num_bigint::BigUint::parse_bytes(h_hex.as_bytes(), 16).unwrap();
+            let s = (&k_inv * &((&h + &(&r * &d)) % &n)) % &n;
+            format!("{:0>64}", format!("{s:x}"))
+        };
+        (
+            d_hex.to_string(),
+            keypair.public_uncompressed_hex,
+            format!("{:0>64}", format!("{r:x}")),
+            sign("01".repeat(32)),
+            sign("02".repeat(32)),
+        )
+    }
+
+    #[test]
+    fn ecdsa_attack_cli_detect_reports_duplicate_r() {
+        let registry = test_registry();
+        let (_d_hex, _public_hex, r_hex, s1_hex, s2_hex) = p256_nonce_fixture();
+        let input = serde_json::json!([
+            {"digest": "01".repeat(32), "r": r_hex, "s": s1_hex},
+            {"digest": "02".repeat(32), "r": r_hex, "s": s2_hex},
+        ]);
+        let value = ecdsa_attack_value(
+            &registry,
+            "ecdsa-duplicate-r-detect",
+            serde_json::to_vec(&input).unwrap().as_slice(),
+            "p256",
+            "auto",
+            None,
+            100_000,
+            &ExecutionContext::new(),
+        );
+        match value {
+            Value::Json(report) => {
+                assert_eq!(report["duplicates_found"], serde_json::json!(true));
+                assert_eq!(report["total_signatures"], serde_json::json!(2));
+                assert_eq!(report["pairs"].as_array().unwrap().len(), 1);
+            }
+            other => panic!("expected JSON output, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ecdsa_attack_cli_nonce_reuse_recovers_and_verifies() {
+        let registry = test_registry();
+        let (d_hex, public_hex, r_hex, s1_hex, s2_hex) = p256_nonce_fixture();
+        let input = serde_json::json!({
+            "digest1": "01".repeat(32),
+            "digest2": "02".repeat(32),
+            "r": r_hex,
+            "s1": s1_hex,
+            "s2": s2_hex,
+        });
+        let value = ecdsa_attack_value(
+            &registry,
+            "ecdsa-nonce-reuse-recover",
+            serde_json::to_vec(&input).unwrap().as_slice(),
+            "p256",
+            "auto",
+            Some(&public_hex),
+            100_000,
+            &ExecutionContext::new(),
+        );
+        match value {
+            Value::Json(report) => {
+                assert_eq!(report["verified"], serde_json::json!(true));
+                assert_eq!(report["method"], serde_json::json!("nonce-reuse"));
+                assert_eq!(report["private_key_hex"], serde_json::json!(d_hex));
+                assert_eq!(report["nonce_r_matches"], serde_json::json!(true));
+            }
+            other => panic!("expected JSON output, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn ecdsa_attack_cli_small_k_recovers_with_candidate_count() {
+        let registry = test_registry();
+        let (d_hex, public_hex, r_hex, s1_hex, _s2_hex) = p256_nonce_fixture();
+        let input = serde_json::json!({
+            "digest": "01".repeat(32),
+            "r": r_hex,
+            "s": s1_hex,
+        });
+        let value = ecdsa_attack_value(
+            &registry,
+            "ecdsa-small-k-recover",
+            serde_json::to_vec(&input).unwrap().as_slice(),
+            "p256",
+            "auto",
+            Some(&public_hex),
+            12345,
+            &ExecutionContext::new(),
+        );
+        match value {
+            Value::Json(report) => {
+                assert_eq!(report["method"], serde_json::json!("small-k"));
+                assert_eq!(report["candidates_tried"], serde_json::json!(12345));
+                assert_eq!(report["private_key_hex"], serde_json::json!(d_hex));
+            }
+            other => panic!("expected JSON output, got {other:?}"),
+        }
     }
 
     #[test]

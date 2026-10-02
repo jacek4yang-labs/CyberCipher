@@ -26,6 +26,10 @@ der = { version = "0.7", features = ["alloc"] }
 # 0.4 — different crate). Declared explicitly so we can name `BigUint` for
 # component extraction and CRT-parameter arithmetic.
 num-bigint-dig = "0.8"
+# Companion of num-bigint-dig (same 0.2 version already resolved transitively
+# through it). Used by the ECDSA attack helpers (`ecc::attacks`) for the
+# `Zero` trait on scalars.
+num-traits.workspace = true
 
 # Hashes for the digest-parameterized operations. `oid` enables
 # `AssociatedOid`, which `rsa::Pkcs1v15Sign::new::<D>()` requires to build the

@@ -30,7 +30,7 @@
 - id: M8-ECDSA-ATTACK-01
   title: ECDSA attacks — duplicate-r detection, nonce-reuse recovery, known-k,
     bounded small-k; verify recovered keys; HNP only if LLL reuses cleanly
-  status: ready
+  status: done
   priority: P2
   depends_on: []
   owner: pki
@@ -101,7 +101,7 @@
 
 - id: M8-ECDSA-ATTACK-01
   title: ECDSA attack helpers — nonce reuse, duplicate-r, known/small k
-  status: pending
+  status: done
   priority: P2
   depends_on: [M8-PKI-D]
   owner: pki

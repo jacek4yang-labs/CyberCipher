@@ -355,7 +355,8 @@ pub fn ecdsa_signature_fixed_to_der(curve: EccCurve, fixed_hex: &str) -> PkiResu
 // ---------------------------------------------------------------------------
 
 /// Enforce the digest/curve pairing: P-256 + SHA-256, P-384 + SHA-384.
-fn check_digest_pairing(curve: EccCurve, digest: EcdsaDigest) -> PkiResult<()> {
+/// Shared with `attacks.rs` (the attack ops enforce the identical rule).
+pub(crate) fn check_digest_pairing(curve: EccCurve, digest: EcdsaDigest) -> PkiResult<()> {
     let expected = match curve {
         EccCurve::P256 => EcdsaDigest::Sha256,
         EccCurve::P384 => EcdsaDigest::Sha384,
