@@ -160,6 +160,8 @@ export interface AutoCandidate {
   preview: string;
   is_utf8: boolean;
   flag_like: string | null;
+  /** Parameter overrides per step (aligned with path); absent for default runs. */
+  step_params?: Array<Record<string, unknown> | null>;
 }
 
 export interface CmdError {

@@ -48,6 +48,11 @@ pub struct AutoCandidate {
     pub preview: String,
     pub is_utf8: bool,
     pub flag_like: Option<String>,
+    /// Parameter overrides each step used (aligned with `path`), so "Apply
+    /// as recipe" reproduces the decode exactly (e.g. the relaxed-hex and
+    /// relaxed-base64 steps run with strict=false).
+    #[serde(skip_serializing_if = "Vec::is_empty")]
+    pub step_params: Vec<serde_json::Value>,
 }
 
 impl AutoCandidate {
@@ -66,6 +71,29 @@ struct Step {
     /// Optional static parameters passed to the op (e.g. strict = false for
     /// the relaxed-hex fallback step). `None` runs the op with defaults.
     params: Option<&'static [(&'static str, &'static str)]>,
+}
+
+impl Step {
+    fn params_json(&self) -> serde_json::Value {
+        match self.params {
+            None => serde_json::Value::Null,
+            Some(kv) => serde_json::Value::Object(
+                kv.iter()
+                    .map(|(k, v)| {
+                        // Typed scalars: op-side bool_or/int_or only read
+                        // native ParamValue kinds, so "false" as a string
+                        // would be silently ignored.
+                        let val = match *v {
+                            "true" => serde_json::Value::Bool(true),
+                            "false" => serde_json::Value::Bool(false),
+                            other => serde_json::Value::String(other.to_string()),
+                        };
+                        (k.to_string(), val)
+                    })
+                    .collect(),
+            ),
+        }
+    }
 }
 
 /// Strict hex gate: only hex digits + whitespace, even digit count.
@@ -1113,6 +1141,7 @@ struct Frontier {
     kind: String,
     path: Vec<String>,
     evidence: Vec<String>,
+    step_params: Vec<serde_json::Value>,
 }
 
 /// Serialize a frontier value to bytes for gates, scoring and ranking.
@@ -1145,6 +1174,7 @@ pub fn auto_decode(
         kind: input_kind.to_string(),
         path: Vec::new(),
         evidence: vec![],
+        step_params: Vec::new(),
     }];
 
     for _depth in 0..MAX_DEPTH {
@@ -1175,11 +1205,14 @@ pub fn auto_decode(
                     path.push("xor-single-byte".to_string());
                     let mut evidence = node.evidence.clone();
                     evidence.push(format!("single-byte XOR key 0x{key:02x}"));
+                    let mut step_params = node.step_params.clone();
+                    step_params.push(serde_json::Value::Null);
                     let candidate = Frontier {
                         kind: out.kind().name().to_string(),
                         value: out,
                         path,
                         evidence,
+                        step_params,
                     };
                     collect_candidate(&candidate, &bytes, &mut seen, &mut results);
                     xor_nodes.push(candidate);
@@ -1217,11 +1250,14 @@ pub fn auto_decode(
                 path.push(step.op.to_string());
                 let mut evidence = node.evidence.clone();
                 evidence.push(step.evidence.to_string());
+                let mut step_params = node.step_params.clone();
+                step_params.push(step.params_json());
                 let candidate = Frontier {
                     kind: out.kind().name().to_string(),
                     value: out,
                     path,
                     evidence,
+                    step_params,
                 };
                 collect_candidate(&candidate, &bytes, &mut seen, &mut results);
                 next.push(candidate);
@@ -1383,6 +1419,7 @@ fn collect_candidate(
         preview,
         is_utf8,
         flag_like,
+        step_params: node.step_params.clone(),
     });
     // Keep the best 64 (not the newest): the 255-candidate XOR sweep must
     // not starve the syntax-driven decoders out of the report.
