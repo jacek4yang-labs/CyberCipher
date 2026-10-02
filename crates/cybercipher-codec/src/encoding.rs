@@ -432,7 +432,7 @@ fn hexdump(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<Value> {
     let final_offset = map.bool_or("include_final_offset", false);
     let mut out = String::with_capacity(bytes.len().div_ceil(width) * 88);
     for (row, chunk) in bytes.chunks(width).enumerate() {
-        out.push_str(&format!("{row:08x}  "));
+        out.push_str(&format!("{:08x}  ", row * width));
         for group in 0..width / 4 {
             for i in 0..4 {
                 let idx = group * 4 + i;
@@ -1239,7 +1239,19 @@ mod hexdump_tests {
 
     #[test]
     fn hexdump_final_offset_option() {
-        let dump = to_dump(b"123456789".to_vec(), &[("include_final_offset", "true")]);
+        // Typed bool: the engine pipeline delivers ParamValue::Bool for
+        // boolean params, and bool_or does not coerce strings.
+        let mut map = ParamMap::new();
+        map.insert("include_final_offset", true);
+        let value = hexdump(
+            &Value::Bytes(b"123456789".to_vec()),
+            &map,
+            &ExecutionContext::new(),
+        )
+        .expect("hexdump succeeds");
+        let Value::Text(dump) = value else {
+            panic!("text output")
+        };
         assert_eq!(dump.lines().last().expect("trailer"), "00000009");
     }
 
@@ -1261,7 +1273,10 @@ mod hexdump_tests {
 
     #[test]
     fn hexdump_roundtrip_lengths_and_widths() {
-        for len in [0usize, 1, 7, 8, 15, 16, 17, 31, 33, 64, 100] {
+        // Length 0 is excluded: to-hexdump of empty bytes yields empty text,
+        // and from-hexdump rejects empty input with a typed error (covered
+        // by the strict-rejects list below).
+        for len in [1usize, 7, 8, 15, 16, 17, 31, 33, 64, 100] {
             let data: Vec<u8> = (0..len as u8).cycle().take(len).collect();
             for width in ["8", "16", "32"] {
                 let dump = to_dump(data.clone(), &[("width", width)]);

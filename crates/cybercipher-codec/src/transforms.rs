@@ -37,7 +37,11 @@ fn encode_c_escapes(text: &str) -> String {
             '\u{b}' => out.push_str("\\v"),
             '\u{c}' => out.push_str("\\f"),
             c if (0x20..=0x7E).contains(&(c as u32)) => out.push(c),
-            c if c as u32 <= 0xFF => out.push_str(&format!("\\{:03o}", c as u32)),
+            // Remaining control bytes (unnamed C0 + DEL) use 3-digit octal;
+            // everything non-ASCII passes through as UTF-8.
+            c if (c as u32) < 0x20 || c as u32 == 0x7F => {
+                out.push_str(&format!("\\{:03o}", c as u32))
+            }
             c => out.push(c),
         }
     }
@@ -273,7 +277,9 @@ fn from_bcd_op(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<Valu
         for nibble in nibbles {
             match nibble {
                 0..=9 => out.push((b'0' + nibble) as char),
-                0xF if strip_padding || !strict => continue,
+                0xF if strip_padding => continue,
+                // Relaxed mode drops non-decimal nibbles instead of failing.
+                _ if !strict => continue,
                 other => {
                     return Err(OperationError::decode(format!(
                         "BCD byte 0x{byte:02x} holds the non-decimal nibble {other:X}"
