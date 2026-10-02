@@ -46,6 +46,7 @@
 //! flag. This module contains no unbounded loops.
 
 use cybercipher_core::{ErrorKind, ExecutionContext};
+use elliptic_curve::sec1::ToEncodedPoint as _;
 use num_bigint_dig::BigUint;
 use num_traits::Zero;
 use serde::Serialize;
@@ -300,7 +301,7 @@ pub fn ecdsa_nonce_reuse_recover(
     let inverse = mod_inverse(&denominator, &first.n).ok_or_else(|| not_invertible("s1 - s2"))?;
     let k = (&numerator * &inverse) % &first.n;
     let r_inverse = mod_inverse(&first.r, &first.n).ok_or_else(|| not_invertible("r"))?;
-    let d = (mod_sub(&(&first.s * &k) % &first.n, &first.h, &first.n) * &r_inverse) % &first.n;
+    let d = (mod_sub(&((&first.s * &k) % &first.n), &first.h, &first.n) * &r_inverse) % &first.n;
     finish_recovery(&first, d, "nonce-reuse", Some(&k), None, &public, None)
 }
 
@@ -319,7 +320,7 @@ pub fn ecdsa_known_k_recover(
     let public = parse_ecc_public_key(curve, public_key_hex)?;
     let k = parse_scalar_component("k", k_hex, &resolved.n, resolved.field_len)?;
     let r_inverse = mod_inverse(&resolved.r, &resolved.n).ok_or_else(|| not_invertible("r"))?;
-    let d = (mod_sub(&(&resolved.s * &k) % &resolved.n, &resolved.h, &resolved.n) * &r_inverse)
+    let d = (mod_sub(&((&resolved.s * &k) % &resolved.n), &resolved.h, &resolved.n) * &r_inverse)
         % &resolved.n;
     finish_recovery(&resolved, d, "known-k", Some(&k), None, &public, None)
 }

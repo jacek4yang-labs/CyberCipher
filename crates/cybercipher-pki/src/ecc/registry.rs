@@ -511,7 +511,7 @@ mod tests {
             let info = cybercipher_core::registry::operation_info(op);
             assert_eq!(info.category, Category::Analysis);
             assert_eq!(info.cost, CostClass::Interactive);
-            assert!(info.tags.contains(&"ecdsa"));
+            assert!(info.tags.iter().any(|t| t == "ecdsa"));
         }
         // Snake-case aliases are searchable.
         let hits = reg.search("ecdsa_nonce_reuse_recover", None);
@@ -552,7 +552,7 @@ mod tests {
     #[test]
     fn registry_detect_accepts_list_value_and_json_text() {
         let reg = registry();
-        let (keypair, r, s1, s2, msg2_hex) = fixture(42);
+        let (_keypair, r, s1, s2, msg2_hex) = fixture(42);
         let mut params = ParamMap::new();
         params.insert("curve", "p256");
         let entry1 = json!({"message": crate::keys::to_hex(MSG1), "r": r, "s": s1});
