@@ -303,7 +303,15 @@ pub fn ecdsa_nonce_reuse_recover(
     let r_inverse = mod_inverse(&first.r, &first.n).ok_or_else(|| not_invertible("r"))?;
     let d = (mod_sub(&((&first.s * &k) % &first.n), &first.h, &first.n) * &r_inverse) % &first.n;
     let nonce_r_matches = nonce_reproduces_r(curve, &k, &first.r);
-    finish_recovery(&first, d, "nonce-reuse", Some(&k), None, &public, Some(nonce_r_matches))
+    finish_recovery(
+        &first,
+        d,
+        "nonce-reuse",
+        Some(&k),
+        None,
+        &public,
+        Some(nonce_r_matches),
+    )
 }
 
 /// Recover the ECDSA private key from one signature whose nonce `k` is known:
@@ -328,7 +336,15 @@ pub fn ecdsa_known_k_recover(
     ) * &r_inverse)
         % &resolved.n;
     let nonce_r_matches = nonce_reproduces_r(curve, &k, &resolved.r);
-    finish_recovery(&resolved, d, "known-k", Some(&k), None, &public, Some(nonce_r_matches))
+    finish_recovery(
+        &resolved,
+        d,
+        "known-k",
+        Some(&k),
+        None,
+        &public,
+        Some(nonce_r_matches),
+    )
 }
 
 /// Recover the ECDSA private key under the assumption of a small nonce:
