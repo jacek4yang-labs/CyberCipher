@@ -580,9 +580,11 @@ pub(crate) fn parse_hexdump(text: &str, strict: bool) -> OpResult<Vec<u8>> {
         .filter(|l| !l.trim().is_empty())
         .collect();
     if lines.is_empty() {
-        return Err(OperationError::decode("hexdump input contains no data").with_expected(
-            "hexdump rows with an offset, hex bytes and an optional |ascii| column",
-        ));
+        return Err(
+            OperationError::decode("hexdump input contains no data").with_expected(
+                "hexdump rows with an offset, hex bytes and an optional |ascii| column",
+            ),
+        );
     }
 
     let mut out = Vec::new();
@@ -703,7 +705,8 @@ pub(crate) fn parse_hexdump(text: &str, strict: bool) -> OpResult<Vec<u8>> {
 
     if out.is_empty() {
         return Err(
-            OperationError::decode("hexdump input contains no hex bytes").with_expected("data rows"),
+            OperationError::decode("hexdump input contains no hex bytes")
+                .with_expected("data rows"),
         );
     }
     Ok(out)
@@ -1105,12 +1108,7 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
                     ],
                     "Bytes per hexdump row.",
                 ),
-                p_bool(
-                    "uppercase",
-                    "Uppercase",
-                    false,
-                    "Use uppercase hex digits.",
-                ),
+                p_bool("uppercase", "Uppercase", false, "Use uppercase hex digits."),
                 p_bool(
                     "include_final_offset",
                     "Final offset line",
@@ -1214,8 +1212,12 @@ mod hexdump_tests {
     fn from_dump(text: &str, strict: bool) -> Vec<u8> {
         let mut map = ParamMap::new();
         map.insert("strict", strict);
-        let value = hexdump_parse_op(&Value::Text(text.to_string()), &map, &ExecutionContext::new())
-            .expect("parse succeeds");
+        let value = hexdump_parse_op(
+            &Value::Text(text.to_string()),
+            &map,
+            &ExecutionContext::new(),
+        )
+        .expect("parse succeeds");
         match value {
             Value::Bytes(b) => b,
             Value::Text(t) => t.into_bytes(),
@@ -1274,7 +1276,8 @@ mod hexdump_tests {
     #[test]
     fn hexdump_parses_gnu_hexdump_output() {
         // Literal `echo -n '123456789' | hexdump -C` output.
-        let dump = "00000000  31 32 33 34 35 36 37 38  39 0a                    |123456789.|\n0000000a\n";
+        let dump =
+            "00000000  31 32 33 34 35 36 37 38  39 0a                    |123456789.|\n0000000a\n";
         assert_eq!(from_dump(dump, true), b"123456789\n".to_vec());
     }
 
@@ -1326,13 +1329,13 @@ mod hexdump_tests {
         // No offsets, short gap rules ignored, ASCII column unchecked.
         let mut map = ParamMap::new();
         map.insert("strict", false);
-        assert_eq!(
-            from_dump("31 32  33 |zzz|", false),
-            vec![0x31, 0x32, 0x33]
-        );
+        assert_eq!(from_dump("31 32  33 |zzz|", false), vec![0x31, 0x32, 0x33]);
         // Trailing offset-only rows are skipped after data was seen.
         assert_eq!(
-            from_dump("00000000  41                                     |A|\n00000001\n", false),
+            from_dump(
+                "00000000  41                                     |A|\n00000001\n",
+                false
+            ),
             b"A".to_vec()
         );
     }

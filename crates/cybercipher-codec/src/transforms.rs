@@ -146,13 +146,13 @@ pub fn decode_c_escapes(text: &str, strict: bool) -> OpResult<Vec<u8>> {
             }
             other => {
                 if strict {
-                    return Err(OperationError::decode(format!(
-                        "unknown C escape `\\{other}`"
-                    ))
-                    .with_expected(
-                        "a, b, f, n, r, t, v, \\, ', \", ?, 0-7 (octal) or x (hex)",
-                    )
-                    .with_actual(format!("`\\{other}`")));
+                    return Err(
+                        OperationError::decode(format!("unknown C escape `\\{other}`"))
+                            .with_expected(
+                                "a, b, f, n, r, t, v, \\, ', \", ?, 0-7 (octal) or x (hex)",
+                            )
+                            .with_actual(format!("`\\{other}`")),
+                    );
                 }
                 out.push(b'\\');
                 let mut buf = [0u8; 4];
@@ -321,11 +321,11 @@ fn from_modhex_op(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<V
         }
     }
     if nibbles.len() % 2 != 0 {
-        return Err(OperationError::decode(
-            "ModHex input has an odd number of characters",
-        )
-        .with_expected("an even number of characters")
-        .with_actual(format!("{} characters", nibbles.len())));
+        return Err(
+            OperationError::decode("ModHex input has an odd number of characters")
+                .with_expected("an even number of characters")
+                .with_actual(format!("{} characters", nibbles.len())),
+        );
     }
     let out = nibbles
         .chunks(2)
@@ -461,11 +461,11 @@ fn from_netbios_name_op(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpRe
         }
     }
     if nibbles.len() % 2 != 0 {
-        return Err(OperationError::decode(
-            "NetBIOS encoded name has an odd number of characters",
-        )
-        .with_expected("an even number of characters")
-        .with_actual(format!("{} characters", nibbles.len())));
+        return Err(
+            OperationError::decode("NetBIOS encoded name has an odd number of characters")
+                .with_expected("an even number of characters")
+                .with_actual(format!("{} characters", nibbles.len())),
+        );
     }
     let out = nibbles
         .chunks(2)
@@ -894,7 +894,10 @@ mod tests {
     #[test]
     fn c_escapes_known_forms() {
         assert_eq!(encode_c_escapes("a\nb\\\"c"), "a\\nb\\\\\\\"c");
-        assert_eq!(encode_c_escapes("\u{7}\u{8}\u{b}\u{c}\0"), "\\a\\b\\v\\f\\0");
+        assert_eq!(
+            encode_c_escapes("\u{7}\u{8}\u{b}\u{c}\0"),
+            "\\a\\b\\v\\f\\0"
+        );
         assert_eq!(encode_c_escapes("\u{1}\u{7f}"), "\\001\\177");
         assert_eq!(encode_c_escapes("é中"), "é中");
         assert_eq!(decode_c_escapes("\\101\\x42\\n", true).unwrap(), b"AB\n");
@@ -916,10 +919,7 @@ mod tests {
                 "strict must reject {bad}"
             );
         }
-        assert_eq!(
-            decode_c_escapes("a\\qb", false).unwrap(),
-            b"a\\qb".to_vec()
-        );
+        assert_eq!(decode_c_escapes("a\\qb", false).unwrap(), b"a\\qb".to_vec());
         assert_eq!(decode_c_escapes("\\400", false).unwrap(), b"\\400".to_vec());
     }
 
@@ -1089,7 +1089,9 @@ mod tests {
     fn netbios_pads_to_16_bytes() {
         let enc =
             to_netbios_name_op(&Value::Text("FRED".into()), &ParamMap::new(), &ctx()).unwrap();
-        let Value::Text(text) = enc else { panic!("text output") };
+        let Value::Text(text) = enc else {
+            panic!("text output")
+        };
         assert_eq!(text.chars().count(), 32);
         // 'F'=0x46 -> "EG", 'R'=0x52 -> "FC", 'E'=0x45 -> "EF", 'D'=0x44 -> "EE".
         assert!(text.starts_with("EGFCEFEE"));
@@ -1099,9 +1101,7 @@ mod tests {
             Value::Bytes(b"FRED".iter().copied().chain([b' '; 12]).collect())
         );
         // Longer than the name slot: typed error.
-        assert!(
-            to_netbios_name_op(&Value::Bytes(vec![0; 17]), &ParamMap::new(), &ctx()).is_err()
-        );
+        assert!(to_netbios_name_op(&Value::Bytes(vec![0; 17]), &ParamMap::new(), &ctx()).is_err());
     }
 
     #[test]
@@ -1109,12 +1109,14 @@ mod tests {
         assert!(
             from_netbios_name_op(&Value::Text("Q!".into()), &ParamMap::new(), &ctx()).is_err()
         );
-        // Relaxed ignores them, but an odd surviving nibble count still errors.
-        assert!(
-            from_netbios_name_op(&Value::Text("Q!".into()), &strict_off(), &ctx()).is_err()
+        // Relaxed ignores them; an all-invalid input decodes to empty bytes.
+        assert_eq!(
+            from_netbios_name_op(&Value::Text("Q!".into()), &strict_off(), &ctx()).unwrap(),
+            Value::Bytes(Vec::new())
         );
-        let err = from_netbios_name_op(&Value::Text("A!".into()), &strict_off(), &ctx())
-            .unwrap_err();
+        // An odd surviving nibble count still errors even in relaxed mode.
+        let err =
+            from_netbios_name_op(&Value::Text("A!".into()), &strict_off(), &ctx()).unwrap_err();
         assert_eq!(err.kind, ErrorKind::Decode);
     }
 
