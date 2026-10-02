@@ -7,13 +7,15 @@ It combines a CyberChef-style recipe workbench (operations → recipe → input 
 output) with a Rust engine built for real cryptanalysis work. Everything runs
 on your machine: no telemetry, no remote processing, no accounts.
 
-**Status: pre-1.0 development.** The Workbench UI, the codec/byte-operation
-foundation, the practical crypto baseline (AES, DES/3DES, SM4, RC4,
-TEA/XTEA/XXTEA, MD5/SHA-1/SHA-2/SHA-3/SM3, HMAC), and the Auto Decode engine
-(bounded, explainable multi-layer decoding) are functional, with a CLI sharing
-the same engine. The attack labs are the next milestones — see
-[docs/CAPABILITIES.md](docs/CAPABILITIES.md) and [docs/ROADMAP.md](docs/ROADMAP.md)
-for the honest current state.
+**Status: pre-1.0 development.** The Workbench, the full codec/crypto/PKI
+engine, the attack labs (RSA, PRNG, XOR, classical, lattice), PKI Lab, Stego
+Lab (StegSolve-compatible transforms, bit extraction, Auto LSB, structure
+analysis, carving, QR/barcode, stereogram, combine, GIF frames), SSTV Lab
+(automatic mode detection, blind recovery, inverse-model ranking), JWT/JWS,
+Crypto Assist (AES/SM4/DES/3DES/Serpent/Twofish/Camellia/RC4 profiles), the
+signature scanner and Auto Decode v3 are all functional, with a CLI sharing
+the same engine. See [docs/CAPABILITIES.md](docs/CAPABILITIES.md) and
+[docs/ROADMAP.md](docs/ROADMAP.md) for the honest current state.
 
 ## Key properties
 
@@ -37,36 +39,50 @@ Rust engine (cybercipher-engine)
   ├─ incremental executor with stage cache
   └─ operation registry (drives the GUI)
         │
-crates: cybercipher-core · cybercipher-codec · cybercipher-crypto (next)
-        · cybercipher-analysis (next) · cybercipher-attack (next)
+crates: cybercipher-core · cybercipher-codec · cybercipher-crypto
+        · cybercipher-attack · cybercipher-pki · cybercipher-engine
+        · cybercipher-media · cybercipher-steg · cybercipher-sstv
 ```
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
 
-## Current capabilities (Milestones 1–2)
+## Current capabilities
 
-- 51 working operations. Crypto baseline: AES (ECB/CBC/CTR/CFB/OFB,
-  128/192/256-bit keys, validated PKCS7/Zero/ISO7816 padding), DES/3DES, SM4,
-  RC4(+drop), TEA/XTEA/XXTEA, hashes (MD5, SHA-1/2/3, SHAKE, Keccak, SM3), and
-  HMAC — all with official test vectors and provenance metadata. Legacy/broken
-  primitives are labeled, never hidden.
-- 18 codec/inspection operations: hex, Base64/URL-safe, Base32/Base32hex, URL percent
-  encoding, binary/octal/decimal, hexdump, UTF-8 encode/decode, reverse,
-  split/join, XOR (standard/rolling/incrementing, null-preserving), AND/OR/NOT,
-  rotate left/right, swap endianness, entropy report, strings extraction.
-- Workbench: operation search (aliases + tags), drag-and-drop recipe editing,
-  parameter forms generated from the registry, enable/disable/duplicate,
-  intermediate stage previews, Auto Bake (debounced, cost-gated), manual Bake,
-  per-stage caching, structured error rendering, save/load/import/export
-  recipes, dark/light themes, copy-as (hex / Base64 / Python bytes / C array /
-  decimal / integer), input↔output swap, flag-pattern highlighting.
-- **Auto Decode**: bounded explainable analysis (beam depth 6, width 16, 3s
-  budget) that recovers multi-layer encodings — hex → Base64 → gzip — and
-  shows its evidence instead of claiming certainty. Available as the Auto
-  Analyze page and `cybercipher auto <input>`.
-- CLI (`cybercipher`) shares the same engine: `cybercipher ops`,
-  `cybercipher run --op from-base64 <input>`, `cybercipher auto <input>`,
-  `cybercipher recipe <file> <input>`.
+- **215+ registered operations** across ten crates, each with typed inputs,
+  provenance metadata (standard, implementation, test vectors) and honest cost
+  classes. Highlights:
+  - Crypto: AES/DES/3DES/SM4/RC4/TEA family, Serpent/Twofish/Camellia/ARIA/
+    CAST5/IDEA/RC2/RC5/RC6/Threefish/Magma/Kuznyechik, AEAD (GCM/CCM/
+    ChaCha20-Poly1305/XChaCha20-Poly1305/GCM-SIV), KDFs (PBKDF2/HKDF/scrypt/
+    Argon2id/EVP_BytesToKey), MACs (HMAC/CMAC/GMAC/Poly1305), hashes (MD5,
+    SHA-1/2/3, SHAKE, Keccak, SM3), stream ciphers (Salsa20/XSalsa20/RC4).
+  - PKI: RSA keygen + OAEP/PKCS#1 v1.5/PSS, ECDSA P-256/P-384, ECDH, Ed25519,
+    X25519, SM2 + SM3, X.509/CSR/CRL/ASN.1 inspection, JWT/JWS
+    (HS/RS/ES/EdDSA, alg=none rejection, claims validation).
+  - Attacks: RSA analyzer (known-pq/d/phi, dp-leak, Wiener, Fermat, low-e,
+    common modulus, Håstad, shared prime, Coppersmith, Pollard rho/p−1),
+    PRNG recovery (LCG/MT19937/Java/glibc/MSVC), XOR solving, classical
+    cipher cracking (IOC/Kasiski), ECDSA nonce attacks, Crypto Assist
+    profiles, crypto signature scanner.
+  - Steg/media: bounded image decode, 42 StegSolve-compatible transforms
+    (bit-exact), bit extraction, bounded Auto LSB scanner, PNG/JPEG/GIF/BMP
+    structure analysis + appended-data carving, QR/barcode (bytes-first),
+    stereogram solver, 13-mode combiner, GIF frames.
+  - SSTV: automatic mode detection (Martin/Scottie/Robot/PD), VIS + blind
+    sync-period recovery, frequency/clock correction, inverse-model ranking,
+    in-tree Rust (sstv-auto lineage, no subprocess).
+  - Data: gzip/zlib/deflate/bzip2/xz/zstd/lz4/brotli, tar/zip, CBOR/
+    MessagePack/VarInt/TLV, file magic, UTF-16, specialty CTF codecs
+    (Brainfuck/Ook, Buddha, beast/bear, core values, AA/JJ), Auto Decode v3
+    wrapper vocabulary (HTML entities, quoted-printable, punycode, UU/XX/yEnc,
+    compression/structured wrappers).
+- **Labs, not silos.** Results flow between tools: Auto LSB bytes → Auto
+  Decode, appended bytes → Workbench, QR payloads → Auto Decode, SSTV frames
+  → Stego Lab, Crypto Assist → Apply as Recipe.
+- **Auto Decode v3**: bounded explainable beam search (depth 6, width 16, 3s
+  budget) over the full wrapper vocabulary, with adversarial negative corpus.
+- **CLI** (`cybercipher`) shares the same engine: ops, run, recipe, auto,
+  rsa, prng, jwt, sstv, sigscan and more.
 
 ## Linux installation
 

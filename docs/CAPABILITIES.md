@@ -80,23 +80,48 @@ parameter rows.
 | Analysis | Auto Decode single-byte XOR exploration (bounded sweep, honest scoring penalty, beam-protected) | done |
 | Perf | Criterion benches: codec/crypto/recipe hot paths at 64 KiB incl. cold-vs-warm cache comparison | done |
 
-## Later milestones (planned, not started)
-- **Milestone 3 — Auto Decode:** bounded explainable recursive decoding with
-  candidate scoring and recipe reconstruction. *(planned)*
-- **Milestone 4 — attack labs:** RSA (Wiener, Fermat, Håstad, dp leak,
-  Coppersmith, ...), PRNG (LCG, MT19937), lattice layer. *(planned)*
-- **Milestone 5 — broad symmetric coverage:** RustCrypto-backed Serpent,
-  Twofish, Camellia, ARIA, CAST, IDEA, RC2/5/6, GOST family, AEAD, KDFs.
-  *(planned)*
-- **Milestone 6 — classical + XOR cracking:** frequency/IOC/Kasiski/chi-square
-  scoring layers. *(planned)*
-- **Milestone 7 — Crypto Assist** (AES Assist first). *(planned)*
-- **Milestone 8 — public-key ecosystem** (RSA schemes, ECDSA, SM2, ASN.1,
-  JWT). *(planned)*
-- **Milestone 9 — compression/file/CTF helpers.** *(planned)*
-- **Milestone 10 — compatibility closure** vs CyberChef/ToolsFx/auto-ctf
-  baselines before 1.0. *(planned)*
+## Implemented milestones (M1–M10)
 
+- **M1–M3 — Workbench, crypto baseline, Auto Decode.** Recipe workbench with
+  incremental execution and stage cache; AES/DES/3DES/SM4/RC4/TEA family,
+  hashes, MACs, KDFs, AEAD; Auto Decode v3 (bounded beam over the full wrapper
+  vocabulary: base families, HTML entities, quoted-printable, punycode,
+  UU/XX/yEnc, compression and structured wrappers, specialty codecs).
+- **M4 — Attack labs.** RSA analyzer (known-pq/d/phi, dp-leak, Wiener, Fermat,
+  low-e, common modulus, Håstad, shared prime, Coppersmith, Pollard rho/p−1),
+  PRNG recovery (LCG, MT19937, Java, glibc, MSVC), XOR lab (crib dragging,
+  key-length, MTP), classical cipher cracking (IOC/Kasiski), lattice layer
+  (exact LLL, Coppersmith).
+- **M5–M6 — breadth.** AEAD/MAC/KDF families, extra block ciphers
+  (Serpent/Twofish/Camellia/ARIA/CAST5/IDEA/RC2/RC5/RC6/Threefish/Magma/
+  Kuznyechik), base families (36/45/58/58c/62/85/z85/91), classical misc
+  (Morse, A1Z26, Tap, Bacon, Braille), XOR lab.
+- **M7 — analysis.** Crypto Assist (AES profile + SM4/DES/3DES/Serpent/
+  Twofish/Camellia/RC4 profiles, structural pruning, Apply as Recipe), Auto
+  Decode v2/v3, crypto signature scanner (TEA/XTEA delta, AES S-box/Rcon,
+  SM4 FK/CK/S-box, SHA/MD5 constants, ChaCha sigma, RC4 KSA).
+- **M8 — PKI.** RSA keygen/OAEP/PKCS#1 v1.5/PSS, ECDSA P-256/P-384, ECDH,
+  Ed25519, X25519, SM2 + SM3, X.509/CSR/CRL/ASN.1 inspection, JWT/JWS
+  (HS/RS/ES/EdDSA with alg=none rejection and claims validation), ECDSA
+  attack helpers.
+- **M9 — file/media.** gzip/zlib/deflate/bzip2/xz/zstd/lz4/brotli, tar/zip,
+  CBOR/MessagePack/VarInt/TLV, file magic, UTF-16, entropy; steg engine
+  (bounded decode, 42 StegSolve-compatible transforms, bit extraction, Auto
+  LSB, structure analysis, carving, QR/barcode, stereogram, 13-mode combine,
+  GIF frames); SSTV engine (automatic detection, blind recovery, correction,
+  inverse-model ranking).
+- **M10 — specialty + composition.** Brainfuck/Ook, Buddha/new Buddha,
+  beast/bear, core values, AA/JJ decode; cross-tool handoffs (Auto LSB →
+  Auto Decode, appended bytes → Workbench, QR payloads → Auto Decode, SSTV →
+  Stego Lab, Assist → Apply as Recipe); PKI Lab, Stego Lab, SSTV Lab GUIs.
+
+## Remaining (honest)
+
+- PKI residual parity: secp256k1/ETH address derivation, DSA, Ed448/X448.
+- File/data closure: YAML, XML, BSON, protobuf wire inspection.
+- Crypto long-tail: KMAC, bcrypt, HC-256/Rabbit/ZUC, CTS/XTS/EAX/OCB/SIV modes.
+- GUI pixel inspector (needs a per-pixel readback op).
+- APNG/animated-WebP frame support.
 ## Deliberate exclusions
 
 - No embedded Python/SageMath/Java runtime in the distributed app.
