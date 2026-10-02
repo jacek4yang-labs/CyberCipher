@@ -281,12 +281,12 @@ fn small_k_run(
 // ---------------------------------------------------------------------------
 
 fn to_json_value<T: serde::Serialize>(value: &T) -> OpResult<CoreValue> {
-    Ok(CoreValue::Json(
-        serde_json::to_value(value).map_err(|e| {
+    Ok(CoreValue::Json(serde_json::to_value(value).map_err(
+        |e| {
             OperationError::internal("ECDSA attack report serialization failed")
                 .with_details(e.to_string())
-        })?,
-    ))
+        },
+    )?))
 }
 
 fn missing_contract(op: &str) -> OperationError {
