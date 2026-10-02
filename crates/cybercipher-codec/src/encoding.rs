@@ -424,10 +424,16 @@ fn from_radix(radix: u32) -> impl Fn(&Value, &ParamMap, &ExecutionContext) -> Op
 fn hexdump(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<Value> {
     let bytes = input_bytes(v, "To Hexdump")?;
     let uppercase = map.bool_or("uppercase", false);
-    let mut out = String::with_capacity(bytes.len().div_ceil(16) * 80);
-    for (row, chunk) in bytes.chunks(16).enumerate() {
-        out.push_str(&format!("{row:08x}  "));
-        for group in 0..4 {
+    let width = match map.str_or("width", "16") {
+        "8" => 8usize,
+        "32" => 32usize,
+        _ => 16,
+    };
+    let final_offset = map.bool_or("include_final_offset", false);
+    let mut out = String::with_capacity(bytes.len().div_ceil(width) * 88);
+    for (row, chunk) in bytes.chunks(width).enumerate() {
+        out.push_str(&format!("{:08x}  ", row * width));
+        for group in 0..width / 4 {
             for i in 0..4 {
                 let idx = group * 4 + i;
                 match chunk.get(idx) {
@@ -454,7 +460,264 @@ fn hexdump(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<Value> {
         out.push('|');
         out.push('\n');
     }
+    if final_offset {
+        out.push_str(&format!("{:08x}\n", bytes.len()));
+    }
     Ok(Value::Text(out))
+}
+
+fn hexdump_nibble(c: u8) -> Option<u8> {
+    match c {
+        b'0'..=b'9' => Some(c - b'0'),
+        b'a'..=b'f' => Some(c - b'a' + 10),
+        b'A'..=b'F' => Some(c - b'A' + 10),
+        _ => None,
+    }
+}
+
+/// Parse the hex-byte column of one hexdump row: pairs of hex digits
+/// separated by single spaces, with wider gaps permitted between 4-byte
+/// groups (every common hexdump layout) and as trailing padding before the
+/// ASCII column.
+fn parse_hexdump_row(hex_part: &str, strict: bool, line_no: usize) -> OpResult<Vec<u8>> {
+    let bytes = hex_part.as_bytes();
+    let mut out = Vec::with_capacity(hex_part.len() / 3 + 1);
+    let mut i = 0usize;
+    let mut pending: Option<u8> = None;
+    while i < bytes.len() {
+        let c = bytes[i];
+        if let Some(digit) = hexdump_nibble(c) {
+            match pending {
+                Some(high) => {
+                    out.push((high << 4) | digit);
+                    pending = None;
+                }
+                None => pending = Some(digit),
+            }
+            i += 1;
+            continue;
+        }
+        if c == b' ' {
+            let gap_start = i;
+            while i < bytes.len() && bytes[i] == b' ' {
+                i += 1;
+            }
+            let trailing = i == bytes.len();
+            if strict {
+                if pending.is_some() {
+                    return Err(OperationError::decode(format!(
+                        "hexdump line {line_no} splits a hex byte across whitespace"
+                    ))
+                    .with_expected("two hex digits per byte")
+                    .with_actual("a single digit before a gap"));
+                }
+                if !trailing && i - gap_start > 1 && out.len() % 4 != 0 {
+                    return Err(OperationError::decode(format!(
+                        "hexdump line {line_no} has a column gap after {} bytes",
+                        out.len()
+                    ))
+                    .with_expected("gaps only after 4-byte groups or before the ASCII column"));
+                }
+            }
+            continue;
+        }
+        return Err(OperationError::decode(format!(
+            "hexdump line {line_no} contains the invalid character `{}`",
+            c as char
+        ))
+        .with_expected("hex digit pairs separated by spaces"));
+    }
+    if pending.is_some() {
+        return Err(OperationError::decode(format!(
+            "hexdump line {line_no} ends with a single hex digit"
+        ))
+        .with_expected("an even number of hex digits"));
+    }
+    Ok(out)
+}
+
+/// Verify the `|ascii|` column of one row against the decoded bytes.
+fn verify_hexdump_ascii(ascii: &str, row: &[u8], line_no: usize) -> OpResult<()> {
+    let region = ascii.strip_suffix('|').ok_or_else(|| {
+        OperationError::decode(format!(
+            "hexdump line {line_no} has an unclosed |ascii| column"
+        ))
+        .with_expected("the ASCII column closed by a trailing `|`")
+    })?;
+    let expected: String = row
+        .iter()
+        .map(|&b| {
+            if (0x20..=0x7E).contains(&b) {
+                b as char
+            } else {
+                '.'
+            }
+        })
+        .collect();
+    if region != expected {
+        return Err(OperationError::decode(format!(
+            "hexdump line {line_no}: the |ascii| column does not match the hex bytes"
+        ))
+        .with_expected(format!("`{expected}`"))
+        .with_actual(format!("`{region}`")));
+    }
+    Ok(())
+}
+
+/// Parse `hexdump -C` style output (offset, hex byte pairs, `|ascii|` column)
+/// back into bytes.
+///
+/// Strict mode validates the structure: every row starts with a hex offset,
+/// rows keep a constant width, offsets are sequential, the `|ascii|` column
+/// matches the decoded bytes, and the trailing total-offset row emitted by
+/// `hexdump -C` equals the decoded length. Relaxed mode tolerates missing
+/// offsets, ignores the ASCII column and the structural checks, and skips a
+/// trailing offset-only row.
+pub(crate) fn parse_hexdump(text: &str, strict: bool) -> OpResult<Vec<u8>> {
+    let lines: Vec<&str> = text
+        .lines()
+        .map(|l| l.strip_suffix('\r').unwrap_or(l))
+        .filter(|l| !l.trim().is_empty())
+        .collect();
+    if lines.is_empty() {
+        return Err(
+            OperationError::decode("hexdump input contains no data").with_expected(
+                "hexdump rows with an offset, hex bytes and an optional |ascii| column",
+            ),
+        );
+    }
+
+    let mut out = Vec::new();
+    let mut row_len: Option<usize> = None;
+    let mut expected_offset: Option<u64> = None;
+    let mut saw_data_row = false;
+
+    for (idx, line) in lines.iter().enumerate() {
+        let is_last = idx + 1 == lines.len();
+        let offset_len = line.chars().take_while(|c| c.is_ascii_hexdigit()).count();
+        // Offsets in the wild are 8 digits (hexdump -C, CyberChef); accept
+        // 4-16 so other dump widths still parse. Two leading digits are a
+        // data byte pair, never an offset.
+        let plausible_offset = (4..=16).contains(&offset_len);
+        let offset_only = plausible_offset && offset_len == line.len();
+        let has_offset = plausible_offset
+            && offset_len < line.len()
+            && line[offset_len..].starts_with(|c: char| c.is_whitespace());
+
+        // `hexdump -C` prints a bare total-offset row after the data. Strict
+        // mode treats any bare offset row as the trailer; relaxed mode skips
+        // only the 8-digit form so offset-less hex data still decodes.
+        if offset_only && (strict || (saw_data_row && offset_len == 8)) {
+            if !saw_data_row {
+                return Err(OperationError::decode(
+                    "hexdump starts with a bare offset row without data",
+                )
+                .with_expected("offset, hex bytes and an optional |ascii| column")
+                .with_actual(format!("`{line}`")));
+            }
+            if strict && !is_last {
+                return Err(OperationError::decode(format!(
+                    "hexdump line {} is a bare offset row with data rows following",
+                    idx + 1
+                ))
+                .with_expected("bare offset rows only after the data"));
+            }
+            let value = u64::from_str_radix(&line[..offset_len], 16)
+                .map_err(|_| OperationError::internal("validated offset failed to parse"))?;
+            if strict && value != out.len() as u64 {
+                return Err(OperationError::decode(format!(
+                    "hexdump trailer states {value} total bytes but {} were decoded",
+                    out.len()
+                ))
+                .with_expected(format!("{:x}", out.len()))
+                .with_actual(format!("{value:x}")));
+            }
+            continue;
+        }
+
+        let (offset, body) = if has_offset {
+            let value = u64::from_str_radix(&line[..offset_len], 16)
+                .map_err(|_| OperationError::internal("validated offset failed to parse"))?;
+            (Some(value), line[offset_len..].trim_start())
+        } else if strict {
+            return Err(OperationError::decode(format!(
+                "hexdump line {} does not start with an offset column",
+                idx + 1
+            ))
+            .with_expected("a hex offset followed by whitespace")
+            .with_actual(format!("`{}`", line.chars().take(24).collect::<String>())));
+        } else {
+            (None, *line)
+        };
+
+        let (hex_part, ascii) = match body.find('|') {
+            Some(pos) => (&body[..pos], Some(&body[pos + 1..])),
+            None => (body, None),
+        };
+        let row = parse_hexdump_row(hex_part, strict, idx + 1)?;
+        if strict {
+            let ascii = ascii.ok_or_else(|| {
+                OperationError::decode(format!(
+                    "hexdump line {} is missing the |ascii| column",
+                    idx + 1
+                ))
+                .with_expected("an |ascii| column like `hexdump -C` output")
+            })?;
+            verify_hexdump_ascii(ascii, &row, idx + 1)?;
+            if let Some(offset) = offset {
+                if let Some(expected) = expected_offset {
+                    if offset != expected {
+                        return Err(OperationError::decode(format!(
+                            "hexdump line {} has offset {offset:x} where {expected:x} was expected",
+                            idx + 1
+                        ))
+                        .with_expected(format!("{expected:08x}"))
+                        .with_actual(format!("{offset:08x}")));
+                    }
+                }
+                expected_offset = Some(offset + row.len() as u64);
+            }
+            match row_len {
+                Some(len) if !is_last && len != row.len() => {
+                    return Err(OperationError::decode(format!(
+                        "hexdump line {} decodes {} bytes but the previous rows hold {len}",
+                        idx + 1,
+                        row.len()
+                    ))
+                    .with_expected(format!("{len} bytes per row"))
+                    .with_actual(format!("{} bytes", row.len())));
+                }
+                Some(len) if row.len() > len => {
+                    return Err(OperationError::decode(format!(
+                        "hexdump line {} decodes {} bytes, more than the {len}-byte rows",
+                        idx + 1,
+                        row.len()
+                    ))
+                    .with_expected(format!("at most {len} bytes"))
+                    .with_actual(format!("{} bytes", row.len())));
+                }
+                // Both guards false: the final short row of a dump — no check.
+                Some(_) => {}
+                None => row_len = Some(row.len()),
+            }
+        }
+        saw_data_row = true;
+        out.extend(row);
+    }
+
+    if out.is_empty() {
+        return Err(
+            OperationError::decode("hexdump input contains no hex bytes")
+                .with_expected("data rows"),
+        );
+    }
+    Ok(out)
+}
+
+fn hexdump_parse_op(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<Value> {
+    let text = input_text(v, "From Hexdump")?;
+    let strict = map.bool_or("strict", true);
+    Ok(Value::from_bytes(parse_hexdump(text, strict)?))
 }
 
 // ---------------------------------------------------------------- utf8 ----
@@ -820,24 +1083,73 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
         spec(
             "to-hexdump",
             "To Hexdump",
-            "Formats bytes as an offset/hex/ASCII hexdump, 16 bytes per row.",
+            "Formats bytes as an offset/hex/ASCII hexdump with a configurable row width.",
             C::Utility,
             &[B, T],
             T,
             CostClass::Instant,
             false,
-            vec![p_bool(
-                "uppercase",
-                "Uppercase",
-                false,
-                "Use uppercase hex digits.",
-            )],
+            vec![
+                p_opts(
+                    "width",
+                    "Row width (bytes)",
+                    "16",
+                    &[
+                        ParamOption {
+                            value: "8",
+                            label: "8 bytes per row",
+                        },
+                        ParamOption {
+                            value: "16",
+                            label: "16 bytes per row",
+                        },
+                        ParamOption {
+                            value: "32",
+                            label: "32 bytes per row",
+                        },
+                    ],
+                    "Bytes per hexdump row.",
+                ),
+                p_bool("uppercase", "Uppercase", false, "Use uppercase hex digits."),
+                p_bool(
+                    "include_final_offset",
+                    "Final offset line",
+                    false,
+                    "Append the total byte count as a trailing offset row (like hexdump -C).",
+                ),
+            ],
             &["utility", "ctf"],
             &["hex dump", "xxd"],
             "Common hexdump layout (BSD-style)",
-            "Layout snapshot tests",
+            "Layout snapshot tests + round-trip with from-hexdump",
         ),
         hexdump,
+    );
+
+    reg.add_simple(
+        spec(
+            "from-hexdump",
+            "From Hexdump",
+            "Parses `hexdump -C` style output (offset, hex byte pairs, |ascii| column) \
+             back into bytes. Strict mode validates offsets, row widths, grouping and \
+             the ASCII column; relaxed mode skips those checks.",
+            C::Utility,
+            &[T],
+            B,
+            CostClass::Instant,
+            true,
+            vec![p_bool(
+                "strict",
+                "Strict",
+                true,
+                "Require and verify the full hexdump structure.",
+            )],
+            &["utility", "ctf"],
+            &["hex dump decode", "unhexdump", "parse hexdump"],
+            "hexdump -C layout (BSD/GNU hexdump)",
+            "GNU hexdump layout test + round-trip tests with to-hexdump",
+        ),
+        hexdump_parse_op,
     );
 
     reg.add_simple(
@@ -882,4 +1194,166 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
         ),
         utf8_decode,
     );
+}
+
+#[cfg(test)]
+mod hexdump_tests {
+    use super::*;
+
+    fn to_dump(bytes: Vec<u8>, params: &[(&str, &str)]) -> String {
+        let mut map = ParamMap::new();
+        for (key, value) in params {
+            map.insert(*key, *value);
+        }
+        match hexdump(&Value::Bytes(bytes), &map, &ExecutionContext::new()).unwrap() {
+            Value::Text(t) => t,
+            other => panic!("unexpected output kind {}", other.kind().name()),
+        }
+    }
+
+    fn from_dump(text: &str, strict: bool) -> Vec<u8> {
+        let mut map = ParamMap::new();
+        map.insert("strict", strict);
+        let value = hexdump_parse_op(
+            &Value::Text(text.to_string()),
+            &map,
+            &ExecutionContext::new(),
+        )
+        .expect("parse succeeds");
+        match value {
+            Value::Bytes(b) => b,
+            Value::Text(t) => t.into_bytes(),
+            other => panic!("unexpected output kind {}", other.kind().name()),
+        }
+    }
+
+    #[test]
+    fn hexdump_default_layout_snapshot() {
+        let dump = to_dump(b"123456789".to_vec(), &[]);
+        let first = dump.lines().next().expect("one row").to_string();
+        assert!(first.starts_with("00000000  31 32 33 34  35 36 37 38  39"));
+        assert!(first.ends_with("|123456789|"));
+        assert_eq!(dump.lines().count(), 1);
+        assert!(!dump.contains("00000009"));
+    }
+
+    #[test]
+    fn hexdump_final_offset_option() {
+        // Typed bool: the engine pipeline delivers ParamValue::Bool for
+        // boolean params, and bool_or does not coerce strings.
+        let mut map = ParamMap::new();
+        map.insert("include_final_offset", true);
+        let value = hexdump(
+            &Value::Bytes(b"123456789".to_vec()),
+            &map,
+            &ExecutionContext::new(),
+        )
+        .expect("hexdump succeeds");
+        let Value::Text(dump) = value else {
+            panic!("text output")
+        };
+        assert_eq!(dump.lines().last().expect("trailer"), "00000009");
+    }
+
+    #[test]
+    fn hexdump_width_option() {
+        let data: Vec<u8> = (0..20u8).collect();
+        let dump = to_dump(data.clone(), &[("width", "8")]);
+        let offsets: Vec<&str> = dump
+            .lines()
+            .map(|l| l.split_whitespace().next().expect("offset"))
+            .collect();
+        assert_eq!(offsets, ["00000000", "00000008", "00000010"]);
+        assert_eq!(from_dump(&dump, true), data);
+
+        let wide = to_dump(data.clone(), &[("width", "32")]);
+        assert_eq!(wide.lines().count(), 1);
+        assert_eq!(from_dump(&wide, true), data);
+    }
+
+    #[test]
+    fn hexdump_roundtrip_lengths_and_widths() {
+        // Length 0 is excluded: to-hexdump of empty bytes yields empty text,
+        // and from-hexdump rejects empty input with a typed error (covered
+        // by the strict-rejects list below).
+        for len in [1usize, 7, 8, 15, 16, 17, 31, 33, 64, 100] {
+            let data: Vec<u8> = (0..len as u8).cycle().take(len).collect();
+            for width in ["8", "16", "32"] {
+                let dump = to_dump(data.clone(), &[("width", width)]);
+                assert_eq!(from_dump(&dump, true), data, "len {len} width {width}");
+            }
+            let dump = to_dump(
+                data.clone(),
+                &[("width", "16"), ("include_final_offset", "true")],
+            );
+            assert_eq!(from_dump(&dump, true), data, "len {len} with trailer");
+        }
+    }
+
+    #[test]
+    fn hexdump_parses_gnu_hexdump_output() {
+        // Literal `echo -n '123456789' | hexdump -C` output.
+        let dump =
+            "00000000  31 32 33 34 35 36 37 38  39 0a                    |123456789.|\n0000000a\n";
+        assert_eq!(from_dump(dump, true), b"123456789\n".to_vec());
+    }
+
+    #[test]
+    fn hexdump_ascii_with_embedded_pipe() {
+        // Byte 0x7C renders as `|` inside the ASCII column; the parser takes
+        // the first `|` as the opening delimiter and the trailing `|` as the
+        // closing one.
+        let dump = to_dump(vec![0x7C, b'a'], &[]);
+        assert_eq!(from_dump(&dump, true), vec![0x7C, b'a']);
+    }
+
+    #[test]
+    fn hexdump_strict_rejects_malformed() {
+        for bad in [
+            // Missing ASCII column.
+            "00000000  31 32\n",
+            // ASCII column does not match the bytes.
+            "00000000  31 32                                    |XY|\n",
+            // Unclosed ASCII column.
+            "00000000  31 32                                    |AB\n",
+            // Non-sequential offset.
+            "00000000  31 32                                    |12|\n00000005  33                                     |3|\n",
+            // Column gap in the middle of a 4-byte group.
+            "00000000  31 32 33   34                            |1234|\n",
+            // Split hex pair.
+            "00000000  3 12                                    |12|\n",
+            // Odd trailing digit.
+            "00000000  31 3                                    |1.|\n",
+            // Trailer claims the wrong total.
+            "00000000  31                                      |1|\n00000002\n",
+            // No offset column.
+            "31 32                                             |12|\n",
+            // Empty input.
+            "   \n",
+        ] {
+            let mut map = ParamMap::new();
+            map.insert("strict", true);
+            assert!(
+                hexdump_parse_op(&Value::Text(bad.to_string()), &map, &ExecutionContext::new())
+                    .is_err(),
+                "strict must reject {bad}"
+            );
+        }
+    }
+
+    #[test]
+    fn hexdump_relaxed_recovers_data() {
+        // No offsets, short gap rules ignored, ASCII column unchecked.
+        let mut map = ParamMap::new();
+        map.insert("strict", false);
+        assert_eq!(from_dump("31 32  33 |zzz|", false), vec![0x31, 0x32, 0x33]);
+        // Trailing offset-only rows are skipped after data was seen.
+        assert_eq!(
+            from_dump(
+                "00000000  41                                     |A|\n00000001\n",
+                false
+            ),
+            b"A".to_vec()
+        );
+    }
 }

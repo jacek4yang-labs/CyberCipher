@@ -14,6 +14,18 @@ pub fn input_bytes<'a>(v: &'a Value, op_name: &str) -> OpResult<std::borrow::Cow
     })
 }
 
+/// Extract the input as text, with a useful typed error on mismatch.
+pub fn input_text<'a>(v: &'a Value, op_name: &str) -> OpResult<&'a str> {
+    v.as_text().ok_or_else(|| {
+        OperationError::invalid_input(format!(
+            "`{op_name}` operates on text, but received {} (input is not valid UTF-8)",
+            v.kind().name()
+        ))
+        .with_expected("text")
+        .with_actual(v.kind().name())
+    })
+}
+
 /// Decode key-like material, reporting the resulting byte length in errors.
 pub fn decode_material(
     map: &ParamMap,

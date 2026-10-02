@@ -1,14 +1,17 @@
 # CyberChef compatibility matrix.
 # Statuses: covered | superset | partial | missing | intentional-out-of-scope | same-capability
 #
-# Entries reflect implemented reality only — every entry below was checked
-# against the operation implementations and tests on `main` (commit 5d5ab8e,
-# 2026-09-28), not against names or plans. Capabilities that live on a feature
-# branch awaiting merge are marked "PR in flight".
+# Entries reflect implemented reality only — every entry was checked
+# against the operation implementations and tests on the current branch,
+# not against names or plans. Capabilities that live on a feature branch
+# awaiting merge are marked "PR in flight".
 #
 # Registry snapshot used for this matrix:
-#   - 59 recipe-registry operations on main
-#   - +14 on branch agent/crypto/m5-aead (10 AEAD + 4 KDF ops), PR in flight
+#   - recipe-registry operations on main (59 at commit 5d5ab8e) plus the
+#     AEAD/KDF ops merged since, plus the parity-mop-up block
+#     (checksums/non-crypto hashes/MD4/RIPEMD-160/BLAKE2/Whirlpool/hexdump/
+#     C escapes/JSON escape/BCD/ModHex/COBS/NetBIOS/Base100) from
+#     agent/crypto/parity-mopup
 #   - attack engine (RSA / PRNG) is exposed via CLI + GUI, not the recipe
 #     registry, and therefore has no upstream CyberChef op counterpart
 #     (see [superset]).
@@ -90,13 +93,16 @@ notes = "Radix auto/2-36, byte order, signed handling; hex or decimal output."
 
 [entries.To_Hexdump]
 ours = "to-hexdump"
-status = "partial"
-notes = "Fixed 16-byte rows (verified); CyberChef offers width/upper/hex-cell options."
+status = "covered"
+notes = """Row width (8/16/32 selector), uppercase hex and the trailing final-offset
+row are implemented. Documented deviations: upstream accepts an arbitrary
+byte width and has a 'UNIX format' preview-character toggle (display-only);
+ours uses the fixed 8/16/32 selector and always renders printable ASCII."""
 
 [entries.From_Hexdump]
-ours = "—"
-status = "missing"
-notes = "Upstream parses hexdumps back to bytes; we have no hexdump parser."
+ours = "from-hexdump"
+status = "covered"
+notes = "Strict mode validates offsets, row widths, group gaps, the |ascii| column and the trailing total-offset row; relaxed mode skips verification."
 
 [entries.Reverse]
 ours = "reverse"
@@ -305,9 +311,9 @@ status = "covered"
 notes = "SHA3-224/256/384/512 variants."
 
 [entries.Keccak]
-ours = "sha3"
-status = "partial"
-notes = "Keccak-256/512 are implemented internally but not yet exposed as variant options; upstream Keccak op exposes 224/256/384/512."
+ours = "sha3 (variant parameter)"
+status = "covered"
+notes = "Keccak-224/256/384/512 (pre-standard padding) are exposed variant options."
 
 [entries.Shake]
 ours = "sha3 (shake128/shake256 variants)"
@@ -318,6 +324,96 @@ notes = "Output-length parameter for XOF variants."
 ours = "hmac"
 status = "partial"
 notes = "MD5/SHA-1/SHA-224/256/384/512/SHA3-256/SM3 variants; upstream adds further hashes plus CMAC/GMAC ops, which we lack."
+
+# ------------------------------------------------------------ checksums ----
+# Digest-shaped integrity primitives and non-cryptographic hashes. All are
+# CostClass::Instant registry ops with standard-parameter implementations and
+# published-vector tests.
+
+[entries.CRC_32_Checksum]
+ours = "crc-32"
+status = "covered"
+notes = "Table-driven CRC-32/ISO-HDLC; standard check value 0xCBF43926 tested."
+
+[entries.Adler_32_Checksum]
+ours = "adler-32"
+status = "covered"
+notes = "RFC 1950 Adler-32 with zlib NMAX blocking; 'Wikipedia' = 0x11E60398 tested."
+
+[entries.Fletcher_8_Checksum]
+ours = "fletcher-8"
+status = "covered"
+notes = "4-bit sums mod 15, matching upstream's definition."
+
+[entries.Fletcher_16_Checksum]
+ours = "fletcher-16"
+status = "covered"
+
+[entries.Fletcher_32_Checksum]
+ours = "fletcher-32"
+status = "covered"
+notes = "16-bit little-endian words, odd trailing byte folded in raw, result (sum2 << 16) | sum1 — same as upstream."
+
+[entries.MD4]
+ours = "md4"
+status = "covered"
+notes = "RFC 1320 vectors; Security::Broken."
+
+[entries.RIPEMD]
+ours = "ripemd160"
+status = "partial"
+notes = "RIPEMD-160 only; upstream also exposes 128/256/320, which the RustCrypto ripemd 0.1 crate in the digest-0.10 generation does not cover here."
+
+[entries.BLAKE2b]
+ours = "blake2b"
+status = "partial"
+notes = "Unkeyed BLAKE2b-512 (RFC 7693 vectors). Upstream adds keyed variants and arbitrary digest lengths (1-64); keyed BLAKE2 is not exposed yet."
+
+[entries.BLAKE2s]
+ours = "blake2s"
+status = "partial"
+notes = "Unkeyed BLAKE2s-256. Same keyed/length caveat as BLAKE2b."
+
+[entries.Whirlpool]
+ours = "whirlpool"
+status = "covered"
+notes = "Whirlpool-1.0 (the NESSIE/ISO revision) via the RustCrypto whirlpool crate."
+
+[entries.To_BCD]
+ours = "to-bcd"
+status = "covered"
+notes = "Nibble-order and odd-digit padding (zero prefix / 0xF telephony / reject) are parameters."
+
+[entries.From_BCD]
+ours = "from-bcd"
+status = "covered"
+
+[entries.To_COBS]
+ours = "to-cobs"
+status = "covered"
+notes = "Emits the trailing 0x00 frame delimiter."
+
+[entries.From_COBS]
+ours = "from-cobs"
+status = "covered"
+notes = "Trailing delimiter optional; interior zeros and truncated blocks are typed errors (relaxed mode returns the decodable prefix)."
+
+[entries.To_Modhex]
+ours = "to-modhex"
+status = "covered"
+
+[entries.From_Modhex]
+ours = "from-modhex"
+status = "covered"
+
+[entries.EncodeNetBIOSName]
+ours = "to-netbios-name"
+status = "covered"
+notes = "RFC 1002 first-level encoding with the space-padded 16-byte name slot as default."
+
+[entries.DecodeNetBIOSName]
+ours = "from-netbios-name"
+status = "covered"
 
 # ----------------------------------------------------------------- AEAD ----
 # Implemented on branch agent/crypto/m5-aead (merged copy: feat/aead-kdf) with
@@ -418,3 +514,15 @@ notes = "Partial (PR in flight): Java 48-bit truncated-LCG state recovery from t
 [superset.evp_bytestokey]
 ours = "evp-bytestokey"
 notes = "Partial (PR in flight) on the AEAD/KDF branch; upstream has no standalone EVP_BytesToKey op."
+
+[superset.non_crypto_hashes]
+ours = "fnv (FNV-1/FNV-1a 32/64), djb2, sdbm, java-hash-code (UTF-16 units, signed 32-bit), xxhash (XXH32/XXH64/XXH3-64/XXH3-128 with seeds)"
+notes = "No upstream counterparts: CyberChef ships MurmurHash3 but none of these. Official lcn2/fnv vectors and xxHash sanity vectors tested."
+
+[superset.base100]
+ours = "to-base100 / from-base100"
+notes = "Reference AdamNiederer/base100 algorithm (byte b -> U+1F3F7 + b); no upstream counterpart. Base92 is intentionally out of scope: CyberChef has To/From Base92, but the ecosystem ships multiple incompatible Base92 dialects with no canonical specification to pin provenance against."
+
+[superset.text_escapes]
+ours = "to-c-escapes / from-c-escapes (C standard escapes incl. octal), to-json-escape (RFC 8259)"
+notes = "No direct upstream counterpart — upstream's generic Escape String/Unescape String ops cover overlapping ground with different parameterizations. JSON output is validated by parsing it back with serde_json."

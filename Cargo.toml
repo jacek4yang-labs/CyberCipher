@@ -30,7 +30,7 @@ num-traits = "0.2"
 base64 = "0.22"
 percent-encoding = "2"
 flate2 = "1"
-xxhash-rust = { version = "0.8", features = ["xxh3"] }
+xxhash-rust = { version = "0.8", features = ["xxh3", "xxh32", "xxh64"] }
 dirs = "6"
 parking_lot = "0.12"
 criterion = "0.5"

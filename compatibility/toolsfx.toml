@@ -78,30 +78,43 @@ status = "missing"
 # ------------------------------------------------------------ hashes ----
 
 [entries.md_sha_serial]
-ours = "md5 / sha1 / sha224/256/384/512 / sha3 / sm3 / shake"
+ours = "md5 / md4 / sha1 / sha224/256/384/512 / sha3 / sm3 / shake"
 status = "covered"
-notes = "Ours adds Keccak-256/512 internally (not yet exposed) — see cyberchef.toml Keccak entry."
+notes = "Ours adds Keccak-224/256/384/512 (pre-standard padding) as sha3 variants — see cyberchef.toml Keccak entry."
 
 [entries.ripemd_whirlpool_tiger]
-ours = "—"
-status = "missing"
+ours = "ripemd160 / whirlpool / blake2b / blake2s"
+status = "partial"
+notes = "RIPEMD-160 and Whirlpool covered (reference/NESSIE vectors tested); BLAKE2b-512/BLAKE2s-256 covered unkeyed. Tiger is not implemented — no digest-0.10-generation RustCrypto tiger crate was added in this pass."
 
 [entries.hmac]
 ours = "hmac"
 status = "partial"
 notes = "Ours: 8 hash variants incl. SM3 and SHA3-256. ToolsFx mirrors its full hash family + adds CMAC/GMAC/Poly1305 MACs, which we lack."
 
+[entries.checksums_non_crypto]
+ours = "crc-32, crc-32c, adler-32, fletcher-8/16/32, fnv, djb2, sdbm, java-hash-code, xxhash"
+status = "partial"
+notes = "Implemented as registry ops with official vectors (lcn2/fnv, xxHash sanity tests, standard CRC check values) and CyberChef-compatible Fletcher definitions. ToolsFx-side checksum coverage was not re-verified this pass — verify the feature list before claiming a mapping."
+
 # ---------------------------------------------------------- encodings ----
 
 [entries.base_family]
-ours = "from/to-base64 (std+urlsafe), from/to-base32, hex, binary, octal, decimal"
+ours = """from/to-base64 (std+urlsafe), from/to-base32, hex, binary, octal, decimal,
+base36/45/58/58check/62/85/91, uuencode/xxencode, punycode, quoted-printable,
+modhex, base100, BCD, c-escapes, JSON escape"""
 status = "partial"
-notes = "Base16/36/45/58/58check/62/85/91/92/100, uuEncode/xxEncode, punycode, quoted-printable, custom alphabets: not implemented."
+notes = """Base92 intentionally out of scope: the ecosystem ships multiple incompatible
+Base92 dialects with no canonical specification to pin provenance against
+(CyberChef's To/From Base92 is one dialect we cannot verify bit-for-bit).
+Custom output alphabets are limited to the base64 urlsafe variant. ToolsFx's
+exact Base92/Base100 dialects were not re-verified this pass — verify the
+feature list before claiming interop."""
 
 [entries.url_unicode]
-ours = "from/to-url, encode-text/decode-text"
+ours = "from/to-url, encode-text/decode-text, to/from-unicode-escapes, to/from-utf16le/utf16be"
 status = "partial"
-notes = "URL covered; Unicode escape forms and UTF-16/Latin-1/GBK text decodes are not (ours is UTF-8 only)."
+notes = "URL and Unicode escapes covered; UTF-16 covered. Latin-1/GBK text decodes are not (text handling is UTF-8 only)."
 
 [entries.classical_ctf]
 ours = "—"

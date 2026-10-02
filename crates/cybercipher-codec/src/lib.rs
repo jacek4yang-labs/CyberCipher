@@ -21,6 +21,7 @@ mod inspect;
 mod integer;
 mod specialty;
 mod structured;
+mod transforms;
 mod wrappers;
 
 pub use encoding::decode_input;
@@ -42,4 +43,5 @@ pub fn register_all(reg: &mut OperationRegistry) {
     inspect::register(reg);
     structured::register(reg);
     wrappers::register(reg);
+    transforms::register(reg);
 }
