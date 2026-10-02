@@ -322,7 +322,7 @@ fn from_modhex_op(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpResult<V
             }
         }
     }
-    if nibbles.len() % 2 != 0 {
+    if !nibbles.len().is_multiple_of(2) {
         return Err(
             OperationError::decode("ModHex input has an odd number of characters")
                 .with_expected("an even number of characters")
@@ -472,7 +472,7 @@ fn from_netbios_name_op(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpRe
             .with_actual(format!("`{c}`")));
         }
     }
-    if nibbles.len() % 2 != 0 {
+    if !nibbles.len().is_multiple_of(2) {
         return Err(
             OperationError::decode("NetBIOS encoded name has an odd number of characters")
                 .with_expected("an even number of characters")
@@ -481,7 +481,7 @@ fn from_netbios_name_op(v: &Value, map: &ParamMap, _: &ExecutionContext) -> OpRe
     }
     let out = nibbles
         .chunks(2)
-        .map(|pair| ((pair[0] << 4) | pair[1]) as u8)
+        .map(|pair| (pair[0] << 4) | pair[1])
         .collect();
     Ok(Value::Bytes(out))
 }

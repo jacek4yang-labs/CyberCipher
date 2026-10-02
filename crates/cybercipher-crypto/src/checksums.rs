@@ -105,7 +105,7 @@ fn fletcher32(data: &[u8]) -> u32 {
         a = (a + word) % 0xFFFF;
         b = (b + a) % 0xFFFF;
     }
-    if data.len() % 2 != 0 {
+    if !data.len().is_multiple_of(2) {
         a = (a + data[2 * words] as u32) % 0xFFFF;
         b = (b + a) % 0xFFFF;
     }
