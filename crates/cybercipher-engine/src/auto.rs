@@ -82,17 +82,20 @@ fn is_hex_strict(data: &[u8]) -> bool {
 }
 
 /// Relaxed hex gate for polluted inputs: at least 32 hex digits forming
-/// >=95% of the printable content, with every non-hex character at the TAIL
-/// (classic CTF pollution: junk appended after an otherwise clean hex
-/// string). Strict hex still owns pure inputs; this only fires when strict
-/// refuses, and the decode runs in the op's relaxed mode with explicit
-/// evidence about what was ignored.
+/// at least 95 percent of the printable content, with every non-hex
+/// character at the tail (classic CTF pollution: junk appended after an
+/// otherwise clean hex string). Strict hex still owns pure inputs; this only
+/// fires when strict refuses, and the decode runs in the op's relaxed mode
+/// with explicit evidence about what was ignored.
+///
+/// The tail-only rule exists because an interior non-hex byte would make any
+/// single decode ambiguous.
 fn is_hex_polluted(data: &[u8]) -> bool {
     let mut hex_digits = 0usize;
     let mut tail_junk = 0usize;
     let mut seen_junk = false;
     for &b in data {
-        if matches!(b, b'0'..=b'9' | b'a'..=b'f' | b'A'..=b'F') {
+        if b.is_ascii_hexdigit() {
             hex_digits += 1;
             seen_junk = false;
         } else if b.is_ascii_whitespace() {
