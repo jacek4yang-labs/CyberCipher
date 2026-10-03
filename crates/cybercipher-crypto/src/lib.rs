@@ -14,6 +14,7 @@ mod ciphers;
 mod hashes;
 mod helpers;
 mod kdf;
+mod kmac;
 mod mac;
 mod streams;
 mod tea;
@@ -27,6 +28,7 @@ pub fn register_all(reg: &mut OperationRegistry) {
     checksums::register(reg);
     hashes::register(reg);
     kdf::register(reg);
+    kmac::register(reg);
     mac::register(reg);
     streams::register(reg);
     tea::register(reg);

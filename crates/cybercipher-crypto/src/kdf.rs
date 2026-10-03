@@ -633,4 +633,165 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
         "RFC 9106 section 5.3 test vector",
     );
     reg.add_simple(spec, argon2id_run);
+
+    register_bcrypt(reg);
+}
+
+// -------------------------------------------------------- bcrypt ----
+
+/// bcrypt (Provos & Mazieres, 1999; the OpenBSD `$2*` password scheme) via
+/// the `bcrypt` crate. Unlike the KDFs above, the output is the canonical
+/// Modular Crypt Format string, not raw bytes.
+///
+/// `bcrypt-hash` takes the password as the pipeline input and returns the
+/// `$2*` hash string. With an explicit 16-byte salt the result is
+/// deterministic; without one the crate draws a fresh random salt, so the
+/// spec is marked non-deterministic. `bcrypt-verify` checks a password
+/// against an existing hash string.
+fn register_bcrypt(reg: &mut cybercipher_core::OperationRegistry) {
+    const MIN_COST: i64 = 4;
+    const MAX_COST: i64 = 31;
+
+    fn cost_of(map: &ParamMap) -> OpResult<u32> {
+        let cost = map.int_or("cost", 12);
+        if !(MIN_COST..=MAX_COST).contains(&cost) {
+            return Err(OperationError::invalid_param(
+                "cost",
+                format!("bcrypt cost must be {MIN_COST}-{MAX_COST}, got {cost}"),
+            )
+            .with_expected(format!("{MIN_COST}-{MAX_COST}"))
+            .with_actual(format!("{cost}")));
+        }
+        Ok(cost as u32)
+    }
+
+    let hash_params = vec![
+        p_int(
+            "cost",
+            "Cost",
+            12,
+            "Base-2 log of the key-setup rounds (4-31). Higher is slower.",
+        ),
+        p_text_opt(
+            "salt",
+            "Salt (optional)",
+            "",
+            "Explicit 16-byte salt; omit to generate a random one. Providing a salt makes the output deterministic.",
+        ),
+        p_enc("salt_encoding", "Salt encoding", "hex", ""),
+        p_opts(
+            "version",
+            "Version",
+            "2b",
+            &[
+                ParamOption {
+                    value: "2b",
+                    label: "$2b$ (OpenBSD 2014, current)",
+                },
+                ParamOption {
+                    value: "2a",
+                    label: "$2a$ (original)",
+                },
+                ParamOption {
+                    value: "2y",
+                    label: "$2y$ (PHP fix marker)",
+                },
+                ParamOption {
+                    value: "2x",
+                    label: "$2x$ (Broken 8-bit compat)",
+                },
+            ],
+            "Only relevant with an explicit salt; all versions share the core algorithm.",
+        ),
+    ];
+    let hash_spec = kdf_spec(
+        "bcrypt-hash",
+        "bcrypt Hash",
+        "Hashes a password with bcrypt, returning the canonical $2b$/$2a$/... Modular-Crypt string. The password is the pipeline input; an optional explicit 16-byte salt makes the output deterministic (otherwise a random salt is generated). Verify with bcrypt-verify.",
+        &["bcrypt", "bcrypt-hashing"],
+        hash_params,
+        CostClass::Heavy,
+        Security::Modern,
+        "bcrypt (Provos & Mazieres; OpenBSD)",
+        "`bcrypt` crate (RustCrypto `blowfish` core)",
+        "Openwall bcrypt test vectors",
+    );
+    // kdf_spec marks everything deterministic; bcrypt with a random salt is
+    // not, so patch the flag on the leaked spec (OperationSpec is Copy).
+    let hash_spec = Box::leak(Box::new(OperationSpec {
+        deterministic: false,
+        ..*hash_spec
+    }));
+    reg.add_simple(hash_spec, move |v, map, ctx| -> OpResult<Value> {
+        let _ = ctx;
+        let password = crate::helpers::input_bytes(v, "bcrypt Hash")?;
+        let cost = cost_of(map)?;
+        let salt_raw = map.str_or("salt", "");
+        let result = if salt_raw.is_empty() {
+            bcrypt::hash(password.as_ref(), cost)
+        } else {
+            let salt = decode_param(map, "salt", "salt_encoding", "hex")?;
+            if salt.len() != 16 {
+                return Err(OperationError::key(format!(
+                    "bcrypt salt must be 16 bytes after decoding, got {} bytes",
+                    salt.len()
+                ))
+                .with_parameter("salt")
+                .with_expected("16 bytes")
+                .with_actual(format!("{} bytes", salt.len())));
+            }
+            let salt: [u8; 16] = salt.try_into().expect("checked 16 bytes");
+            bcrypt::hash_with_salt(password.as_ref(), cost, salt)
+                .map(|parts| parts.format_for_version(bcrypt_version(map)))
+        };
+        let hash = result.map_err(|e| OperationError::internal(format!("bcrypt failed: {e}")))?;
+        Ok(Value::Text(hash))
+    });
+
+    let verify_params = vec![p_text(
+        "hash",
+        "bcrypt hash",
+        "",
+        "The $2a$/$2b$/$2x$/$2y$ Modular-Crypt string to check against.",
+    )];
+    let verify_spec = kdf_spec(
+        "bcrypt-verify",
+        "bcrypt Verify",
+        "Checks a password against a bcrypt hash string. The password is the pipeline input; output is the text value `true` or `false`. Malformed hash strings are reported as structured decode errors instead of a silent mismatch.",
+        &["bcrypt-check", "bcrypt-validate"],
+        verify_params,
+        CostClass::Heavy,
+        Security::Modern,
+        "bcrypt (Provos & Mazieres; OpenBSD)",
+        "`bcrypt` crate (RustCrypto `blowfish` core)",
+        "Openwall bcrypt test vectors",
+    );
+    reg.add_simple(verify_spec, move |v, map, ctx| -> OpResult<Value> {
+        let _ = ctx;
+        let password = crate::helpers::input_bytes(v, "bcrypt Verify")?;
+        let hash = map.require_str("hash")?;
+        match bcrypt::verify(password.as_ref(), hash) {
+            Ok(valid) => Ok(Value::Text(
+                if valid { "true" } else { "false" }.to_string(),
+            )),
+            Err(e) => Err(
+                OperationError::decode(format!("input is not a valid bcrypt hash: {e}"))
+                    .with_parameter("hash")
+                    .with_expected("a $2a$/$2b$/$2x$/$2y$ Modular-Crypt string (60 characters)")
+                    .with_details(
+                        "A malformed hash cannot be checked; verify the string was copied in full.",
+                    ),
+            ),
+        }
+    });
+}
+
+/// Map the `version` parameter to the crate's [`bcrypt::Version`].
+fn bcrypt_version(map: &ParamMap) -> bcrypt::Version {
+    match map.str_or("version", "2b") {
+        "2a" => bcrypt::Version::TwoA,
+        "2x" => bcrypt::Version::TwoX,
+        "2y" => bcrypt::Version::TwoY,
+        _ => bcrypt::Version::TwoB,
+    }
 }
