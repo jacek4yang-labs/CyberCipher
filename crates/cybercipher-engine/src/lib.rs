@@ -14,7 +14,7 @@ mod payload;
 mod recipe;
 mod signature;
 
-pub use auto::{auto_decode, AutoCandidate};
+pub use auto::{auto_decode, AutoCandidate, AutoHints};
 pub use executor::{ExecutionReport, RunMode, StageStatus};
 pub use payload::{ValuePayload, ValueSummary};
 pub use recipe::{RecipeEdge, RecipeNodeV1, RecipeV1};

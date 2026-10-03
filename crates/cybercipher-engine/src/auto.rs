@@ -34,6 +34,12 @@ const DEADLINE: Duration = Duration::from_millis(3000);
 /// wall-clock deadline. Larger inputs remain available through the explicit
 /// From Base58/62/36 operations.
 const BIGNUM_EXPLORE_LIMIT: usize = 8 * 1024;
+/// Keyed decrypts run real cipher ops over the node bytes; cap the node size
+/// so the handful of keyed candidates cannot approach the wall-clock deadline
+/// on pathological inputs.
+const KEYED_EXPLORE_LIMIT: usize = 256 * 1024;
+/// Hard cap on keyed candidates appended per expanded node.
+const KEYED_CANDIDATE_CAP: usize = 8;
 
 #[derive(Debug, Clone, Serialize)]
 pub struct AutoCandidate {
@@ -60,6 +66,17 @@ impl AutoCandidate {
     pub fn recipe_ops(&self) -> &[String] {
         &self.path
     }
+}
+
+/// User-supplied context that folds keyed symmetric decryption into the beam:
+/// a key (plus optional IV) enables structural keyed-decrypt candidates built
+/// on the real cipher ops, and a known-plaintext hint lifts candidates whose
+/// decoded output contains it.
+#[derive(Debug, Default, Clone)]
+pub struct AutoHints {
+    pub key: Option<Vec<u8>>,
+    pub iv: Option<Vec<u8>>,
+    pub hint: Option<String>,
 }
 
 /// One transformation available at a frontier node.
@@ -1144,6 +1161,118 @@ struct Frontier {
     step_params: Vec<serde_json::Value>,
 }
 
+// ------------------------------------------------- keyed decrypt plan ----
+
+/// One planned keyed-decrypt candidate: a registry op plus fixed parameters.
+/// The plan is built once from the hints (key/IV shapes are known upfront);
+/// the per-node data-alignment gate runs at expansion time.
+struct KeyedAttempt {
+    op: &'static str,
+    /// Full human label for the evidence line, e.g. "AES-128-CBC".
+    label: String,
+    mode: &'static str,
+    block: usize,
+    /// Hex-encoded IV for IV modes; `None` for ECB.
+    iv_hex: Option<String>,
+}
+
+/// Key-length -> candidate rows, purely structural (no cipher guessing): the
+/// key length admits these algorithms, the supplied IV shape admits these
+/// modes, and PKCS7 validation does the pruning. An 8-byte key admits single
+/// DES but is left to the explicit operations — too weak to be the intended
+/// layer in practice.
+const KEYED_16B: &[(&str, &str, &str, usize)] = &[
+    ("aes-decrypt", "ecb", "AES-128", 16),
+    ("aes-decrypt", "cbc", "AES-128", 16),
+    ("sm4-decrypt", "ecb", "SM4", 16),
+    ("sm4-decrypt", "cbc", "SM4", 16),
+];
+const KEYED_24B: &[(&str, &str, &str, usize)] = &[
+    ("aes-decrypt", "ecb", "AES-192", 16),
+    ("aes-decrypt", "cbc", "AES-192", 16),
+    ("des-decrypt", "ecb", "3DES", 8),
+    ("des-decrypt", "cbc", "3DES", 8),
+];
+const KEYED_32B: &[(&str, &str, &str, usize)] = &[
+    ("aes-decrypt", "ecb", "AES-256", 16),
+    ("aes-decrypt", "cbc", "AES-256", 16),
+];
+
+/// Build the bounded keyed-attempt plan for a user key/IV. CBC rows require
+/// an IV of exactly the block size; everything else is structural.
+fn build_keyed_plan(key: &[u8], iv: Option<&[u8]>) -> Vec<KeyedAttempt> {
+    let rows: &[(&str, &str, &str, usize)] = match key.len() {
+        16 => KEYED_16B,
+        24 => KEYED_24B,
+        32 => KEYED_32B,
+        _ => &[],
+    };
+    let mut plan = Vec::new();
+    for &(op, mode, cipher, block) in rows {
+        if plan.len() >= KEYED_CANDIDATE_CAP {
+            break;
+        }
+        let label = format!("{cipher}-{}", mode.to_uppercase());
+        if mode == "ecb" {
+            plan.push(KeyedAttempt {
+                op,
+                label,
+                mode,
+                block,
+                iv_hex: None,
+            });
+        } else if let Some(iv) = iv.filter(|iv| iv.len() == block) {
+            plan.push(KeyedAttempt {
+                op,
+                label,
+                mode,
+                block,
+                iv_hex: Some(to_hex(iv)),
+            });
+        }
+        // CBC without a block-size IV is structurally impossible: skipped.
+    }
+    plan
+}
+
+fn to_hex(data: &[u8]) -> String {
+    let mut out = String::with_capacity(data.len() * 2);
+    for b in data {
+        out.push_str(&format!("{b:02x}"));
+    }
+    out
+}
+
+/// The parameter overrides a keyed step used, so "Apply as recipe" replays
+/// the decrypt exactly (aligned with the op id pushed onto `path`).
+fn keyed_step_params(attempt: &KeyedAttempt, key_hex: &str) -> serde_json::Value {
+    let mut obj = serde_json::Map::new();
+    obj.insert(
+        "key".to_string(),
+        serde_json::Value::String(key_hex.to_string()),
+    );
+    obj.insert(
+        "key_encoding".to_string(),
+        serde_json::Value::String("hex".to_string()),
+    );
+    obj.insert(
+        "mode".to_string(),
+        serde_json::Value::String(attempt.mode.to_string()),
+    );
+    if let Some(iv_hex) = &attempt.iv_hex {
+        obj.insert("iv".to_string(), serde_json::Value::String(iv_hex.clone()));
+        obj.insert(
+            "iv_encoding".to_string(),
+            serde_json::Value::String("hex".to_string()),
+        );
+    }
+    obj.insert(
+        "padding".to_string(),
+        serde_json::Value::String("pkcs7".to_string()),
+    );
+    serde_json::Value::Object(obj)
+}
+
 /// Serialize a frontier value to bytes for gates, scoring and ranking.
 /// `Value::Json` (the output of from-cbor / from-msgpack) serializes as its
 /// JSON representation; other kinds borrow or fall back to empty.
@@ -1154,15 +1283,24 @@ fn value_to_bytes(value: &Value) -> Vec<u8> {
     }
 }
 
-/// Run Auto Decode on raw input bytes. Returns ranked candidates.
+/// Run Auto Decode on raw input bytes, folding in optional user hints (key,
+/// IV, known-plaintext hint). Returns ranked candidates.
 pub fn auto_decode(
     registry: &OperationRegistry,
     input: &[u8],
     ctx: &ExecutionContext,
+    hints: &AutoHints,
 ) -> Vec<AutoCandidate> {
     let started = Instant::now();
     let mut results: Vec<AutoCandidate> = Vec::new();
     let mut seen: HashSet<u64> = HashSet::new();
+
+    // Keyed decrypt candidates are planned once: the key/IV shapes fix the
+    // op/mode/IV combinations, only the per-node data alignment is checked
+    // during expansion. An unusable key (wrong length, missing IV) simply
+    // yields an empty plan.
+    let keyed_plan = build_keyed_plan(hints.key.as_deref().unwrap_or(&[]), hints.iv.as_deref());
+    let keyed_key_hex = hints.key.as_deref().map(to_hex);
 
     let input_kind = if std::str::from_utf8(input).is_ok() {
         "text"
@@ -1214,7 +1352,7 @@ pub fn auto_decode(
                         evidence,
                         step_params,
                     };
-                    collect_candidate(&candidate, &bytes, &mut seen, &mut results);
+                    collect_candidate(&candidate, &bytes, &mut seen, &mut results, hints);
                     xor_nodes.push(candidate);
                 }
                 xor_nodes.sort_by_cached_key(|n| std::cmp::Reverse(beam_rank(n)));
@@ -1259,8 +1397,70 @@ pub fn auto_decode(
                     evidence,
                     step_params,
                 };
-                collect_candidate(&candidate, &bytes, &mut seen, &mut results);
+                collect_candidate(&candidate, &bytes, &mut seen, &mut results, hints);
                 next.push(candidate);
+            }
+            // Keyed decryption (user-supplied key/IV), after the static
+            // steps. Only structural gates apply: the key length fixes the
+            // algorithm set, ECB/CBC need whole blocks, and PKCS7 validation
+            // inside the op does the pruning — a wrong key/mode/IV almost
+            // never unpads cleanly, and the failed attempt simply produces
+            // no candidate. Scoring ranks whatever survives.
+            // Keyed attempts are skipped on XOR-exploration nodes: the 255
+            // sweep would multiply every keyed attempt and turn the user's
+            // key hint into a mass search. Keyed decryption applies to the
+            // original input and syntax-decoded layers only.
+            let from_xor = node
+                .path
+                .last()
+                .map(|p| p == "xor-single-byte")
+                .unwrap_or(false);
+            if !keyed_plan.is_empty() && !from_xor && bytes.len() <= KEYED_EXPLORE_LIMIT {
+                for attempt in &keyed_plan {
+                    if ctx.is_cancelled() || started.elapsed() >= DEADLINE {
+                        break;
+                    }
+                    // ECB/CBC consume whole blocks only; empty data is noise.
+                    if bytes.is_empty() || !bytes.len().is_multiple_of(attempt.block) {
+                        continue;
+                    }
+                    let Some(op) = registry.get(attempt.op) else {
+                        continue;
+                    };
+                    let Some(key_hex) = keyed_key_hex.as_deref() else {
+                        continue;
+                    };
+                    // Lossless adaptation matching the executor's coercion.
+                    let coerced = adapt(&node.value, op.spec().input_kinds);
+                    let mut params = ParamMap::new();
+                    params.insert("key", key_hex);
+                    params.insert("key_encoding", "hex");
+                    params.insert("mode", attempt.mode);
+                    if let Some(iv_hex) = &attempt.iv_hex {
+                        params.insert("iv", iv_hex.as_str());
+                        params.insert("iv_encoding", "hex");
+                    }
+                    params.insert("padding", "pkcs7");
+                    let Ok(out) = op.execute(&coerced, &params, ctx) else {
+                        continue;
+                    };
+                    let mut path = node.path.clone();
+                    path.push(attempt.op.to_string());
+                    let mut evidence = node.evidence.clone();
+                    evidence.push(format!("keyed decrypt: {} with user key", attempt.label));
+                    evidence.push("PKCS7 padding validated by the decrypt op".to_string());
+                    let mut step_params = node.step_params.clone();
+                    step_params.push(keyed_step_params(attempt, key_hex));
+                    let candidate = Frontier {
+                        kind: out.kind().name().to_string(),
+                        value: out,
+                        path,
+                        evidence,
+                        step_params,
+                    };
+                    collect_candidate(&candidate, &bytes, &mut seen, &mut results, hints);
+                    next.push(candidate);
+                }
             }
         }
         next.sort_by_cached_key(|n| std::cmp::Reverse(beam_rank(n)));
@@ -1302,7 +1502,10 @@ fn beam_rank(node: &Frontier) -> u32 {
 }
 
 /// Steps whose successful decode is strong evidence; their continuations are
-/// prioritized in the beam so multi-layer chains are not starved.
+/// prioritized in the beam so multi-layer chains are not starved. The keyed
+/// decrypt ops are only reachable when the user supplied a key: a decrypt
+/// that validated PKCS7 padding is strong evidence, and its continuation
+/// (further layers over the recovered plaintext) must survive truncation.
 const SYNTAX_CHAIN_STEPS: &[&str] = &[
     "from-base64",
     "from-base32",
@@ -1315,6 +1518,9 @@ const SYNTAX_CHAIN_STEPS: &[&str] = &[
     "from-yenc",
     "from-cbor",
     "from-msgpack",
+    "aes-decrypt",
+    "des-decrypt",
+    "sm4-decrypt",
 ];
 
 fn collect_candidate(
@@ -1322,6 +1528,7 @@ fn collect_candidate(
     prev: &[u8],
     seen: &mut HashSet<u64>,
     results: &mut Vec<AutoCandidate>,
+    hints: &AutoHints,
 ) {
     if node.path.is_empty() {
         return;
@@ -1360,6 +1567,24 @@ fn collect_candidate(
     }) {
         score = (score + 0.15).min(0.99);
         evidence.push("strict syntax decode".to_string());
+    }
+    // Known-plaintext hint: a user hint contained in the decoded output is
+    // strong evidence, like the flag pattern (case-insensitive). Non-matches
+    // are never penalized — the hint only lifts candidates that contain it.
+    if let Some(hint) = hints
+        .hint
+        .as_deref()
+        .map(str::trim)
+        .filter(|h| !h.is_empty())
+    {
+        let window = &bytes[..bytes.len().min(64 * 1024)];
+        if String::from_utf8_lossy(window)
+            .to_lowercase()
+            .contains(&hint.to_lowercase())
+        {
+            score = (score + 0.45).min(0.99);
+            evidence.push(format!("hint \"{hint}\" matched"));
+        }
     }
     if looks_like_pem(&bytes) {
         score = (score + 0.25).min(0.99);

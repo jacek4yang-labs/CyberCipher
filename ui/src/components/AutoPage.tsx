@@ -52,7 +52,10 @@ export function AutoPage() {
         Bounded, explainable automatic decoding: cheap detectors propose
         transformations, the engine executes and scores them (beam width 16,
         max depth 6), and every claim shows its evidence. Nothing is certain
-        unless the evidence says so.
+        unless the evidence says so. When the key/IV fields below hold key
+        material, structural keyed decryption (AES/SM4/3DES by key length)
+        joins the beam, and a known-plaintext hint boosts candidates whose
+        output contains it.
       </p>
       <button className="bake-btn" onClick={() => void runAuto()} disabled={!ready || autoRunning}>
         {autoRunning ? "Analyzing…" : "Analyze input"}

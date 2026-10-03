@@ -163,6 +163,18 @@ function initParams(op: OperationInfo | undefined): Record<string, ParamValue> {
   return params;
 }
 
+/**
+ * The assist key field accepts text, hex or Base64 ("decoded to 16/24/32
+ * bytes"); the auto-analyze request carries a single encoding, so pick hex
+ * when the text is a pure even-length hex string (the common key form) and
+ * UTF-8 otherwise. A wrong pick cannot fake a hit — the keyed decrypt either
+ * validates PKCS7 padding or the candidate is dropped.
+ */
+function assistKeyEncoding(text: string): "utf8" | "hex" {
+  const t = text.trim();
+  return t.length >= 32 && t.length % 2 === 0 && /^[0-9a-fA-F]+$/.test(t) ? "hex" : "utf8";
+}
+
 export interface Store {
   ready: boolean;
   page: Page;
@@ -678,12 +690,21 @@ export const useStore = create<Store>((set, get) => ({
   },
 
   runAuto: async () => {
-    const { inputText, inputEncoding } = get();
+    const { inputText, inputEncoding, assistKeyCandidate, assistIvHex, assistHint } = get();
     set({ autoRunning: true });
     try {
+      // The Crypto Assist key/IV/hint fields double as keyed auto-decode
+      // hints (mirroring how runCryptoAssist passes them): key material
+      // folds structural AES/SM4/3DES decryption into the beam, the hint
+      // boosts candidates whose output contains it.
       const candidates = await api.autoAnalyze({
         input_text: inputText,
         input_encoding: inputEncoding,
+        key_text: assistKeyCandidate,
+        key_encoding: assistKeyEncoding(assistKeyCandidate),
+        iv_text: assistIvHex,
+        iv_encoding: "hex",
+        hint: assistHint,
       });
       set({ autoCandidates: candidates });
     } catch (e) {

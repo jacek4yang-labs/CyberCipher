@@ -70,6 +70,17 @@ enum Command {
     Auto {
         /// Input file path, `-` for stdin, or a literal string.
         input: String,
+        /// Optional key material: UTF-8 text, or 0x-prefixed hex. Enables
+        /// structural keyed-decrypt candidates (AES/SM4/3DES) in the beam.
+        #[arg(long)]
+        key: Option<String>,
+        /// Optional IV: UTF-8 text, or 0x-prefixed hex. Enables CBC candidates.
+        #[arg(long)]
+        iv: Option<String>,
+        /// Optional known-plaintext hint: candidates whose output contains it
+        /// are boosted.
+        #[arg(long)]
+        hint: Option<String>,
     },
     /// Scan input for cryptographic algorithm signatures (constant tables,
     /// code shapes). Evidence-backed candidates with confidence.
@@ -332,12 +343,42 @@ no plaintext recovered (see findings)"
                 ),
             }
         }
-        Command::Auto { input } => {
+        Command::Auto {
+            input,
+            key,
+            iv,
+            hint,
+        } => {
             let data = read_input(&input);
+            // CLI keys are text-only by convention; 0x-prefixed values are
+            // read as hex. Malformed hex exits with a clear message.
+            let material = |spec: &Option<String>| -> Option<Vec<u8>> {
+                let raw = spec.as_deref()?.trim();
+                if raw.is_empty() {
+                    return None;
+                }
+                match raw.strip_prefix("0x").or_else(|| raw.strip_prefix("0X")) {
+                    Some(hex) => {
+                        let bytes =
+                            cybercipher_codec::decode_input("hex", hex).unwrap_or_else(|e| {
+                                eprintln!("error: hex material after 0x is invalid: {e}");
+                                std::process::exit(2);
+                            });
+                        Some(bytes)
+                    }
+                    None => Some(raw.as_bytes().to_vec()),
+                }
+            };
+            let hints = cybercipher_engine::AutoHints {
+                key: material(&key),
+                iv: material(&iv),
+                hint: hint.filter(|h| !h.trim().is_empty()),
+            };
             let candidates = cybercipher_engine::auto_decode(
                 &registry,
                 &data,
                 &cybercipher_core::ExecutionContext::new(),
+                &hints,
             );
             if candidates.is_empty() {
                 println!("no plausible decoding found");
