@@ -46,7 +46,7 @@ ours = "attack_dp_leak (dp-leak)"
 status = "covered"
 notes = "Deadline-bounded; escalates to factorization when dp is small."
 
-[entries.rsa_dpdq_leak]
+[entries.rsa_dpdq_recover]
 ours = "attack_dpdq_recover (dpdq-recover; task id rsa-dpdq-recover)"
 status = "covered"
 notes = "Fermat-base gcd identity on e·dp−1 and e·dq−1 (any e) plus a k-divisor sweep for small e; leak-vs-factor algebraic verification with a joint cross-check, so a corrupt second leak is ignored instead of blocking. Wired into the analyzer after dp-leak."
@@ -196,3 +196,28 @@ notes = "Upstream has no DSA support — pure superset. RustCrypto dsa crate; sh
 [superset.x448_key_exchange]
 ours = "x448 key exchange (RFC 7748) in cybercipher-pki::ecc — private keygen (clamped), public derivation, shared secret with low-order peer rejection"
 notes = "Upstream ECC coverage is Keccak-256 + secp256k1/ETH only. Ed448 (RFC 8032 EdDSA over Curve448) is intentional-out-of-scope: no maintained Rust crate implements the protocol (ed448-goldilocks ships curve arithmetic only) and hand-rolling sign/verify would violate the no-hand-implemented-crypto policy."
+
+# ------------------------------------------------- gap-closure wave ----
+# PRs #78/#79: secp256k1+ETH (EIP-55), dp+dq recovery (gcd identities),
+# Rabin e=2 (Tonelli-Shanks + CRT), DSA (FIPS 186-4), X448 (RFC 7748).
+# All confirmed covered as of main 8128cc2.
+
+[entries.rsa_dpdq]
+ours = "rsa-analyzer dpdq-recover pipeline step"
+status = "covered"
+notes = "Gcd identities on e*dp-1/e*dq-1 + k-divisor sweep; algebraic verification."
+
+[entries.rabin_e2]
+ours = "rsa-analyzer rabin pipeline step"
+status = "covered"
+notes = "Tonelli-Shanks (p ≡ 1 mod 4) + CRT; all four roots verified; hint/flag auto-select."
+
+[entries.secp256k1_eth]
+ours = "pki secp256k1 keygen/sign/verify/ECDH + ETH address (EIP-55 checksummed)"
+status = "covered"
+notes = "k256 crate; Wycheproof vectors; EIP-55 checksum case tests."
+
+[entries.dsa_x448]
+ours = "dsa-keygen/sign/verify (FIPS 186-4) + x448 key exchange (RFC 7748)"
+status = "covered"
+notes = "RustCrypto dsa 0.6 + x448 crate; X448 Alice/Bob vectors."

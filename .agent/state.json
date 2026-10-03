@@ -1,7 +1,7 @@
 {
   "schema": 1,
-  "phase": "v0.1.0 RELEASED — post-release consolidation",
-  "last_reconciled_sha": "3962642",
+  "phase": "v0.1.0 released; gap-closure complete; post-release consolidation",
+  "last_reconciled_sha": "8128cc2",
   "active_branch": null,
   "active_pr": null,
   "current_task": null,
@@ -60,7 +60,12 @@
     "GUI-COMPOSE-01",
     "RELEASE-01",
     "DOCS-TRUTH-01",
-    "RELEASE-V0.1.0"
+    "RELEASE-V0.1.0",
+    "KEYED-AUTO-01",
+    "CRYPTO-LONGTAIL-01",
+    "PKI-RESIDUAL-01",
+    "FILE-DATA-01",
+    "GUI-COMPOSE-01"
   ],
   "blocked": [],
   "agent_lanes": {},
@@ -70,5 +75,5 @@
     "cargo_test": "pass (CI)",
     "frontend": "pass (CI)"
   },
-  "notes": "Session 9-10: 26 PRs merged (#44-#71 range: matrices, PKI Lab GUI, JWT/JWS, SSTV core+bridge+GUI, steg core, Auto LSB, structure/carving, QR/barcode, stereo/combine/frames, CTF specialty, Auto Decode v3, signature scanner, Assist profiles, GUI composition, ECDSA attacks, parity mop-up, docs truth). RELEASE v0.1.0 published: tar.gz + sha256, Package+Smoke CI green (layout verified, CLI sha256 KAT passed, linkage recorded). Registry ~215+ ops. Validation is GitHub Actions CI only (no local cargo/npm per machine policy). Remaining follow-ups tracked in queue: PKI residual (secp256k1/ETH, DSA, Ed448/X448), file/data long-tail (YAML/XML/BSON/protobuf), KMAC/bcrypt/HC-256/Rabbit/ZUC, CTS/XTS/EAX/OCB/SIV modes, pixel-inspector op, APNG/WebP frames."
+  "notes": "Sessions 8-9: 37 PRs merged (#44-#81 range). RELEASE v0.1.0 published. Registry ~260+ ops across 11 crates. All validation via GitHub Actions CI. Gap-closure complete: JSON/YAML/BSON/XML/protobuf, keyed auto-decode, secp256k1+ETH, dp+dq/Rabin/DSA/X448, EAX/OCB3/SIV/XTS/CTS, HC-256/Rabbit/ZUC, KMAC/bcrypt, MD2/Tiger/Streebog/GOST94/Shabal/Groestl, CAST6, Bake one-shot auto-decode with selectable alternates. Intentional-out-of-scope: Ed448 (no maintained crate), Noekeon/Shacal2 (never published), NetBIOS-name (already in transforms.rs), screen-region capture (desktop-specific). Remaining P3: pixel-inspector op, APNG/animated-WebP frames."
 }

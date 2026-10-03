@@ -537,3 +537,65 @@ notes = "Reference AdamNiederer/base100 algorithm (byte b -> U+1F3F7 + b); no up
 [superset.text_escapes]
 ours = "to-c-escapes / from-c-escapes (C standard escapes incl. octal), to-json-escape (RFC 8259)"
 notes = "No direct upstream counterpart — upstream's generic Escape String/Unescape String ops cover overlapping ground with different parameterizations. JSON output is validated by parsing it back with serde_json."
+
+# ------------------------------------------------- gap-closure wave ----
+# PRs #76-#81 (2026-10): JSON pretty/minify, YAML, BSON, XML inspect,
+# protobuf wire inspection, keyed auto-decode (key/IV/hint into the beam),
+# relaxed-hex/base64 steps, secp256k1+ETH, dp+dq/Rabin/DSA/X448,
+# EAX/OCB3/AES-SIV/XTS/CTS, HC-256/Rabbit/ZUC, KMAC, bcrypt,
+# MD2/Tiger/Streebog/GOST94/Shabal/Groestl, CAST6.
+
+[entries.json_pretty_minify]
+ours = "json-pretty, json-minify"
+status = "covered"
+notes = "Two-space pretty + compact minify, typed errors on invalid input."
+
+[entries.yaml]
+ours = "yaml-to-json, json-to-yaml"
+status = "covered"
+notes = "YAML 1.2 core schema via serde_yaml; composes with JSON ops."
+
+[entries.bson]
+ours = "bson-to-json, json-to-bson"
+status = "covered"
+notes = "ObjectId/timestamp/binary preserved as structured JSON fields."
+
+[entries.protobuf_inspect]
+ours = "protobuf-inspect"
+status = "covered"
+notes = "Wire-level only (varint/fixed64/fixed32/len-delim, bounded nesting). Field semantics require a schema — never guessed."
+
+[entries.xml_inspect]
+ours = "xml-inspect"
+status = "covered"
+notes = "Bounded JSON tree: @attributes, #text, repeated elements as arrays."
+
+[entries.eax_ocb3_siv]
+ours = "aead-eax-encrypt/decrypt, aead-ocb3-encrypt/decrypt, aead-aes-siv-encrypt/decrypt"
+status = "covered"
+notes = "EAX, OCB3, AES-SIV (128/256) via RustCrypto eax/ocb3/aes-siv crates."
+
+[entries.xts]
+ours = "xts-aes-encrypt/decrypt"
+status = "covered"
+notes = "XTS-AES with sector-based tweak parameter."
+
+[entries.hc256_rabbit_zuc]
+ours = "hc256-encrypt, rabbit-encrypt, zuc-encrypt"
+status = "covered"
+notes = "RustCrypto hc-256/rabbit/zuc crates with official test vectors."
+
+[entries.kmac]
+ours = "kmac128, kmac256"
+status = "covered"
+notes = "In-tree over Keccak-f[1600] sponge per NIST SP 800-185; official sample vectors."
+
+[entries.bcrypt]
+ours = "bcrypt-hash, bcrypt-verify"
+status = "covered"
+notes = "bcrypt crate; configurable cost; verify returns boolean+evidence."
+
+[entries.md2_tiger_streebog]
+ours = "md2, tiger, streebog-256, streebog-512, gost94, shabal, groestl-256, groestl-512"
+status = "covered"
+notes = "RustCrypto digest-0.10 crates; official vectors from RFC/standards."
