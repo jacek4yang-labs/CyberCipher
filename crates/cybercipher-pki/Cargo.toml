@@ -48,6 +48,11 @@ base64ct = "1"
 elliptic-curve = { version = "0.13", features = ["alloc", "pem", "pkcs8", "sec1"] }
 p256 = { version = "0.13", features = ["ecdsa", "ecdh", "pem", "pkcs8", "std"] }
 p384 = { version = "0.13", features = ["ecdsa", "ecdh", "pem", "pkcs8", "std"] }
+# secp256k1 (Bitcoin/Ethereum): same elliptic-curve 0.13 / ecdsa 0.16 stack, so
+# the generic P-256/P-384 helpers work unchanged over the k256 types. `ecdh`
+# enables the shared-secret op; `keccak256` is enabled via the `sha3` crate
+# below (kept version-aligned with the copy already resolved in the workspace).
+k256 = { version = "0.13", features = ["ecdsa", "ecdh", "arithmetic", "pem", "pkcs8", "std"] }
 # The shared ECDSA layer p256/p384 build on (0.16 in both). Added explicitly so
 # the generic P-256/P-384 helpers can name `ecdsa::Signature<C>`/`SigningKey`.
 ecdsa = { version = "0.16", features = ["alloc", "der", "digest", "signing", "verifying"] }
@@ -70,6 +75,12 @@ sm3 = "0.4"
 # elliptic-curve stack) provides the constant-time MAC comparison.
 hmac = "0.12"
 subtle = "2"
+
+# --- Ethereum (EIP-55) ---
+# Keccak-256 (the original Keccak padding, NOT SHA3-256) for ETH address
+# derivation. Same `sha3` crate/stack already used by cybercipher-crypto; no
+# new package versions in the lock.
+sha3 = "0.10"
 
 # --- X.509 certificate / CSR / CRL structures ---
 # x509-cert 0.2 is version-aligned with the ASN.1 stack above (der 0.7 /

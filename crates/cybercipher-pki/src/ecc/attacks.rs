@@ -420,22 +420,24 @@ pub fn ecdsa_small_k_recover(
 // Internals
 // ---------------------------------------------------------------------------
 
-/// ECDSA attacks are only defined for the NIST curves (P-256/P-384).
+/// ECDSA attacks are defined for P-256, P-384, and secp256k1 (the curves
+/// whose group order and key derivation the num-bigint-dig scalar algebra +
+/// RustCrypto crates below cover).
 fn check_ecdsa_curve(curve: EccCurve) -> PkiResult<()> {
     match curve {
-        EccCurve::P256 | EccCurve::P384 => Ok(()),
-        other => Err(wrong_curve("p256 or p384", other.label())
-            .with_details("ECDSA attacks are only defined for the NIST curves P-256 and P-384")),
+        EccCurve::P256 | EccCurve::P384 | EccCurve::Secp256k1 => Ok(()),
+        other => Err(wrong_curve("p256, p384, or secp256k1", other.label())
+            .with_details("ECDSA attacks are only defined for P-256, P-384, and secp256k1")),
     }
 }
 
 /// Curve group order `n`, derived from the curve crates themselves:
 /// `SecretKey::from_bytes` accepts exactly the scalars in `[1, n-1]`, so `n`
-/// is the smallest rejected value in the scalar range. Both NIST group orders
-/// have their top bit set, so `[2^(bits-1), 2^bits]` brackets `n` and a
-/// binary search converges in `bits` steps. No curve constants are hard-coded
-/// in this module; the derivation is pinned against the FIPS 186-4 constants
-/// in the unit tests.
+/// is the smallest rejected value in the scalar range. All three supported
+/// group orders have their top bit set, so `[2^(bits-1), 2^bits]` brackets
+/// `n` and a binary search converges in `bits` steps. No curve constants are
+/// hard-coded in this module; the derivation is pinned against the FIPS
+/// 186-4 / SECG constants in the unit tests.
 fn group_order(curve: EccCurve) -> PkiResult<BigUint> {
     let bits = 8 * curve.private_key_size();
     let one = BigUint::from(1u32);
@@ -465,6 +467,7 @@ fn scalar_in_range(curve: EccCurve, value: &BigUint) -> bool {
     match curve {
         EccCurve::P256 => scalar_in_range_curve::<p256::NistP256>(&bytes),
         EccCurve::P384 => scalar_in_range_curve::<p384::NistP384>(&bytes),
+        EccCurve::Secp256k1 => scalar_in_range_curve::<k256::Secp256k1>(&bytes),
         _ => false,
     }
 }
@@ -620,6 +623,7 @@ fn derive_compressed_hex(curve: EccCurve, scalar: &BigUint) -> Option<String> {
     match curve {
         EccCurve::P256 => derive_compressed_hex_curve::<p256::NistP256>(&bytes),
         EccCurve::P384 => derive_compressed_hex_curve::<p384::NistP384>(&bytes),
+        EccCurve::Secp256k1 => derive_compressed_hex_curve::<k256::Secp256k1>(&bytes),
         _ => None,
     }
 }
@@ -789,6 +793,16 @@ mod tests {
             p384_n,
             BigUint::parse_bytes(
                 b"ffffffffffffffffffffffffffffffffffffffffffffffffc7634d81f4372ddf581a0db248b0a77aecec196accc52973",
+                16,
+            )
+            .unwrap()
+        );
+        // SECG2 / secp256k1 group order (SEC 2 v2 section 2.4.1).
+        let secp256k1_n = group_order(EccCurve::Secp256k1).unwrap();
+        assert_eq!(
+            secp256k1_n,
+            BigUint::parse_bytes(
+                b"fffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141",
                 16,
             )
             .unwrap()
