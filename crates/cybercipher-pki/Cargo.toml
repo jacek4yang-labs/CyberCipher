@@ -71,6 +71,15 @@ ed25519-dalek = { version = "2", default-features = false, features = ["fast", "
 x25519-dalek = { version = "2", features = ["static_secrets"] }
 signature = "2"
 
+# X448 (RFC 7748 over Curve448): the `x448` crate wraps the curve arithmetic
+# of `ed448-goldilocks` (RustCrypto elliptic-curves team) with the RFC 7748
+# clamping and low-order-point checks. Its own dependency stack is dated
+# (rand_core 0.5, edition 2018) but pure-Rust and tiny; keygen here uses the
+# workspace rand's OsRng directly, not the crate's rand_core-0.5 API.
+# Ed448 *signatures* stay out of scope: no maintained crate implements the
+# RFC 8032 Ed448 protocol, and hand-rolling it is against crate policy.
+x448 = "0.6"
+
 # --- SM2 (GB/T 32918) + SM3 (GB/T 32905), Chinese national-standard crypto ---
 # RustCrypto's sm2 crate provides the SM2 curve (sm2p256v1), the SM2 digital
 # signature algorithm (`dsa` module) and SM2 public-key encryption (`pke`
