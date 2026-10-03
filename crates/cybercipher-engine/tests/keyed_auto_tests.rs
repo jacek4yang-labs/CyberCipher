@@ -467,9 +467,13 @@ fn block_size_gate_is_per_cipher() {
         .iter()
         .find(|c| c.path.last().map(|p| p == "des-decrypt").unwrap_or(false))
         .expect("3DES must fire on its own block alignment");
-    assert!(keyed.preview.contains("flag{triple_des_block_gate_is_per_cipher_row}"));
+    assert!(keyed
+        .preview
+        .contains("flag{triple_des_block_gate_is_per_cipher_row}"));
     assert!(
-        !candidates.iter().any(|c| c.path.last().unwrap() == "aes-decrypt"),
+        !candidates
+            .iter()
+            .any(|c| c.path.last().unwrap() == "aes-decrypt"),
         "AES rows must be skipped for 16-unaligned data"
     );
 }
