@@ -1369,6 +1369,8 @@ dependencies = [
  "des",
  "digest 0.10.7",
  "eax",
+ "gost94",
+ "groestl",
  "hc-256",
  "hkdf",
  "hmac",
@@ -1376,6 +1378,7 @@ dependencies = [
  "kuznyechik",
  "magma",
  "md-5",
+ "md2",
  "md4",
  "ocb3",
  "pbkdf2",
@@ -1393,9 +1396,12 @@ dependencies = [
  "sha1",
  "sha2",
  "sha3",
+ "shabal",
  "sm3",
  "sm4",
+ "streebog",
  "threefish",
+ "tiger",
  "twofish",
  "whirlpool",
  "xxhash-rust",
@@ -2484,6 +2490,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "gost94"
+version = "0.10.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "2f960e0ba8eb5e47a7d45097dc4159b5ef63d82e62dc85894bfcfd8e6b85526c"
+dependencies = [
+ "digest 0.10.7",
+]
+
+[[package]]
+name = "groestl"
+version = "0.10.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "343cfc165f92a988fd60292f7a0bfde4352a5a0beff9fbec29251ca4e9676e4d"
+dependencies = [
+ "digest 0.10.7",
+]
+
+[[package]]
 name = "group"
 version = "0.13.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3352,6 +3376,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d89e7ee0cfbedfc4da3340218492196241d89eefb6dab27de5df917a6d2e78cf"
 dependencies = [
  "cfg-if",
+ "digest 0.10.7",
+]
+
+[[package]]
+name = "md2"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1f4f0f3ed25ff4f8d8d102288d92f900efc202661c884cf67dfe4f0d07c43d1f"
+dependencies = [
  "digest 0.10.7",
 ]
 
@@ -5136,6 +5169,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "shabal"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "990a6c7ff96ecc5664129bbf1f7b46a5a7c13f297d05af75e702f861cea6f08a"
+dependencies = [
+ "digest 0.10.7",
+]
+
+[[package]]
 name = "shlex"
 version = "2.0.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5310,6 +5352,15 @@ checksum = "04082e93ed1a06debd9148c928234b46d2cf260bc65f44e1d1d3fa594c5beebc"
 dependencies = [
  "simdutf8",
  "thiserror 2.0.21",
+]
+
+[[package]]
+name = "streebog"
+version = "0.10.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9e7fe6ed8a42cec360e070309427bb7959e102849b0dbaa7de19d5b9860bd536"
+dependencies = [
+ "digest 0.10.7",
 ]
 
 [[package]]
@@ -5979,6 +6030,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d01bb3253ac4d5c6c7dbb6f4f66a8178a24deefe0067357ace6482db2f3ccc6e"
 dependencies = [
  "cipher 0.5.2",
+]
+
+[[package]]
+name = "tiger"
+version = "0.2.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "579abbce4ad73b04386dbeb34369c9873a8f9b749c7b99cbf479a2949ff715ed"
+dependencies = [
+ "digest 0.10.7",
 ]
 
 [[package]]

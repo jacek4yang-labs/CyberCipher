@@ -29,6 +29,14 @@ fn digest_bytes(algo: &str, data: &[u8], shake_len: usize) -> OpResult<Vec<u8>> 
         "blake2s" => blake2::Blake2s256::digest(data).to_vec(),
         "whirlpool" => whirlpool::Whirlpool::digest(data).to_vec(),
         "sm3" => sm3::Sm3::digest(data).to_vec(),
+        "md2" => md2::Md2::digest(data).to_vec(),
+        "tiger" => tiger::Tiger::digest(data).to_vec(),
+        "streebog-256" => streebog::Streebog256::digest(data).to_vec(),
+        "streebog-512" => streebog::Streebog512::digest(data).to_vec(),
+        "gost94" => gost94::Gost94Test::digest(data).to_vec(),
+        "shabal" => shabal::Shabal512::digest(data).to_vec(),
+        "groestl-256" => groestl::Groestl256::digest(data).to_vec(),
+        "groestl-512" => groestl::Groestl512::digest(data).to_vec(),
         "shake128" => {
             let mut hasher = sha3::Shake128::default();
             hasher.update(data);
@@ -342,6 +350,85 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
         reg.add_simple(spec, run);
     }
 
+    // Batch D: residual legacy/national digest families.
+    for (id, name, desc, aliases, security, standard, vectors) in [
+        (
+            "md2",
+            "MD2",
+            "Computes the MD2 digest. Broken; RFC 1319 legacy, still seen in old PKI and CTF material.",
+            &["md2 hash"][..],
+            Broken,
+            "RFC 1319",
+            "RFC 1319 test suite / reference implementation vectors",
+        ),
+        (
+            "tiger",
+            "Tiger",
+            "Computes the Tiger-192 digest (Anderson & Biham, FSE 1996); used by DC++ and Gajim message digests.",
+            &["tiger hash", "tiger192"][..],
+            Legacy,
+            "Tiger (Anderson & Biham, FSE 1996)",
+            "Tiger reference implementation test vectors",
+        ),
+        (
+            "streebog-256",
+            "Streebog-256",
+            "Computes the Streebog-256 digest (GOST R 34.11-2012, 256-bit output).",
+            &["streebog256", "gost3411-256"][..],
+            Modern,
+            "GOST R 34.11-2012 / RFC 6986",
+            "GOST R 34.11-2012 test vectors (RFC 6986 appendix)",
+        ),
+        (
+            "streebog-512",
+            "Streebog-512",
+            "Computes the Streebog-512 digest (GOST R 34.11-2012, 512-bit output).",
+            &["streebog512", "gost3411-512"][..],
+            Modern,
+            "GOST R 34.11-2012 / RFC 6986",
+            "GOST R 34.11-2012 test vectors (RFC 6986 appendix)",
+        ),
+        (
+            "gost94",
+            "GOST R 34.11-94",
+            "Computes the GOST R 34.11-94 digest with the standard's test parameter set (S-box id-GostR3411-94-Test). Broken; superseded by Streebog.",
+            &["gost94 hash", "gost3411-94"][..],
+            Broken,
+            "GOST R 34.11-94",
+            "GOST R 34.11-94 test-suite vectors",
+        ),
+        (
+            "shabal",
+            "Shabal-512",
+            "Computes the Shabal-512 digest (SHA-3 candidate family); the 512-bit variant of the five output sizes defined by the submission.",
+            &["shabal hash", "shabal-512"][..],
+            Legacy,
+            "Shabal SHA-3 submission (Peneaud et al.)",
+            "Shabal submission test values",
+        ),
+        (
+            "groestl-256",
+            "Grøstl-256",
+            "Computes the Grøstl-256 digest (SHA-3 finalist, round 3).",
+            &["groestl hash", "groestl256", "groestl-256"][..],
+            Modern,
+            "Grøstl SHA-3 submission (Gauravaram et al.)",
+            "Grøstl reference ShortMsgKAT vectors",
+        ),
+        (
+            "groestl-512",
+            "Grøstl-512",
+            "Computes the Grøstl-512 digest (SHA-3 finalist, round 3).",
+            &["groestl hash", "groestl512", "groestl-512"][..],
+            Modern,
+            "Grøstl SHA-3 submission (Gauravaram et al.)",
+            "Grøstl reference ShortMsgKAT vectors",
+        ),
+    ] {
+        let (spec, run) = hash_op(id, name, desc, aliases, security, standard, vectors);
+        reg.add_simple(spec, run);
+    }
+
     // SHA-3 family with variant selection.
     let sha3_spec = sha3_spec(
         "sha3",
@@ -503,5 +590,116 @@ mod tests {
         );
         assert_eq!(digest_bytes("keccak384", b"", 32).unwrap().len(), 48);
         assert_eq!(digest_bytes("keccak512", b"", 32).unwrap().len(), 64);
+    }
+
+    #[test]
+    fn md2_rfc1319_vectors() {
+        // RFC 1319 test suite (empty input) and the reference-implementation
+        // vector pinned by the RustCrypto crate's KAT blob.
+        assert_eq!(
+            hex(&digest_bytes("md2", b"", 32).unwrap()),
+            "8350e5a3e24c153df2275c9f80692773"
+        );
+        assert_eq!(
+            hex(&digest_bytes("md2", b"The quick brown fox jumps over the lazy dog", 32).unwrap()),
+            "03d85a0d629d2c442e987525319fc471"
+        );
+    }
+
+    #[test]
+    fn tiger_reference_vectors() {
+        // Anderson & Biham's Tiger reference test vectors (as pinned by the
+        // RustCrypto crate KAT).
+        assert_eq!(
+            hex(&digest_bytes("tiger", b"", 32).unwrap()),
+            "3293ac630c13f0245f92bbb1766e16167a4e58492dde73f3"
+        );
+        assert_eq!(
+            hex(&digest_bytes("tiger", b"abc", 32).unwrap()),
+            "2aab1484e8c158f2bfb8c5ff41b57a525129131c957b5f93"
+        );
+        assert_eq!(
+            hex(
+                &digest_bytes("tiger", b"The quick brown fox jumps over the lazy dog", 32).unwrap()
+            ),
+            "6d12a41e72e644f017b6f0e2f7b44c6285f06dd5d2c5b075"
+        );
+        assert_eq!(
+            hex(&digest_bytes(
+                "tiger",
+                b"abcdbcdecdefdefgefghfghighijhijkijkljklmklmnlmnomnopnopq",
+                32
+            )
+            .unwrap()),
+            "0f7bf9a19b9c58f2b7610df7e84f0ac3a71c631e7b53f78e"
+        );
+    }
+
+    #[test]
+    fn streebog_rfc6986_vectors() {
+        // GOST R 34.11-2012 / RFC 6986 appendix: the 63-byte M1 and the
+        // zero-length message.
+        let m1 = b"012345678901234567890123456789012345678901234567890123456789012";
+        assert_eq!(
+            hex(&digest_bytes("streebog-256", m1, 32).unwrap()),
+            "9d151eefd8590b89daa6ba6cb74af9275dd051026bb149a452fd84e5e57b5500"
+        );
+        assert_eq!(
+            hex(&digest_bytes("streebog-512", m1, 32).unwrap()),
+            "1b54d01a4af5b9d5cc3d86d68d285462b19abc2475222f35c085122be4ba1ffa\
+             00ad30f8767b3a82384c6574f024c311e2a481332b08ef7f41797891c1646f48"
+        );
+        assert_eq!(
+            hex(&digest_bytes("streebog-256", b"", 32).unwrap()),
+            "3f539a213e97c802cc229d474c6aa32a825a360b2a933a949fd925208d9ce1bb"
+        );
+        assert_eq!(
+            hex(&digest_bytes("streebog-512", b"", 32).unwrap()),
+            "8e945da209aa869f0455928529bcae4679e9873ab707b55315f56ceb98bef0a7\
+             362f715528356ee83cda5f2aac4c6ad2ba3a715c1bcd81cb8e9f90bf4c1c1a8a"
+        );
+    }
+
+    #[test]
+    fn gost94_test_vectors() {
+        // GOST R 34.11-94 with the standard's test parameter set: the
+        // zero-length and "message digest" vectors.
+        assert_eq!(
+            hex(&digest_bytes("gost94", b"", 32).unwrap()),
+            "ce85b99cc46752fffee35cab9a7b0278abb4c2d2055cff685af4912c49490f8d"
+        );
+        assert_eq!(
+            hex(&digest_bytes("gost94", b"message digest", 32).unwrap()),
+            "ad4434ecb18f2c99b60cbe59ec3d2469582b65273f48de72db2fde16a4889a4d"
+        );
+    }
+
+    #[test]
+    fn shabal_submission_vectors() {
+        // Shabal submission test values (512-bit output).
+        assert_eq!(
+            hex(&digest_bytes("shabal", b"abc", 32).unwrap()),
+            "4a7f0f707c1b0c1d12ddcfa8aa0f9d2410dd9bab57c2d56705fc1acb02066f9\
+             9678738cedb20a2aba94842a441e77bc02656fe5690f98b421d029bfc4df09f91"
+        );
+        assert_eq!(
+            hex(&digest_bytes("shabal", b"a", 32).unwrap()),
+            "a894803c71f526c3df7a8ac755c28f869828f3de509113043acfef7ce659b0f9\
+             d476ec500910975c6d10740f7fd5fb643c1286426dac107a1562f6c1d6578a2a"
+        );
+    }
+
+    #[test]
+    fn groestl_reference_vectors() {
+        // Grøstl reference ShortMsgKAT: zero-length message.
+        assert_eq!(
+            hex(&digest_bytes("groestl-256", b"", 32).unwrap()),
+            "1a52d11d550039be16107f9c58db9ebcc417f16f736adb2502567119f0083467"
+        );
+        assert_eq!(
+            hex(&digest_bytes("groestl-512", b"", 32).unwrap()),
+            "6d3ad29d279110eef3adbd66de2a0345a77baede1557f5d099fce0c03d6dc2ba\
+             8e6d4a6633dfbd66053c20faa87d1a11f39a7fbe4a6c2f009801370308fc4ad8"
+        );
     }
 }
