@@ -529,3 +529,328 @@ fn des_now_supports_stream_modes() {
         assert_eq!(back, Value::Bytes(data.clone()), "3DES mode {mode}");
     }
 }
+
+// ------------------------------- CBC ciphertext stealing (CTS) ----
+// Vector sources: NIST SP 800-38A addendum (CS1 == CBC for whole blocks;
+// the addendum's normative equivalences), RFC 3962 appendix B (Kerberos
+// CBC-CS3), and the NIST SP 800-38A F.2.1 CBC-AES128 example.
+
+const SP800_38A_KEY128: &str = "2b7e151628aed2a6abf7158809cf4f3c";
+const SP800_38A_IV: &str = "000102030405060708090a0b0c0d0e0f";
+
+#[test]
+fn cbc_cs1_equals_cbc_on_whole_blocks() {
+    let r = reg();
+    // NIST SP 800-38A F.2.1 CBC-AES128.Encrypt vector #1.
+    let params = pv(&[
+        ("key", SP800_38A_KEY128),
+        ("key_encoding", "hex"),
+        ("iv", SP800_38A_IV),
+        ("iv_encoding", "hex"),
+        ("mode", "cbc-cs1"),
+        ("padding", "none"),
+    ]);
+    let out = run(
+        &r,
+        "aes-encrypt",
+        &hex_bytes("6bc1bee22e409f96e93d7e117393172a"),
+        &params,
+    )
+    .unwrap();
+    assert_eq!(s(&out), "7649abac8119b246cee98e9b12e9197d");
+}
+
+#[test]
+fn cbc_cs3_rfc3962_kerberos_vectors() {
+    let r = reg();
+    let params = |mode: &'static str| {
+        pv(&[
+            ("key", "636869636b656e207465726979616b69"), // "chicken teriyaki"
+            ("key_encoding", "hex"),
+            ("iv", "00000000000000000000000000000000"),
+            ("iv_encoding", "hex"),
+            ("mode", mode),
+            ("padding", "none"),
+        ])
+    };
+    // RFC 3962 appendix B: 17-byte input ("I would like the ").
+    let out = run(
+        &r,
+        "aes-encrypt",
+        &hex_bytes("4920776f756c64206c696b652074686520"),
+        &params("cbc-cs3"),
+    )
+    .unwrap();
+    assert_eq!(
+        s(&out),
+        "c6353568f2bf8cb4d8a580362da7ff7f97",
+        "RFC 3962 17-byte CTS vector"
+    );
+    // RFC 3962 appendix B: 31-byte input ("I would like the General Gau's ").
+    let out = run(
+        &r,
+        "aes-encrypt",
+        &hex_bytes("4920776f756c64206c696b65207468652047656e6572616c20476175277320"),
+        &params("cbc-cs3"),
+    )
+    .unwrap();
+    assert_eq!(
+        s(&out),
+        "fc00783e0efdb2c1d445d4c8eff7ed2297687268d6ecccc0c07b25e25ecfe5"
+    );
+    // Round trip both lengths back to the plaintext.
+    for (pt, mode) in [
+        ("4920776f756c64206c696b652074686520", "cbc-cs3"),
+        (
+            "4920776f756c64206c696b65207468652047656e6572616c20476175277320",
+            "cbc-cs3",
+        ),
+        ("4920776f756c64206c696b652074686520", "cbc-cs1"),
+        (
+            "4920776f756c64206c696b65207468652047656e6572616c20476175277320",
+            "cbc-cs1",
+        ),
+        ("4920776f756c64206c696b652074686520", "cbc-cs2"),
+    ] {
+        let enc = run(&r, "aes-encrypt", &hex_bytes(pt), &params(mode)).unwrap();
+        let dec = run(&r, "aes-decrypt", &hex_bytes(&s(&enc)), &params(mode)).unwrap();
+        assert_eq!(s(&dec), pt, "CTS {mode} round trip");
+    }
+}
+
+#[test]
+fn cts_variants_follow_addendum_ordering_rules() {
+    let r = reg();
+    let params = |mode: &'static str| {
+        pv(&[
+            ("key", SP800_38A_KEY128),
+            ("key_encoding", "hex"),
+            ("iv", SP800_38A_IV),
+            ("iv_encoding", "hex"),
+            ("mode", mode),
+            ("padding", "none"),
+        ])
+    };
+    // 21-byte plaintext: 1 complete block + 5-byte partial.
+    let pt = "6bc1bee22e409f96e93d7e117393172aaabbccdddd";
+    let cs1 = run(&r, "aes-encrypt", &hex_bytes(pt), &params("cbc-cs1")).unwrap();
+    let cs2 = run(&r, "aes-encrypt", &hex_bytes(pt), &params("cbc-cs2")).unwrap();
+    let cs3 = run(&r, "aes-encrypt", &hex_bytes(pt), &params("cbc-cs3")).unwrap();
+    // Same length as the plaintext (no padding expansion).
+    assert_eq!(s(&cs1).len(), pt.len());
+    // CS2 == CS1 with the two final pieces swapped; CS3 == CS2 for a
+    // partial final block (NIST addendum sections 3 and 4). The hex string
+    // holds 21 bytes = 42 chars: head 32, partial 10, fin 32.
+    let swap_tail = |v: &str| {
+        let (head, rest) = v.split_at(v.len() - 42);
+        let (partial, fin) = rest.split_at(10);
+        format!("{head}{fin}{partial}")
+    };
+    assert_eq!(s(&cs2), swap_tail(&s(&cs1)));
+    assert_eq!(s(&cs3), s(&cs2));
+    // CS2 == CS1 when the plaintext fills whole blocks.
+    let whole = "6bc1bee22e409f96e93d7e117393172a";
+    let cs1w = run(&r, "aes-encrypt", &hex_bytes(whole), &params("cbc-cs1")).unwrap();
+    let cs2w = run(&r, "aes-encrypt", &hex_bytes(whole), &params("cbc-cs2")).unwrap();
+    assert_eq!(s(&cs1w), s(&cs2w));
+    // CS3 on two whole blocks swaps the last two ciphertext blocks.
+    let two = "6bc1bee22e409f96e93d7e117393172aae2d8a571e03ac9c9eb76fac45af8e51";
+    let cs3w = run(&r, "aes-encrypt", &hex_bytes(two), &params("cbc-cs3")).unwrap();
+    let cbcw = run(&r, "aes-encrypt", &hex_bytes(two), &params("cbc")).unwrap();
+    let v = s(&cbcw);
+    let (head, rest) = v.split_at(v.len() - 64);
+    let (a, b) = rest.split_at(32);
+    assert_eq!(s(&cs3w), format!("{head}{b}{a}"));
+    // Too-short inputs are rejected.
+    let err = run(&r, "aes-encrypt", b"short", &params("cbc-cs1")).unwrap_err();
+    assert!(err.message.contains("at least"));
+}
+
+#[test]
+fn cts_works_for_non_aes_block_ciphers() {
+    let r = reg();
+    // SM4 (a 128-bit block cipher) exercises the CTS wiring at the same
+    // block width but through a different primitive; a 19-byte input has one
+    // full block plus a 3-byte partial.
+    let params = pv(&[
+        ("key", "0123456789abcdeffedcba9876543210"),
+        ("key_encoding", "hex"),
+        ("iv", "00000000000000000000000000000000"),
+        ("iv_encoding", "hex"),
+        ("mode", "cbc-cs3"),
+        ("padding", "none"),
+    ]);
+    let enc = run(&r, "sm4-encrypt", b"1234567890123456789", &params).unwrap();
+    assert_eq!(s(&enc).len(), 38);
+    let dec = run(&r, "sm4-decrypt", &hex_bytes(&s(&enc)), &params).unwrap();
+    assert_eq!(s(&dec), s(&Value::Bytes(b"1234567890123456789".to_vec())));
+}
+
+// ---------------------------------------------------------- XTS ----
+// IEEE P1619/D16 sample vectors (as distributed in the Mbed TLS
+// test_suite_aes.xts.data file).
+
+#[test]
+fn xts_ieee_p1619_d16_vectors() {
+    let r = reg();
+    let params = |key: &'static str, tweak: &'static str| {
+        pv(&[
+            ("key", key),
+            ("key_encoding", "hex"),
+            ("iv", tweak),
+            ("iv_encoding", "hex"),
+        ])
+    };
+    // Vector 1: all-zero 128-bit key, zero tweak, 32-byte data unit.
+    let out = run(
+        &r,
+        "aes-xts-encrypt",
+        &hex_bytes("0000000000000000000000000000000000000000000000000000000000000000"),
+        &params(
+            "0000000000000000000000000000000000000000000000000000000000000000",
+            "00000000000000000000000000000000",
+        ),
+    )
+    .unwrap();
+    assert_eq!(
+        s(&out),
+        "917cf69ebd68b2ec9b9fe9a3eadda692cd43d2f59598ed858c02c2652fbf922e"
+    );
+
+    // Vector 2.
+    let out = run(
+        &r,
+        "aes-xts-encrypt",
+        &hex_bytes(&"44".repeat(32)),
+        &params(
+            "1111111111111111111111111111111122222222222222222222222222222222",
+            "33333333330000000000000000000000",
+        ),
+    )
+    .unwrap();
+    assert_eq!(
+        s(&out),
+        "c454185e6a16936e39334038acef838bfb186fff7480adc4289382ecd6d394f0"
+    );
+
+    // Vector 3.
+    let out = run(
+        &r,
+        "aes-xts-encrypt",
+        &hex_bytes(&"44".repeat(32)),
+        &params(
+            "fffefdfcfbfaf9f8f7f6f5f4f3f2f1f022222222222222222222222222222222",
+            "33333333330000000000000000000000",
+        ),
+    )
+    .unwrap();
+    assert_eq!(
+        s(&out),
+        "af85336b597afc1a900b2eb21ec949d292df4c047e0b21532186a5971a227a89"
+    );
+
+    // Vectors 15/16: 17- and 18-byte data units (ciphertext stealing);
+    // the tweak is the little-endian data-unit number 0x123456789a.
+    let key = "fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0bfbebdbcbbbab9b8b7b6b5b4b3b2b1b0";
+    let tweak = "9a785634120000000000000000000000";
+    let out = run(
+        &r,
+        "aes-xts-encrypt",
+        &hex_bytes("000102030405060708090a0b0c0d0e0f10"),
+        &params(key, tweak),
+    )
+    .unwrap();
+    assert_eq!(s(&out), "6c1625db4671522d3d7599601de7ca09ed");
+    let out = run(
+        &r,
+        "aes-xts-encrypt",
+        &hex_bytes("000102030405060708090a0b0c0d0e0f1011"),
+        &params(key, tweak),
+    )
+    .unwrap();
+    assert_eq!(s(&out), "d069444b7a7e0cab09e24447d24deb1fedbf");
+
+    // Steal cases decrypt back to the plaintext.
+    for pt in [
+        "000102030405060708090a0b0c0d0e0f10",
+        "000102030405060708090a0b0c0d0e0f1011",
+    ] {
+        let enc = run(&r, "aes-xts-encrypt", &hex_bytes(pt), &params(key, tweak)).unwrap();
+        let dec = run(
+            &r,
+            "aes-xts-decrypt",
+            &hex_bytes(&s(&enc)),
+            &params(key, tweak),
+        )
+        .unwrap();
+        assert_eq!(s(&dec), pt);
+    }
+}
+
+#[test]
+fn xts_aes256_round_trip_and_validation() {
+    let r = reg();
+    let params = pv(&[
+        (
+            "key",
+            "2718281828459045235360287471352662497757247093699959574966967627\
+             3141592653589793238462643383279502884197169399375105820974944592",
+        ),
+        ("key_encoding", "hex"),
+        ("iv", "ffffffff000000000000000000000000"),
+        ("iv_encoding", "hex"),
+    ]);
+    // Round trip an odd 33-byte data unit (stealing path) with AES-256-XTS.
+    let enc = run(
+        &r,
+        "aes-xts-encrypt",
+        b"XTS-AES data unit payload 33 bytes!!",
+        &params,
+    )
+    .unwrap();
+    let dec = run(&r, "aes-xts-decrypt", &hex_bytes(&s(&enc)), &params).unwrap();
+    assert_eq!(
+        s(&dec),
+        s(&Value::Bytes(
+            b"XTS-AES data unit payload 33 bytes!!".to_vec()
+        ))
+    );
+
+    // Doubled-key length is validated.
+    let err = run(
+        &r,
+        "aes-xts-encrypt",
+        b"x",
+        &pv(&[
+            ("key", "000102030405060708090a0b0c0d0e0f"),
+            ("key_encoding", "hex"),
+            ("iv", "00000000000000000000000000000000"),
+            ("iv_encoding", "hex"),
+        ]),
+    )
+    .unwrap_err();
+    assert!(err.message.contains("32 / 48 / 64"));
+
+    // The 16-byte tweak is mandatory.
+    let err = run(
+        &r,
+        "aes-xts-encrypt",
+        b"x",
+        &pv(&[
+            (
+                "key",
+                "2718281828459045235360287471352662497757247093699959574966967627\
+                 3141592653589793238462643383279502884197169399375105820974944592",
+            ),
+            ("key_encoding", "hex"),
+            ("iv", "0000"),
+            ("iv_encoding", "hex"),
+        ]),
+    )
+    .unwrap_err();
+    assert!(err.message.contains("tweak"));
+
+    // Data units shorter than one block are rejected (SP 800-38E).
+    let err = run(&r, "aes-xts-encrypt", b"tiny", &params).unwrap_err();
+    assert!(err.message.contains("at least"));
+}

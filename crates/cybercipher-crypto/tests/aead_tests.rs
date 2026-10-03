@@ -871,3 +871,366 @@ fn key_as_utf8_encoding_round_trip() {
             .collect::<String>()
     );
 }
+
+// ------------------------------------------------------- AES-EAX ----
+// Vectors from Appendix G of "The EAX Mode of Operation" (Bellare, Rogaway,
+// Wagner; eprint 2003/069), as distributed in Project Wycheproof's
+// aes_eax_test.json (C2SP).
+
+#[test]
+fn eax_brw_appendix_g_vectors() {
+    let r = reg();
+    // Vector 1: 16-byte key, 16-byte nonce, 8-byte AAD, 2-byte message.
+    let out = run(
+        &r,
+        "aead-aes-eax-encrypt",
+        &hex_bytes("f7fb"),
+        &pv(&[
+            ("key", "91945d3f4dcbee0bf45ef52255f095a4"),
+            ("key_encoding", "hex"),
+            ("nonce", "becaf043b0a23d843194ba972c66debd"),
+            ("nonce_encoding", "hex"),
+            ("aad", "fa3bfd4806eb53fa"),
+            ("aad_encoding", "hex"),
+        ]),
+    )
+    .unwrap();
+    assert_eq!(
+        s(&out),
+        "19dd5c4c9331049d0bdab0277408f67967e5",
+        "EAX appendix G vector 1 (ciphertext || tag)"
+    );
+    let back = run(
+        &r,
+        "aead-aes-eax-decrypt",
+        &hex_bytes(&s(&out)),
+        &pv(&[
+            ("key", "91945d3f4dcbee0bf45ef52255f095a4"),
+            ("key_encoding", "hex"),
+            ("nonce", "becaf043b0a23d843194ba972c66debd"),
+            ("nonce_encoding", "hex"),
+            ("aad", "fa3bfd4806eb53fa"),
+            ("aad_encoding", "hex"),
+        ]),
+    )
+    .unwrap();
+    assert_eq!(s(&back), "f7fb");
+
+    // Vector 6: 16-byte key, 17-byte message.
+    let out = run(
+        &r,
+        "aead-aes-eax-encrypt",
+        &hex_bytes("8b0a79306c9ce7ed99dae4f87f8dd61636"),
+        &pv(&[
+            ("key", "7c77d6e813bed5ac98baa417477a2e7d"),
+            ("key_encoding", "hex"),
+            ("nonce", "1a8c98dcd73d38393b2bf1569deefc19"),
+            ("nonce_encoding", "hex"),
+            ("aad", "65d2017990d62528"),
+            ("aad_encoding", "hex"),
+        ]),
+    )
+    .unwrap();
+    assert_eq!(
+        s(&out),
+        "02083e3979da014812f59f11d52630da30137327d10649b0aa6e1c181db617d7f2"
+    );
+}
+
+fn hex_str(data: &[u8]) -> String {
+    data.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+#[test]
+fn eax_256_round_trip_and_nonce_validation() {
+    let r = reg();
+    let params = pv(&[
+        (
+            "key",
+            "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+        ),
+        ("key_encoding", "hex"),
+        ("nonce", "bbaa9988776655443322110011223344"),
+        ("nonce_encoding", "hex"),
+        ("aad", "deadbeef"),
+        ("aad_encoding", "hex"),
+    ]);
+    let out = run(&r, "aead-aes-eax-encrypt", SUNSCREEN, &params).unwrap();
+    let back = run(&r, "aead-aes-eax-decrypt", &hex_bytes(&s(&out)), &params).unwrap();
+    assert_eq!(s(&back), s(&Value::Bytes(SUNSCREEN.to_vec())));
+
+    // EAX requires the 128-bit nonce.
+    let err = run(
+        &r,
+        "aead-aes-eax-encrypt",
+        SUNSCREEN,
+        &pv(&[
+            ("key", "000102030405060708090a0b0c0d0e0f"),
+            ("key_encoding", "hex"),
+            ("nonce", "bbaa99887766554433221100"),
+            ("nonce_encoding", "hex"),
+        ]),
+    )
+    .unwrap_err();
+    assert!(err.message.contains("nonce"));
+
+    // EAX supports 192-bit keys too.
+    let params192 = pv(&[
+        ("key", "000102030405060708090a0b0c0d0e0f1011121314151617"),
+        ("key_encoding", "hex"),
+        ("nonce", "bbaa9988776655443322110011223344"),
+        ("nonce_encoding", "hex"),
+    ]);
+    let out = run(&r, "aead-aes-eax-encrypt", b"192-bit EAX", &params192).unwrap();
+    let back = run(&r, "aead-aes-eax-decrypt", &hex_bytes(&s(&out)), &params192).unwrap();
+    assert_eq!(s(&back), hex_str(b"192-bit EAX"));
+}
+
+// ---------------------------------------------------------- OCB3 ----
+// RFC 7253 appendix A test vectors (AES-128, 128-bit tag, incrementing
+// 96-bit nonces).
+
+#[test]
+fn ocb3_rfc7253_appendix_a_vectors() {
+    let r = reg();
+    let key = "000102030405060708090a0b0c0d0e0f";
+
+    // Vector 1: empty AD, empty plaintext (tag only).
+    let out = run(
+        &r,
+        "aead-ocb3-encrypt",
+        b"",
+        &pv(&[
+            ("key", key),
+            ("key_encoding", "hex"),
+            ("nonce", "bbaa99887766554433221100"),
+            ("nonce_encoding", "hex"),
+        ]),
+    )
+    .unwrap();
+    assert_eq!(s(&out), "785407bfffc8ad9edcc5520ac9111ee6");
+
+    // Vector 2: 8-byte AD, 8-byte plaintext.
+    let out = run(
+        &r,
+        "aead-ocb3-encrypt",
+        &hex_bytes("0001020304050607"),
+        &pv(&[
+            ("key", key),
+            ("key_encoding", "hex"),
+            ("nonce", "bbaa99887766554433221101"),
+            ("nonce_encoding", "hex"),
+            ("aad", "0001020304050607"),
+            ("aad_encoding", "hex"),
+        ]),
+    )
+    .unwrap();
+    assert_eq!(s(&out), "6820b3657b6f615a5725bda0d3b4eb3a257c9af1f8f03009");
+
+    // Vector 3: 8-byte AD, empty plaintext.
+    let out = run(
+        &r,
+        "aead-ocb3-encrypt",
+        b"",
+        &pv(&[
+            ("key", key),
+            ("key_encoding", "hex"),
+            ("nonce", "bbaa99887766554433221102"),
+            ("nonce_encoding", "hex"),
+            ("aad", "0001020304050607"),
+            ("aad_encoding", "hex"),
+        ]),
+    )
+    .unwrap();
+    assert_eq!(s(&out), "81017f8203f081277152fade694a0a00");
+
+    // Vector 4: empty AD, 8-byte plaintext.
+    let out = run(
+        &r,
+        "aead-ocb3-encrypt",
+        &hex_bytes("0001020304050607"),
+        &pv(&[
+            ("key", key),
+            ("key_encoding", "hex"),
+            ("nonce", "bbaa99887766554433221103"),
+            ("nonce_encoding", "hex"),
+        ]),
+    )
+    .unwrap();
+    assert_eq!(s(&out), "45dd69f8f5aae72414054cd1f35d82760b2cd00d2f99bfa9");
+
+    // Vector 6: 16-byte AD, empty plaintext.
+    let out = run(
+        &r,
+        "aead-ocb3-encrypt",
+        b"",
+        &pv(&[
+            ("key", key),
+            ("key_encoding", "hex"),
+            ("nonce", "bbaa99887766554433221105"),
+            ("nonce_encoding", "hex"),
+            ("aad", "000102030405060708090a0b0c0d0e0f"),
+            ("aad_encoding", "hex"),
+        ]),
+    )
+    .unwrap();
+    assert_eq!(s(&out), "8cf761b6902ef764462ad86498ca6b97");
+
+    // Decrypt vector 2 back and reject a corrupted tag.
+    let ct = "6820b3657b6f615a5725bda0d3b4eb3a257c9af1f8f03009";
+    let params = pv(&[
+        ("key", key),
+        ("key_encoding", "hex"),
+        ("nonce", "bbaa99887766554433221101"),
+        ("nonce_encoding", "hex"),
+        ("aad", "0001020304050607"),
+        ("aad_encoding", "hex"),
+    ]);
+    let back = run(&r, "aead-ocb3-decrypt", &hex_bytes(ct), &params).unwrap();
+    assert_eq!(s(&back), "0001020304050607");
+
+    let mut corrupted = hex_bytes(ct);
+    let last = corrupted.len() - 1;
+    corrupted[last] ^= 0x01;
+    let err = run(&r, "aead-ocb3-decrypt", &corrupted, &params).unwrap_err();
+    assert!(err.message.contains("authentication failed"));
+
+    // OCB3 requires the 96-bit nonce.
+    let err = run(
+        &r,
+        "aead-ocb3-encrypt",
+        b"",
+        &pv(&[
+            ("key", key),
+            ("key_encoding", "hex"),
+            ("nonce", "bbaa998877665544332211001122"),
+            ("nonce_encoding", "hex"),
+        ]),
+    )
+    .unwrap_err();
+    assert!(err.message.contains("nonce"));
+}
+
+// ------------------------------------------------------- AES-SIV ----
+// RFC 5297 appendix A.1 (deterministic) and A.2 (nonce-based) test vectors.
+// Wire layout: SIV || ciphertext.
+
+#[test]
+fn aes_siv_rfc5297_a1_deterministic() {
+    let r = reg();
+    let params = pv(&[
+        (
+            "key",
+            "fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff",
+        ),
+        ("key_encoding", "hex"),
+        ("aad", "101112131415161718191a1b1c1d1e1f2021222324252627"),
+        ("aad_encoding", "hex"),
+    ]);
+    let out = run(
+        &r,
+        "aead-aes-siv-encrypt",
+        &hex_bytes("112233445566778899aabbccddee"),
+        &params,
+    )
+    .unwrap();
+    assert_eq!(
+        s(&out),
+        "85632d07c6e8f37f950acd320a2ecc9340c02b9690c4dc04daef7f6afe5c",
+        "RFC 5297 A.1: SIV || ciphertext"
+    );
+    let back = run(&r, "aead-aes-siv-decrypt", &hex_bytes(&s(&out)), &params).unwrap();
+    assert_eq!(s(&back), "112233445566778899aabbccddee");
+}
+
+#[test]
+fn aes_siv_rfc5297_a2_nonce_based() {
+    let r = reg();
+    let params = pv(&[
+        (
+            "key",
+            "7f7e7d7c7b7a79787776757473727170404142434445464748494a4b4c4d4e4f",
+        ),
+        ("key_encoding", "hex"),
+        (
+            "aad",
+            "00112233445566778899aabbccddeeffdeaddadadeaddadaffeeddccbbaa99887766554433221100",
+        ),
+        ("aad_encoding", "hex"),
+        ("aad2", "102030405060708090a0"),
+        ("aad2_encoding", "hex"),
+        ("nonce", "09f911029d74e35bd84156c5635688c0"),
+        ("nonce_encoding", "hex"),
+    ]);
+    let out = run(
+        &r,
+        "aead-aes-siv-encrypt",
+        &hex_bytes(
+            "7468697320697320736f6d6520706c61696e7465787420746f20656e6372797074207573696e67205349562d414553",
+        ),
+        &params,
+    )
+    .unwrap();
+    assert_eq!(
+        s(&out),
+        "7bdb6e3b432667eb06f4d14bff2fbd0fcb900f2fddbe404326601965c889bf17\
+         dba77ceb094fa663b7a3f748ba8af829ea64ad544a272e9c485b62a3fd5c0d"
+    );
+    let back = run(&r, "aead-aes-siv-decrypt", &hex_bytes(&s(&out)), &params).unwrap();
+    assert_eq!(
+        s(&back),
+        "7468697320697320736f6d6520706c61696e7465787420746f20656e6372797074207573696e67205349562d414553"
+    );
+}
+
+#[test]
+fn aes_siv_round_trip_and_negative_cases() {
+    let r = reg();
+    // AES-256-SIV (64-byte key) round trip with the nonce omitted.
+    let params = pv(&[
+        (
+            "key",
+            "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f\
+             fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff",
+        ),
+        ("key_encoding", "hex"),
+    ]);
+    let out = run(&r, "aead-aes-siv-encrypt", SUNSCREEN, &params).unwrap();
+    let back = run(&r, "aead-aes-siv-decrypt", &hex_bytes(&s(&out)), &params).unwrap();
+    assert_eq!(s(&back), s(&Value::Bytes(SUNSCREEN.to_vec())));
+
+    // Corrupting the leading SIV fails authentication.
+    let mut sealed = hex_bytes(&s(&out));
+    sealed[0] ^= 0x01;
+    let err = run(&r, "aead-aes-siv-decrypt", &sealed, &params).unwrap_err();
+    assert!(err.message.contains("authentication failed"));
+
+    // Key must be 32 or 64 bytes.
+    let err = run(
+        &r,
+        "aead-aes-siv-encrypt",
+        b"x",
+        &pv(&[
+            ("key", "000102030405060708090a0b0c0d0e0f"),
+            ("key_encoding", "hex"),
+        ]),
+    )
+    .unwrap_err();
+    assert!(err.message.contains("key"));
+
+    // Decrypt input shorter than the SIV prefix is rejected.
+    let err = run(
+        &r,
+        "aead-aes-siv-decrypt",
+        &hex_bytes("00112233"),
+        &pv(&[
+            (
+                "key",
+                "fffefdfcfbfaf9f8f7f6f5f4f3f2f1f0f0f1f2f3f4f5f6f7f8f9fafbfcfdfeff",
+            ),
+            ("key_encoding", "hex"),
+        ]),
+    )
+    .unwrap_err();
+    assert!(err.message.contains("too short"));
+}

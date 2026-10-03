@@ -25,8 +25,8 @@ use aead::{AeadInPlace, KeyInit};
 // aes-gcm / ccm are on the cipher 0.4 generation and need `aes` 0.8 types;
 // `aes08` is that crate (renamed in Cargo.toml) while `aes` 0.9 serves the
 // block-cipher table in ciphers.rs and the aead 0.6 crates (eax/ocb3/aes-siv).
-use aes08 as aes;
 use ::aes as aes09;
+use aes08 as aes;
 use aes_gcm::{Aes128Gcm, Aes256Gcm};
 use chacha20poly1305::{ChaCha20Poly1305, XChaCha20Poly1305};
 use cybercipher_codec::decode_input;
@@ -46,6 +46,9 @@ enum Algo {
     ChaCha20Poly1305,
     XChaCha20Poly1305,
     AesGcmSiv,
+    AesEax,
+    Ocb3,
+    AesSiv,
 }
 
 impl Algo {
@@ -56,23 +59,31 @@ impl Algo {
             Algo::ChaCha20Poly1305 => "ChaCha20-Poly1305",
             Algo::XChaCha20Poly1305 => "XChaCha20-Poly1305",
             Algo::AesGcmSiv => "AES-GCM-SIV",
+            Algo::AesEax => "AES-EAX",
+            Algo::Ocb3 => "OCB3",
+            Algo::AesSiv => "AES-SIV",
         }
     }
 
     fn key_lengths(self) -> &'static [usize] {
         match self {
-            Algo::AesGcm | Algo::AesCcm => &[16, 24, 32],
+            Algo::AesGcm | Algo::AesCcm | Algo::AesEax | Algo::Ocb3 => &[16, 24, 32],
             Algo::AesGcmSiv => &[16, 32],
+            Algo::AesSiv => &[32, 64],
             Algo::ChaCha20Poly1305 | Algo::XChaCha20Poly1305 => &[32],
         }
     }
 
-    /// Fixed nonce length in bytes; `None` = variable 7-13 bytes (CCM).
+    /// Fixed nonce length in bytes; `None` = variable length (CCM: 7-13 bytes
+    /// per SP 800-38C, AES-SIV: any length per RFC 5297).
     fn nonce_len(self) -> Option<usize> {
         match self {
             Algo::AesGcm | Algo::AesGcmSiv | Algo::ChaCha20Poly1305 => Some(12),
             Algo::XChaCha20Poly1305 => Some(24),
+            Algo::AesEax => Some(16),
+            Algo::Ocb3 => Some(12),
             Algo::AesCcm => None,
+            Algo::AesSiv => None,
         }
     }
 
@@ -83,9 +94,22 @@ impl Algo {
         }
     }
 
+    /// AES-SIV's RFC 5297 wire layout places the tag (the synthetic IV)
+    /// BEFORE the ciphertext; every other construction appends it.
+    fn tag_prefix(self) -> bool {
+        matches!(self, Algo::AesSiv)
+    }
+
+    /// AES-SIV allows (but does not require) a nonce at any length; every
+    /// other construction here mandates a fixed or constrained nonce.
+    fn nonce_required(self) -> bool {
+        !matches!(self, Algo::AesSiv)
+    }
+
     fn nonce_valid(self, len: usize) -> bool {
         match self.nonce_len() {
             Some(n) => len == n,
+            None if self == Algo::AesSiv => true,
             None => (7..=13).contains(&len),
         }
     }
@@ -107,9 +131,12 @@ fn key_length_error(algo: Algo, actual: usize) -> OperationError {
 }
 
 fn nonce_length_error(algo: Algo, actual: usize) -> OperationError {
-    let expected = match algo.nonce_len() {
-        Some(n) => format!("{n} bytes ({}-bit nonce)", n * 8),
-        None => "7-13 bytes (NIST SP 800-38C)".to_string(),
+    let expected = match algo {
+        Algo::AesSiv => "optional; any length (folded into S2V, RFC 5297)".to_string(),
+        _ => match algo.nonce_len() {
+            Some(n) => format!("{n} bytes ({}-bit nonce)", n * 8),
+            None => "7-13 bytes (NIST SP 800-38C)".to_string(),
+        },
     };
     OperationError::length(
         expected.clone(),
@@ -229,6 +256,129 @@ where
         .map_err(|_| auth_error(Algo::AesGcmSiv))
 }
 
+// -------------------------------------------- aead 0.6 generation ----
+// `eax` 0.6 / `ocb3` 0.2 build on the `aead` 0.6 crate (a different crate
+// from our direct `aead` 0.5 dependency), whose `AeadInOut` trait exposes
+// detached in-out operations. These helpers mirror `seal`/`open` above for
+// that generation.
+
+fn aead06_key_error() -> OperationError {
+    OperationError::internal("key rejected by the primitive")
+}
+
+fn seal06<A>(algo: Algo, key: &[u8], nonce: &[u8], aad: &[u8], buf: &mut [u8]) -> OpResult<Vec<u8>>
+where
+    A: eax::aead::AeadInOut + eax::aead::KeyInit,
+{
+    let nonce = eax::aead::Nonce::<A>::try_from(nonce)
+        .map_err(|_| OperationError::internal("nonce length mismatch"))?;
+    let cipher = A::new_from_slice(key).map_err(|_| aead06_key_error())?;
+    let tag = cipher
+        .encrypt_inout_detached(&nonce, aad, buf.into())
+        .map_err(|_| seal_failure(algo))?;
+    Ok(tag.to_vec())
+}
+
+fn open06<A>(
+    algo: Algo,
+    key: &[u8],
+    nonce: &[u8],
+    aad: &[u8],
+    buf: &mut [u8],
+    tag: &[u8],
+) -> OpResult<()>
+where
+    A: eax::aead::AeadInOut + eax::aead::KeyInit,
+{
+    let nonce = eax::aead::Nonce::<A>::try_from(nonce)
+        .map_err(|_| OperationError::internal("nonce length mismatch"))?;
+    let tag = eax::aead::Tag::<A>::try_from(tag)
+        .map_err(|_| OperationError::internal("tag length mismatch"))?;
+    let cipher = A::new_from_slice(key).map_err(|_| aead06_key_error())?;
+    cipher
+        .decrypt_inout_detached(&nonce, aad, buf.into(), &tag)
+        .map_err(|_| auth_error(algo))
+}
+
+// ------------------------------------------------------- AES-SIV ----
+
+/// RFC 5297 S2V input strings: the associated-data strings first, the nonce
+/// last (the plaintext is the final S2V input and is not part of the list).
+/// Empty strings are omitted, so an empty nonce yields the deterministic
+/// construction of RFC 5297 appendix A.1.
+fn siv_headers<'a>(aad: &'a [u8], aad2: &'a [u8], nonce: &'a [u8]) -> Vec<&'a [u8]> {
+    let mut headers = Vec::with_capacity(3);
+    if !aad.is_empty() {
+        headers.push(aad);
+    }
+    if !aad2.is_empty() {
+        headers.push(aad2);
+    }
+    if !nonce.is_empty() {
+        headers.push(nonce);
+    }
+    headers
+}
+
+/// AES-SIV seal: computes the 16-byte synthetic IV and returns the RFC 5297
+/// wire layout `SIV || ciphertext` (the caller's buffer is replaced).
+fn aes_siv_seal(
+    key: &[u8],
+    aad: &[u8],
+    aad2: &[u8],
+    nonce: &[u8],
+    buf: &mut Vec<u8>,
+) -> OpResult<()> {
+    let headers = siv_headers(aad, aad2, nonce);
+    let sealed = match key.len() {
+        32 => {
+            let key: [u8; 32] = key.try_into().expect("checked 32-byte key");
+            let mut siv = <aes_siv::siv::Aes128Siv as aes_siv::KeyInit>::new(&key.into());
+            siv.encrypt_inout_detached(headers, buf.as_mut_slice().into())
+        }
+        64 => {
+            let key: [u8; 64] = key.try_into().expect("checked 64-byte key");
+            let mut siv = <aes_siv::siv::Aes256Siv as aes_siv::KeyInit>::new(&key.into());
+            siv.encrypt_inout_detached(headers, buf.as_mut_slice().into())
+        }
+        other => return Err(key_length_error(Algo::AesSiv, other)),
+    };
+    let tag = sealed.map_err(|_| seal_failure(Algo::AesSiv))?;
+    let mut out = tag.to_vec();
+    out.extend_from_slice(buf);
+    *buf = out;
+    Ok(())
+}
+
+/// AES-SIV open: `buf` is the ciphertext without the leading SIV, `tag` the
+/// 16-byte synthetic IV. Authentication failures never return plaintext.
+fn aes_siv_open(
+    key: &[u8],
+    aad: &[u8],
+    aad2: &[u8],
+    nonce: &[u8],
+    buf: &mut [u8],
+    tag: &[u8],
+) -> OpResult<()> {
+    let headers = siv_headers(aad, aad2, nonce);
+    let tag =
+        aes_siv::Tag::try_from(tag).map_err(|_| OperationError::internal("tag length mismatch"))?;
+    let opened = match key.len() {
+        32 => {
+            let key: [u8; 32] = key.try_into().expect("checked 32-byte key");
+            let mut siv = <aes_siv::siv::Aes128Siv as aes_siv::KeyInit>::new(&key.into());
+            siv.decrypt_inout_detached(headers, buf.into(), &tag)
+        }
+        64 => {
+            let key: [u8; 64] = key.try_into().expect("checked 64-byte key");
+            let mut siv = <aes_siv::siv::Aes256Siv as aes_siv::KeyInit>::new(&key.into());
+            siv.decrypt_inout_detached(headers, buf.into(), &tag)
+        }
+        other => return Err(key_length_error(Algo::AesSiv, other)),
+    };
+    opened.map_err(|_| auth_error(Algo::AesSiv))
+}
+
 /// CCM dispatch: the `ccm` crate encodes nonce length (7-13), tag length
 /// (4/6/.../16) and cipher as type parameters, but CyberCipher accepts them
 /// at runtime, so we fan out over the supported combinations
@@ -334,11 +484,13 @@ fn ccm_open(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn dispatch_seal(
     algo: Algo,
     key: &[u8],
     nonce: &[u8],
     aad: &[u8],
+    aad2: &[u8],
     buf: &mut Vec<u8>,
     tag_len: usize,
 ) -> OpResult<()> {
@@ -357,16 +509,32 @@ fn dispatch_seal(
             32 => siv_seal::<aes_gcm_siv::Aes256GcmSiv>(key, nonce, aad, buf)?,
             _ => return Err(key_length_error(algo, key.len())),
         },
+        Algo::AesEax => match key.len() {
+            16 => seal06::<eax::Eax<aes09::Aes128>>(algo, key, nonce, aad, buf)?,
+            24 => seal06::<eax::Eax<aes09::Aes192>>(algo, key, nonce, aad, buf)?,
+            32 => seal06::<eax::Eax<aes09::Aes256>>(algo, key, nonce, aad, buf)?,
+            _ => return Err(key_length_error(algo, key.len())),
+        },
+        Algo::Ocb3 => match key.len() {
+            16 => seal06::<ocb3::Ocb3<aes09::Aes128>>(algo, key, nonce, aad, buf)?,
+            24 => seal06::<ocb3::Ocb3<aes09::Aes192>>(algo, key, nonce, aad, buf)?,
+            32 => seal06::<ocb3::Ocb3<aes09::Aes256>>(algo, key, nonce, aad, buf)?,
+            _ => return Err(key_length_error(algo, key.len())),
+        },
+        // AES-SIV assembles its own `SIV || ciphertext` output.
+        Algo::AesSiv => return aes_siv_seal(key, aad, aad2, nonce, buf),
     };
     buf.extend_from_slice(&tag);
     Ok(())
 }
 
+#[allow(clippy::too_many_arguments)]
 fn dispatch_open(
     algo: Algo,
     key: &[u8],
     nonce: &[u8],
     aad: &[u8],
+    aad2: &[u8],
     buf: &mut [u8],
     tag: &[u8],
     tag_len: usize,
@@ -386,6 +554,19 @@ fn dispatch_open(
             32 => siv_open::<aes_gcm_siv::Aes256GcmSiv>(key, nonce, aad, buf, tag),
             _ => Err(key_length_error(algo, key.len())),
         },
+        Algo::AesEax => match key.len() {
+            16 => open06::<eax::Eax<aes09::Aes128>>(algo, key, nonce, aad, buf, tag),
+            24 => open06::<eax::Eax<aes09::Aes192>>(algo, key, nonce, aad, buf, tag),
+            32 => open06::<eax::Eax<aes09::Aes256>>(algo, key, nonce, aad, buf, tag),
+            _ => Err(key_length_error(algo, key.len())),
+        },
+        Algo::Ocb3 => match key.len() {
+            16 => open06::<ocb3::Ocb3<aes09::Aes128>>(algo, key, nonce, aad, buf, tag),
+            24 => open06::<ocb3::Ocb3<aes09::Aes192>>(algo, key, nonce, aad, buf, tag),
+            32 => open06::<ocb3::Ocb3<aes09::Aes256>>(algo, key, nonce, aad, buf, tag),
+            _ => Err(key_length_error(algo, key.len())),
+        },
+        Algo::AesSiv => aes_siv_open(key, aad, aad2, nonce, buf, tag),
     }
 }
 
@@ -393,8 +574,13 @@ fn dispatch_open(
 
 fn key_hint(algo: Algo) -> &'static str {
     match algo {
-        Algo::AesGcm | Algo::AesCcm => "16, 24, or 32 bytes after decoding (AES-128/192/256).",
+        Algo::AesGcm | Algo::AesCcm | Algo::AesEax | Algo::Ocb3 => {
+            "16, 24, or 32 bytes after decoding (AES-128/192/256)."
+        }
         Algo::AesGcmSiv => "16 or 32 bytes after decoding (AES-128/256).",
+        Algo::AesSiv => {
+            "32 or 64 bytes after decoding: two concatenated AES-128 or AES-256 keys (K1 || K2)."
+        }
         Algo::ChaCha20Poly1305 | Algo::XChaCha20Poly1305 => "32 bytes after decoding.",
     }
 }
@@ -407,6 +593,11 @@ fn nonce_hint(algo: Algo) -> &'static str {
         Algo::AesCcm => "7-13 bytes (NIST SP 800-38C); 12 or 13 bytes are typical.",
         Algo::AesGcmSiv => "96-bit nonce (12 bytes). Nonce misuse is survivable, but random nonces are still recommended.",
         Algo::XChaCha20Poly1305 => "192-bit nonce (24 bytes), safe to generate randomly.",
+        Algo::AesEax => "128-bit nonce (16 bytes). Never reuse a nonce with the same key.",
+        Algo::Ocb3 => "96-bit nonce (12 bytes, RFC 7253). Never reuse a nonce with the same key.",
+        Algo::AesSiv => {
+            "Optional: any length; folded into S2V as an additional input. Leave empty for the deterministic RFC 5297 construction."
+        }
     }
 }
 
@@ -420,6 +611,7 @@ fn aead_op(
     standard: &'static str,
     vectors: &'static str,
     with_tag_len: bool,
+    with_aad2: bool,
     sealing: bool,
 ) -> (
     &'static OperationSpec,
@@ -438,6 +630,15 @@ fn aead_op(
         ),
         p_enc("aad_encoding", "AAD encoding", "hex", ""),
     ];
+    if with_aad2 {
+        params.push(p_text_opt(
+            "aad2",
+            "Associated data 2 (AAD)",
+            "",
+            "Second S2V input string (RFC 5297 supports several AD strings); leave empty for none.",
+        ));
+        params.push(p_enc("aad2_encoding", "AAD 2 encoding", "hex", ""));
+    }
     if with_tag_len {
         params.push(crate::helpers::p_opts(
             "tag_length",
@@ -476,8 +677,8 @@ fn aead_op(
         tags: AEAD_TAGS,
         provenance: Provenance {
             standard,
-            implementation:
-                "RustCrypto AEAD crates (aes-gcm / ccm / chacha20poly1305 / aes-gcm-siv)",
+            implementation: "RustCrypto AEAD crates (aes-gcm / ccm / chacha20poly1305 \
+                            / aes-gcm-siv / eax / ocb3 / aes-siv)",
             test_vectors: vectors,
         },
     }));
@@ -488,20 +689,37 @@ fn aead_op(
             return Err(key_length_error(algo, key.len()));
         }
         let nonce_raw = map.str_or("nonce", "");
-        if nonce_raw.is_empty() {
-            return Err(nonce_length_error(algo, 0));
-        }
-        let nonce = decode_input(map.str_or("nonce_encoding", "hex"), nonce_raw)
-            .map_err(|e| e.with_parameter("nonce"))?;
-        if !algo.nonce_valid(nonce.len()) {
-            return Err(nonce_length_error(algo, nonce.len()));
-        }
+        let nonce = if nonce_raw.is_empty() {
+            // AES-SIV allows omitting the nonce entirely (deterministic case).
+            if algo.nonce_required() {
+                return Err(nonce_length_error(algo, 0));
+            }
+            Vec::new()
+        } else {
+            let decoded = decode_input(map.str_or("nonce_encoding", "hex"), nonce_raw)
+                .map_err(|e| e.with_parameter("nonce"))?;
+            if !algo.nonce_valid(decoded.len()) {
+                return Err(nonce_length_error(algo, decoded.len()));
+            }
+            decoded
+        };
         let aad_raw = map.str_or("aad", "");
         let aad = if aad_raw.is_empty() {
             Vec::new()
         } else {
             decode_input(map.str_or("aad_encoding", "hex"), aad_raw)
                 .map_err(|e| e.with_parameter("aad"))?
+        };
+        let aad2 = if with_aad2 {
+            let raw = map.str_or("aad2", "");
+            if raw.is_empty() {
+                Vec::new()
+            } else {
+                decode_input(map.str_or("aad2_encoding", "hex"), raw)
+                    .map_err(|e| e.with_parameter("aad2"))?
+            }
+        } else {
+            Vec::new()
         };
         let tag_len = if with_tag_len {
             let t = map.int_or("tag_length", 16);
@@ -518,16 +736,23 @@ fn aead_op(
 
         if sealing {
             let mut buf = bytes.to_vec();
-            dispatch_seal(algo, &key, &nonce, &aad, &mut buf, tag_len)?;
+            dispatch_seal(algo, &key, &nonce, &aad, &aad2, &mut buf, tag_len)?;
             Ok(Value::Bytes(buf))
         } else {
             let mut data = bytes.to_vec();
             if data.len() < tag_len {
                 return Err(sealed_input_error(algo, tag_len, data.len()));
             }
-            let tag = data.split_off(data.len() - tag_len);
-            dispatch_open(algo, &key, &nonce, &aad, &mut data, &tag, tag_len)?;
-            Ok(Value::Bytes(data))
+            // Postfix constructions end with the tag; AES-SIV prefixes it.
+            let (tag, mut msg) = if algo.tag_prefix() {
+                let (tag, msg) = data.split_at(tag_len);
+                (tag.to_vec(), msg.to_vec())
+            } else {
+                let tag = data.split_off(data.len() - tag_len);
+                (tag, data)
+            };
+            dispatch_open(algo, &key, &nonce, &aad, &aad2, &mut msg, &tag, tag_len)?;
+            Ok(Value::Bytes(msg))
         }
     };
     (spec, run)
@@ -544,6 +769,7 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
         "NIST SP 800-38D",
         "NIST GCM test cases (McGrew/Viega) / RustCrypto known-answer tests",
         false,
+        false,
         true,
     );
     reg.add_simple(spec, run);
@@ -556,6 +782,7 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
         Algo::AesGcm,
         "NIST SP 800-38D",
         "NIST GCM test cases (McGrew/Viega) / RustCrypto known-answer tests",
+        false,
         false,
         false,
     );
@@ -571,6 +798,7 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
         "NIST SP 800-38C / RFC 3610",
         "RFC 3610 packet vectors / NIST CCM validation set",
         true,
+        false,
         true,
     );
     reg.add_simple(spec, run);
@@ -585,6 +813,7 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
         "RFC 3610 packet vectors / NIST CCM validation set",
         true,
         false,
+        false,
     );
     reg.add_simple(spec, run);
 
@@ -597,6 +826,7 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
         Algo::ChaCha20Poly1305,
         "RFC 8439",
         "RFC 8439 section 2.8.2 test vector",
+        false,
         false,
         true,
     );
@@ -612,6 +842,7 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
         "RFC 8439 section 2.8.2 test vector",
         false,
         false,
+        false,
     );
     reg.add_simple(spec, run);
 
@@ -624,6 +855,7 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
         Algo::XChaCha20Poly1305,
         "draft-irtf-cfrg-xchacha",
         "draft-irtf-cfrg-xchacha appendix A.1 test vector",
+        false,
         false,
         true,
     );
@@ -639,6 +871,7 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
         "draft-irtf-cfrg-xchacha appendix A.1 test vector",
         false,
         false,
+        false,
     );
     reg.add_simple(spec, run);
 
@@ -651,6 +884,7 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
         Algo::AesGcmSiv,
         "RFC 8452",
         "RFC 8452 section 8 and appendix C test vectors",
+        false,
         false,
         true,
     );
@@ -665,6 +899,94 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
         "RFC 8452",
         "RFC 8452 section 8 and appendix C test vectors",
         false,
+        false,
+        false,
+    );
+    reg.add_simple(spec, run);
+
+    // AES-EAX (Bellare-Rogaway-Wagner)
+    let (spec, run) = aead_op(
+        "aead-aes-eax-encrypt",
+        "AES-EAX Encrypt",
+        "Encrypts and authenticates with EAX over AES (Bellare-Rogaway-Wagner). Output is ciphertext followed by the 16-byte tag. Requires a unique 128-bit nonce per message under the same key.",
+        &["eax-encrypt", "aes-eax-encrypt"],
+        Algo::AesEax,
+        "EAX (Bellare, Rogaway, Wagner)",
+        "EAX paper appendix G vectors / Project Wycheproof AES-EAX set",
+        false,
+        false,
+        true,
+    );
+    reg.add_simple(spec, run);
+
+    let (spec, run) = aead_op(
+        "aead-aes-eax-decrypt",
+        "AES-EAX Decrypt",
+        "Verifies the 16-byte tag and decrypts an AES-EAX message (ciphertext followed by tag). Returns a structured error on tag failure.",
+        &["eax-decrypt", "aes-eax-decrypt"],
+        Algo::AesEax,
+        "EAX (Bellare, Rogaway, Wagner)",
+        "EAX paper appendix G vectors / Project Wycheproof AES-EAX set",
+        false,
+        false,
+        false,
+    );
+    reg.add_simple(spec, run);
+
+    // OCB3 (RFC 7253)
+    let (spec, run) = aead_op(
+        "aead-ocb3-encrypt",
+        "OCB3 Encrypt",
+        "Encrypts and authenticates with OCB3 (RFC 7253), a one-pass high-performance AEAD. Output is ciphertext followed by the 16-byte tag. Requires a unique 96-bit nonce per message under the same key.",
+        &["ocb-encrypt", "aes-ocb3-encrypt"],
+        Algo::Ocb3,
+        "OCB3 (RFC 7253)",
+        "RFC 7253 appendix A test vectors",
+        false,
+        false,
+        true,
+    );
+    reg.add_simple(spec, run);
+
+    let (spec, run) = aead_op(
+        "aead-ocb3-decrypt",
+        "OCB3 Decrypt",
+        "Verifies the 16-byte tag and decrypts an OCB3 message (ciphertext followed by tag). Returns a structured error on tag failure.",
+        &["ocb-decrypt", "aes-ocb3-decrypt"],
+        Algo::Ocb3,
+        "OCB3 (RFC 7253)",
+        "RFC 7253 appendix A test vectors",
+        false,
+        false,
+        false,
+    );
+    reg.add_simple(spec, run);
+
+    // AES-SIV (RFC 5297) — RFC 5297 wire layout: the SIV tag comes first.
+    let (spec, run) = aead_op(
+        "aead-aes-siv-encrypt",
+        "AES-SIV Encrypt",
+        "Encrypts and authenticates with AES-SIV (RFC 5297): nonce-misuse-resistant AEAD. Wire layout is the RFC 5297 one: the 16-byte synthetic IV (SIV) comes FIRST, followed by the ciphertext. The nonce is optional and folded into S2V as an additional input; omit it for the deterministic construction. The key is the concatenation K1 || K2.",
+        &["aes-siv-encrypt", "siv-encrypt"],
+        Algo::AesSiv,
+        "AES-SIV (RFC 5297)",
+        "RFC 5297 appendix A test vectors (A.1 deterministic, A.2 nonce-based)",
+        false,
+        true,
+        true,
+    );
+    reg.add_simple(spec, run);
+
+    let (spec, run) = aead_op(
+        "aead-aes-siv-decrypt",
+        "AES-SIV Decrypt",
+        "Verifies the leading 16-byte synthetic IV and decrypts an AES-SIV message (SIV followed by ciphertext, per RFC 5297). Returns a structured error on tag failure.",
+        &["aes-siv-decrypt", "siv-decrypt"],
+        Algo::AesSiv,
+        "AES-SIV (RFC 5297)",
+        "RFC 5297 appendix A test vectors (A.1 deterministic, A.2 nonce-based)",
+        false,
+        true,
         false,
     );
     reg.add_simple(spec, run);
