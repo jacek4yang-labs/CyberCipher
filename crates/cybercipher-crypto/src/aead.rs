@@ -2,25 +2,31 @@
 //!
 //! Constructions: AES-GCM (NIST SP 800-38D), AES-CCM (NIST SP 800-38C),
 //! ChaCha20-Poly1305 (RFC 8439), XChaCha20-Poly1305
-//! (draft-irtf-cfrg-xchacha), and AES-GCM-SIV (RFC 8452).
+//! (draft-irtf-cfrg-xchacha), AES-GCM-SIV (RFC 8452), AES-EAX
+//! (Bellare-Rogaway-Wagner), OCB3 (RFC 7253), and AES-SIV (RFC 5297).
 //!
 //! Conventions:
 //! - Encrypt outputs `ciphertext || tag`; decrypt expects the same layout and
-//!   splits off the trailing tag before verification.
+//!   splits off the trailing tag before verification. AES-SIV is the one
+//!   deliberate exception: it uses the RFC 5297 wire layout `SIV || ciphertext`
+//!   (the tag is the Synthetic Initialization Vector and comes first).
 //! - Verification failures are structured, typed errors. Authenticated
 //!   decryption never returns plaintext when the tag does not verify.
-//! - Nonce lengths are validated per construction: 96 bits for GCM, GCM-SIV
-//!   and ChaCha20-Poly1305; 192 bits for XChaCha20-Poly1305; 7-13 bytes for
-//!   CCM (NIST SP 800-38C). Key lengths are checked before the cipher is
-//!   constructed (the RustCrypto `new` panics on wrong sizes).
+//! - Nonce lengths are validated per construction: 96 bits for GCM, GCM-SIV,
+//!   OCB3 and ChaCha20-Poly1305; 192 bits for XChaCha20-Poly1305; 128 bits for
+//!   EAX; 7-13 bytes for CCM (NIST SP 800-38C). AES-SIV treats the nonce as an
+//!   additional S2V associated-data string (optional, RFC 5297). Key lengths
+//!   are checked before the cipher is constructed (the RustCrypto `new`
+//!   panics on wrong sizes).
 
 use aead::consts::{U10, U11, U12, U13, U16, U4, U7, U8, U9};
 use aead::generic_array::GenericArray;
 use aead::{AeadInPlace, KeyInit};
 // aes-gcm / ccm are on the cipher 0.4 generation and need `aes` 0.8 types;
 // `aes08` is that crate (renamed in Cargo.toml) while `aes` 0.9 serves the
-// block-cipher table in ciphers.rs.
+// block-cipher table in ciphers.rs and the aead 0.6 crates (eax/ocb3/aes-siv).
 use aes08 as aes;
+use ::aes as aes09;
 use aes_gcm::{Aes128Gcm, Aes256Gcm};
 use chacha20poly1305::{ChaCha20Poly1305, XChaCha20Poly1305};
 use cybercipher_codec::decode_input;

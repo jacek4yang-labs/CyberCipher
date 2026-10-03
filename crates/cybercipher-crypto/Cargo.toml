@@ -64,6 +64,13 @@ ccm = "0.5"
 chacha20poly1305 = "0.10"
 aes-gcm-siv = "0.10"
 
+# AEAD constructions on the newer aead 0.6 generation (they re-export their
+# own `aead`, so no direct 0.6 dependency is needed). eax/ocb3/aes-siv 0.8
+# build on cipher 0.5 and the `aes` 0.9 types above.
+eax = "0.6"
+ocb3 = "0.2"
+aes-siv = "0.8"
+
 # MACs outside the HMAC family
 cmac = "0.8"
 poly1305 = "0.9"
