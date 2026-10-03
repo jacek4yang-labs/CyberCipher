@@ -24,7 +24,7 @@ fn json_pretty_op(v: &Value, _: &ParamMap, _: &ExecutionContext) -> OpResult<Val
     let text = input_text(v, "JSON Pretty")?;
     check_budget(text.len(), "json pretty")?;
     let parsed: serde_json::Value =
-        serde_json::from_str(&text).map_err(|e| decode_json_err(e, "JSON Pretty"))?;
+        serde_json::from_str(text).map_err(|e| decode_json_err(e, "JSON Pretty"))?;
     let pretty = serde_json::to_string_pretty(&parsed)
         .map_err(|e| OperationError::internal(format!("JSON re-serialize failed: {e}")))?;
     Ok(Value::Text(pretty))
@@ -34,7 +34,7 @@ fn json_minify_op(v: &Value, _: &ParamMap, _: &ExecutionContext) -> OpResult<Val
     let text = input_text(v, "JSON Minify")?;
     check_budget(text.len(), "json minify")?;
     let parsed: serde_json::Value =
-        serde_json::from_str(&text).map_err(|e| decode_json_err(e, "JSON Minify"))?;
+        serde_json::from_str(text).map_err(|e| decode_json_err(e, "JSON Minify"))?;
     let min = serde_json::to_string(&parsed)
         .map_err(|e| OperationError::internal(format!("JSON re-serialize failed: {e}")))?;
     Ok(Value::Text(min))
@@ -49,7 +49,7 @@ fn decode_json_err(e: serde_json::Error, what: &str) -> OperationError {
 fn yaml_to_json_op(v: &Value, _: &ParamMap, _: &ExecutionContext) -> OpResult<Value> {
     let text = input_text(v, "YAML to JSON")?;
     check_budget(text.len(), "yaml parse")?;
-    let parsed: serde_json::Value = serde_yaml::from_str(&text).map_err(|e| {
+    let parsed: serde_json::Value = serde_yaml::from_str(text).map_err(|e| {
         OperationError::decode("input is not valid YAML").with_details(e.to_string())
     })?;
     Ok(Value::Json(parsed))
@@ -59,7 +59,7 @@ fn json_to_yaml_op(v: &Value, _: &ParamMap, _: &ExecutionContext) -> OpResult<Va
     let text = input_text(v, "JSON to YAML")?;
     check_budget(text.len(), "yaml emit")?;
     let parsed: serde_json::Value =
-        serde_json::from_str(&text).map_err(|e| decode_json_err(e, "JSON to YAML"))?;
+        serde_json::from_str(text).map_err(|e| decode_json_err(e, "JSON to YAML"))?;
     let out = serde_yaml::to_string(&parsed)
         .map_err(|e| OperationError::internal(format!("YAML emit failed: {e}")))?;
     Ok(Value::Text(out))
@@ -83,7 +83,7 @@ fn json_to_bson_op(v: &Value, _: &ParamMap, _: &ExecutionContext) -> OpResult<Va
     let text = input_text(v, "JSON to BSON")?;
     check_budget(text.len(), "bson emit")?;
     let parsed: serde_json::Value =
-        serde_json::from_str(&text).map_err(|e| decode_json_err(e, "JSON to BSON"))?;
+        serde_json::from_str(text).map_err(|e| decode_json_err(e, "JSON to BSON"))?;
     let doc = json_to_bson_doc(&parsed)?;
     let mut out = Vec::new();
     doc.to_writer(&mut out)
@@ -114,7 +114,7 @@ fn bson_bson_to_json(b: &bson::Bson) -> serde_json::Value {
         Bson::Null => serde_json::Value::Null,
         Bson::Int32(i) => serde_json::json!(i),
         Bson::Int64(i) => serde_json::json!(i),
-        Bson::DateTime(dt) => serde_json::json!(format!("{}", dt.to_rfc3339_string())),
+        Bson::DateTime(dt) => serde_json::json!(dt.try_to_rfc3339_string().unwrap_or_default()),
         Bson::Timestamp(ts) => serde_json::json!({"timestamp": ts.time, "increment": ts.increment}),
         Bson::ObjectId(oid) => serde_json::json!(oid.to_hex()),
         Bson::Binary(bin) => {
@@ -495,7 +495,7 @@ fn merge_xml_child(
 fn xml_inspect_op(v: &Value, _: &ParamMap, _: &ExecutionContext) -> OpResult<Value> {
     let text = input_text(v, "XML Inspect")?;
     check_budget(text.len(), "xml inspect")?;
-    let mut reader = quick_xml::Reader::from_str(&text);
+    let mut reader = quick_xml::Reader::from_str(text);
     let mut budget = PB_MAX_FIELDS;
     let tree = xml_walk(&mut reader, 0, &mut budget)?;
     Ok(Value::Json(tree))
@@ -857,10 +857,7 @@ mod tests {
                 .kind,
             ErrorKind::Decode
         );
-        let mut deep = Vec::new();
-        for _ in 0..PB_MAX_DEPTH + 2 {
-            deep.push(0x12);
-        }
+        let mut deep = vec![0x12; PB_MAX_DEPTH + 2];
         deep.push(0x00);
         let err = protobuf_inspect_op(&Value::Bytes(deep), &ParamMap::new(), &ctx()).unwrap_err();
         assert_eq!(err.kind, ErrorKind::Decode);
@@ -897,7 +894,7 @@ mod tests {
         for _ in 0..PB_MAX_DEPTH + 5 {
             xml.push_str("<a>");
         }
-        let err = xml_inspect_op(&Value::Text(xml.into()), &ParamMap::new(), &ctx()).unwrap_err();
+        let err = xml_inspect_op(&Value::Text(xml), &ParamMap::new(), &ctx()).unwrap_err();
         assert_eq!(err.kind, ErrorKind::Decode);
     }
 }
