@@ -1406,7 +1406,12 @@ pub fn auto_decode(
             // inside the op does the pruning — a wrong key/mode/IV almost
             // never unpads cleanly, and the failed attempt simply produces
             // no candidate. Scoring ranks whatever survives.
-            if !keyed_plan.is_empty() && bytes.len() <= KEYED_EXPLORE_LIMIT {
+            // Keyed attempts are skipped on XOR-exploration nodes: the 255
+            // sweep would multiply every keyed attempt and turn the user's
+            // key hint into a mass search. Keyed decryption applies to the
+            // original input and syntax-decoded layers only.
+            let from_xor = node.path.last().map(|p| p == "xor-single-byte").unwrap_or(false);
+            if !keyed_plan.is_empty() && !from_xor && bytes.len() <= KEYED_EXPLORE_LIMIT {
                 for attempt in &keyed_plan {
                     if ctx.is_cancelled() || started.elapsed() >= DEADLINE {
                         break;

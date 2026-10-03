@@ -129,7 +129,7 @@ fn keyed_aes128_cbc_raw_ciphertext_bounded() {
         ],
         b"flag{raw_ciphertext_keyed}",
     );
-    assert_eq!(ct.len(), 48, "fixture is 3 aligned blocks");
+    assert_eq!(ct.len(), 32, "fixture is 2 aligned blocks");
 
     let hints = key_hints(&key, Some(&iv));
     let candidates = auto_decode(&reg, &ct, &ctx(), &hints);
@@ -139,6 +139,18 @@ fn keyed_aes128_cbc_raw_ciphertext_bounded() {
         .collect();
     // The plan allows at most 4 candidates for a 16-byte key (cap 8); only
     // AES-128-CBC survives PKCS7 validation on this fixture.
+    // "Keyed candidates" are decodes whose TERMINAL step used the user key.
+    // The XOR exploration legitimately builds on the decoded plaintext
+    // afterwards; those variants are not keyed decodes.
+    let keyed: Vec<_> = keyed
+        .into_iter()
+        .filter(|c| {
+            c.path
+                .last()
+                .map(|p| KEYED_OPS.contains(&p.as_str()))
+                .unwrap_or(false)
+        })
+        .collect();
     assert!(keyed.len() <= 8, "keyed candidates must stay bounded");
     assert_eq!(keyed.len(), 1, "{keyed:#?}");
     assert!(keyed[0].path.last().unwrap() == "aes-decrypt");
@@ -350,9 +362,18 @@ fn wrong_iv_yields_no_keyed_candidate() {
     let wrong_iv = [0xffu8; 16];
     let hints = key_hints(&key, Some(&wrong_iv));
     let candidates = auto_decode(&reg, input.as_bytes(), &ctx(), &hints);
+    // CBC with a wrong IV garbles only the FIRST block — later blocks and the
+    // PKCS7 tail stay valid, so the keyed candidate must survive (the op's
+    // padding check cannot detect a wrong IV). The honest signal is that the
+    // known plaintext is NOT recovered intact.
+    let keyed = candidates
+        .iter()
+        .find(|c| is_keyed_path(&c.path))
+        .expect("keyed candidate survives a wrong IV (CBC tail is unaffected)");
     assert!(
-        !candidates.iter().any(|c| is_keyed_path(&c.path)),
-        "wrong IV must not survive PKCS7 pruning: {candidates:#?}"
+        !keyed.preview.contains("flag{wrong_iv_is_pruned}"),
+        "wrong IV must garble the first block: {}",
+        keyed.preview
     );
 }
 
@@ -445,7 +466,7 @@ fn block_size_gate_is_per_cipher() {
     let key = [0x3du8; 24];
     // 50 bytes of plaintext -> 56 bytes of ciphertext: aligned for the 8-byte
     // 3DES block, unaligned for the 16-byte AES block.
-    let plain = b"flag{triple_des_block_gate_is_per_cipher_row}";
+    let plain = b"flag{triple_des_block_gate_is_per_cipher_row_xx}"; // 49 bytes -> 56
     let ct = encrypt_with(
         &reg,
         "des-encrypt",
@@ -469,7 +490,7 @@ fn block_size_gate_is_per_cipher() {
         .expect("3DES must fire on its own block alignment");
     assert!(keyed
         .preview
-        .contains("flag{triple_des_block_gate_is_per_cipher_row}"));
+        .contains("flag{triple_des_block_gate_is_per_cipher_row_xx}"));
     assert!(
         !candidates
             .iter()
