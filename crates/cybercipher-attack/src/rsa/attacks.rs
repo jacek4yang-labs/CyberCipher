@@ -57,7 +57,7 @@ pub struct AttackOutcome {
 }
 
 impl AttackOutcome {
-    fn new(
+    pub(crate) fn new(
         id: &'static str,
         name: &'static str,
         status: AttackStatus,
@@ -75,12 +75,12 @@ impl AttackOutcome {
         }
     }
 
-    fn with_details(mut self, details: String) -> Self {
+    pub(crate) fn with_details(mut self, details: String) -> Self {
         self.details = Some(details);
         self
     }
 
-    fn not_applicable(id: &'static str, name: &'static str, missing: &str) -> Self {
+    pub(crate) fn not_applicable(id: &'static str, name: &'static str, missing: &str) -> Self {
         AttackOutcome::new(
             id,
             name,
@@ -561,6 +561,193 @@ pub fn attack_dp_leak(params: &mut RsaParams, deadline: Instant) -> AttackOutcom
     )
     .with_details(
         "the leak may correspond to dq rather than dp, or the parameters are inconsistent"
+            .to_string(),
+    )
+}
+
+/// dp+dq joint leak (capability id `rsa-dpdq-recover`; pipeline id
+/// `dpdq-recover`, the sibling of `dp-leak`): both CRT exponents are known.
+/// e·dp ≡ 1 (mod p−1) and e·dq ≡ 1 (mod q−1), so X = e·dp − 1 is a multiple
+/// of p−1 and Y = e·dq − 1 a multiple of q−1.
+///
+/// Method 1 (any e): for small bases a, a^X ≡ 1 (mod p) and a^Y ≡ 1 (mod q)
+/// (Fermat), so gcd(a^X − 1, n) yields p and gcd(a^Y − 1, n) yields q with
+/// overwhelming probability — the dq identity is tried when the dp one
+/// collapses to n.
+///
+/// Method 2 (small e): X = k·(p−1) with 0 < k < e, so every divisor k of X
+/// below e gives the candidate p = X/k + 1; the dq leak cross-checks the
+/// split (Y must vanish mod q−1) before it is accepted.
+///
+/// Every candidate factorization must satisfy the joint identity — the
+/// derived d must reduce to dp mod (p−1) AND to dq mod (q−1) — which is what
+/// separates a genuine split from a spurious one.
+pub fn attack_dpdq_recover(params: &mut RsaParams) -> AttackOutcome {
+    const ID: &str = "dpdq-recover";
+    const NAME: &str = "dp+dq joint leak (CRT)";
+
+    let (Some(n), Some(e), Some(dp), Some(dq)) = (
+        params.n.clone(),
+        params.e.clone(),
+        params.dp.clone(),
+        params.dq.clone(),
+    ) else {
+        return AttackOutcome::not_applicable(ID, NAME, "n, e, dp and dq");
+    };
+    if !modulus_usable(&n) {
+        return AttackOutcome::not_applicable(ID, NAME, "a non-trivial modulus n");
+    }
+    if e.is_zero() {
+        return AttackOutcome::not_applicable(ID, NAME, "a non-zero public exponent e");
+    }
+    if dp.is_zero() || dq.is_zero() {
+        return AttackOutcome::not_applicable(
+            ID,
+            NAME,
+            "non-zero dp and dq (a zero CRT exponent gives no usable identity)",
+        );
+    }
+    let Some(x) = (&e * &dp).checked_sub(&BigUint::one()) else {
+        return AttackOutcome::not_applicable(ID, NAME, "e·dp ≥ 1");
+    };
+    let Some(y) = (&e * &dq).checked_sub(&BigUint::one()) else {
+        return AttackOutcome::not_applicable(ID, NAME, "e·dq ≥ 1");
+    };
+    if x.is_zero() || y.is_zero() {
+        return AttackOutcome::not_applicable(ID, NAME, "e·dp > 1 and e·dq > 1");
+    }
+
+    // Acceptance: the identity that PRODUCED the factor must verify
+    // algebraically — e·d? ≡ 1 (mod g−1) is exactly "leak vanishes mod g−1".
+    // The other leak is a cross-check: when it also vanishes mod (n/g − 1)
+    // the split is *jointly* verified; when it does not (a mislabeled or
+    // corrupt second leak) the split still stands on the driving identity,
+    // with finish_factorization's round-trip check guarding false positives.
+    let leak_consistent = |leak: &BigUint, prime: &BigUint| -> bool {
+        let pm1 = prime - BigUint::one();
+        !pm1.is_zero() && leak % &pm1 == BigUint::zero()
+    };
+
+    let try_split = |params: &mut RsaParams,
+                     driving: &BigUint,
+                     other: &BigUint,
+                     which: &str,
+                     g: BigUint,
+                     how: &str|
+     -> Option<AttackOutcome> {
+        if g <= BigUint::one() || g >= n || &n % &g != BigUint::zero() {
+            return None;
+        }
+        if !leak_consistent(driving, &g) {
+            return None;
+        }
+        let q = &n / &g;
+        let joint = leak_consistent(other, &q);
+        let snapshot = params.clone();
+        params.p = Some(g.clone());
+        params.q = Some(q.clone());
+        params.enrich_from_factors();
+        if let Some(mut o) = finish_factorization(
+            params,
+            g,
+            q,
+            ID,
+            NAME,
+            AttackCost::Instant,
+            &format!("dp+dq joint leak ({how})"),
+        ) {
+            let joint_note = if joint {
+                "both CRT-exponent identities hold (jointly verified)"
+            } else {
+                "the second leak is inconsistent with this split and was ignored"
+            };
+            o.details = Some(format!(
+                "verified via the {which} identity ({joint_note}) [{how}]"
+            ));
+            return Some(o);
+        }
+        *params = snapshot;
+        None
+    };
+
+    // Method 1: Fermat-base gcds on both CRT exponents.
+    let bases = [2u32, 3, 5, 7, 11, 13];
+    for a in bases {
+        for (leak, other, which) in [(&x, &y, "dp"), (&y, &x, "dq")] {
+            let candidate = BigUint::from(a).modpow(leak, &n);
+            let minus_one = if candidate.is_zero() {
+                n.clone() - BigUint::one()
+            } else {
+                &candidate - BigUint::one()
+            };
+            let g = math::gcd(&minus_one, &n);
+            if g > BigUint::one() && g < n {
+                let how = format!("gcd({a}^(e·d{which}−1) − 1, n)");
+                if let Some(o) = try_split(params, leak, other, which, g, &how) {
+                    return o;
+                }
+            }
+        }
+    }
+
+    // Method 2: k-divisor sweep on X (needs a moderate e). The dq leak
+    // cross-checks every candidate split.
+    let Some(e_u64) = small_exponent(&e) else {
+        return AttackOutcome::new(
+            ID,
+            NAME,
+            AttackStatus::Failed,
+            AttackCost::Instant,
+            "no factor recovered from the dp/dq identities (large e)".to_string(),
+        )
+        .with_details(
+            "the Fermat-base gcds found nothing; without a moderate e the k-sweep is unavailable"
+                .to_string(),
+        );
+    };
+    if e_u64 > 1 << 24 {
+        return AttackOutcome::new(
+            ID,
+            NAME,
+            AttackStatus::Failed,
+            AttackCost::Instant,
+            format!("e = {e_u64} is too large for the k-divisor sweep (needs e < 2²⁴)"),
+        )
+        .with_details("the Fermat-base gcds above already ran and found nothing".to_string());
+    }
+    for k in 1..e_u64 {
+        if &x % k != BigUint::zero() {
+            continue;
+        }
+        let p = &x / k + BigUint::one();
+        if p <= BigUint::one() || p >= n || &n % &p != BigUint::zero() {
+            continue;
+        }
+        // Joint cross-check: q = n/p must also satisfy Y ≡ 0 (mod q−1).
+        let q = &n / &p;
+        let qm1 = if q > BigUint::one() {
+            q.clone() - BigUint::one()
+        } else {
+            continue;
+        };
+        if &y % &qm1 != BigUint::zero() {
+            continue;
+        }
+        let how = format!("p = (e·dp−1)/k + 1 at k={k}");
+        if let Some(o) = try_split(params, &x, &y, "dp", p, &how) {
+            return o;
+        }
+    }
+
+    AttackOutcome::new(
+        ID,
+        NAME,
+        AttackStatus::Failed,
+        AttackCost::Instant,
+        "no factorization satisfies both CRT-exponent identities".to_string(),
+    )
+    .with_details(
+        "dp and dq may be inconsistent with (n, e), or the leaks are swapped between the primes"
             .to_string(),
     )
 }
@@ -1330,7 +1517,9 @@ const PIPELINE: &[(&str, AttackFn)] = &[
     ("known-pq", |p, _| attack_known_pq(p)),
     ("known-d", |p, _| attack_known_d(p)),
     ("known-phi", |p, _| attack_known_phi(p)),
+    ("rabin", |p, _| crate::rsa::rabin::attack_rabin(p)),
     ("dp-leak", attack_dp_leak),
+    ("dpdq-recover", |p, _| attack_dpdq_recover(p)),
     ("common-modulus", |p, _| attack_common_modulus(p)),
     ("hastad", |p, _| attack_hastad(p)),
     ("shared-prime", |p, _| attack_shared_prime(p)),
@@ -1343,8 +1532,14 @@ const PIPELINE: &[(&str, AttackFn)] = &[
 ];
 
 /// Factorization escalations that are redundant once p and q are known.
-const FACTORIZATION_ATTACKS: &[&str] =
-    &["dp-leak", "wiener", "fermat", "pollard-rho", "pollard-pm1"];
+const FACTORIZATION_ATTACKS: &[&str] = &[
+    "dp-leak",
+    "dpdq-recover",
+    "wiener",
+    "fermat",
+    "pollard-rho",
+    "pollard-pm1",
+];
 
 /// Verified plaintext from the current parameter set: decrypt with d and
 /// confirm re-encryption reproduces c (when e, n, c are all known).
