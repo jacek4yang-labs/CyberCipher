@@ -36,6 +36,20 @@ fn run(
     )
 }
 
+fn run_value(
+    reg: &OperationRegistry,
+    id: &str,
+    input: &Value,
+    params: &[(&'static str, ParamValue)],
+) -> OpResult<Value> {
+    let op = reg.get(id).unwrap_or_else(|| panic!("missing op {id}"));
+    let mut map = ParamMap::new();
+    for (k, v) in params {
+        map.insert(*k, v.clone());
+    }
+    op.execute(input, &map, &ExecutionContext::new())
+}
+
 fn s(v: &Value) -> String {
     match v {
         Value::Text(t) => t.clone(),
@@ -364,4 +378,63 @@ fn bcrypt_hash_rejects_bad_params() {
     )
     .unwrap_err();
     assert_eq!(err.parameter.as_deref(), Some("salt"));
+}
+
+/// Text and Bytes inputs must produce identical tags, and the output_length
+/// parameter drives the squeezed length through the registry path.
+#[test]
+fn kmac_text_input_matches_bytes_and_variable_lengths() {
+    let r = reg();
+    let params = vec![
+        ("key", ParamValue::Str(SAMPLE_KEY.to_string())),
+        ("key_encoding", ParamValue::Str("hex".to_string())),
+        ("customization", ParamValue::Str(CUST.to_string())),
+    ];
+    let from_text = run_value(
+        &r,
+        "kmac128",
+        &Value::Text("tagged message".to_string()),
+        &params,
+    )
+    .unwrap();
+    let from_bytes = run(&r, "kmac128", b"tagged message", &params).unwrap();
+    assert_eq!(from_text, from_bytes);
+
+    for len in [1usize, 32, 64, 513] {
+        let out = run(
+            &r,
+            "kmac256",
+            b"tagged message",
+            &[
+                ("key", ParamValue::Str(SAMPLE_KEY.to_string())),
+                ("key_encoding", ParamValue::Str("hex".to_string())),
+                ("output_length", ParamValue::Int(len as i64)),
+            ],
+        )
+        .unwrap();
+        assert_eq!(s(&out).len(), len * 2, "kmac256 L={len}");
+    }
+}
+
+/// Passwords arrive as text in practice; verify the whole hash->verify loop
+/// with a Text input and the default (random-salt) hashing mode.
+#[test]
+fn bcrypt_random_salt_hash_verifies_and_is_salted() {
+    let r = reg();
+    let hash = run_value(
+        &r,
+        "bcrypt-hash",
+        &Value::Text("text password".to_string()),
+        &[pi("cost", 4)],
+    )
+    .unwrap();
+    assert!(s(&hash).starts_with("$2b$04$"), "got {}", s(&hash));
+    let ok = run_value(
+        &r,
+        "bcrypt-verify",
+        &Value::Text("text password".to_string()),
+        &[("hash", ParamValue::Str(s(&hash)))],
+    )
+    .unwrap();
+    assert_eq!(s(&ok), "true");
 }

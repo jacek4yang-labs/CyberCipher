@@ -254,3 +254,94 @@ fn zuc_rejects_bad_lengths() {
         "nonce",
     );
 }
+
+/// Regression for the batch B refactor of `stream_spec`/`stream_run`: the
+/// pre-existing Salsa20/XSalsa20 ops must still round-trip through the
+/// registry with their original key/nonce widths.
+#[test]
+fn salsa20_xsalsa20_regression_roundtrip() {
+    let r = reg();
+    let payload = b"regression payload 0123456789".to_vec();
+    let cases = [
+        (
+            "salsa20",
+            "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+            "0001020304050607",
+        ),
+        (
+            "xsalsa20",
+            "000102030405060708090a0b0c0d0e0f101112131415161718191a1b1c1d1e1f",
+            "000102030405060708090a0b0c0d0e0f1011121314151617",
+        ),
+    ];
+    for (op, key, nonce) in cases {
+        let params = pv(&[
+            ("key", key),
+            ("key_encoding", "hex"),
+            ("nonce", nonce),
+            ("nonce_encoding", "hex"),
+        ]);
+        let ct = run(&r, op, &payload, &params).unwrap();
+        let back = run(&r, op, &hex_bytes(&s(&ct)), &params).unwrap();
+        assert_eq!(back, Value::Bytes(payload.clone()), "{op} round-trip");
+    }
+}
+
+/// Text inputs coerce to UTF-8 bytes for the keystream ops, and the ops stay
+/// reachable under their short aliases.
+#[test]
+fn stream_ops_accept_text_input_and_aliases() {
+    let r = reg();
+    let zuc_params = pv(&[
+        ("key", "3d4c4be96a82fdaeb58f641db17b455b"),
+        ("key_encoding", "hex"),
+        ("nonce", "84319aa8de6915ca1f6bda6bfbd8c766"),
+        ("nonce_encoding", "hex"),
+    ]);
+    let as_bytes = run(&r, "zuc-encrypt", b"hello", &zuc_params).unwrap();
+    let op = r.get("zuc-encrypt").unwrap();
+    let mut map = ParamMap::new();
+    for (k, v) in zuc_params.clone() {
+        map.insert(k, v);
+    }
+    let as_text = op
+        .execute(
+            &Value::Text("hello".to_string()),
+            &map,
+            &ExecutionContext::new(),
+        )
+        .unwrap();
+    assert_eq!(as_bytes, as_text, "Text input == Bytes input");
+
+    // The short aliases are advertised on the specs (search resolves them).
+    let aliases: Vec<&str> = ["rabbit", "hc256", "zuc"]
+        .iter()
+        .map(|alias| {
+            r.all()
+                .find(|op| op.spec().aliases.iter().any(|a| a == alias))
+                .map(|op| op.spec().id)
+                .unwrap_or_else(|| panic!("missing alias {alias}"))
+        })
+        .collect();
+    assert_eq!(aliases, ["rabbit-encrypt", "hc256-encrypt", "zuc-encrypt"]);
+}
+
+/// Non-hex key material surfaces a structured decode error naming the
+/// parameter, not a panic.
+#[test]
+fn stream_ops_reject_undecodable_key_material() {
+    let r = reg();
+    let err = run(
+        &r,
+        "rabbit-encrypt",
+        b"data",
+        &pv(&[
+            ("key", "zzzz-not-hex"),
+            ("key_encoding", "hex"),
+            ("nonce", "0000000000000000"),
+            ("nonce_encoding", "hex"),
+        ]),
+    )
+    .unwrap_err();
+    assert_eq!(err.parameter.as_deref(), Some("key"));
+}

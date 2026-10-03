@@ -882,3 +882,24 @@ fn xts_aes256_round_trip_and_validation() {
     let err = run(&r, "aes-xts-encrypt", b"tiny", &params).unwrap_err();
     assert!(err.message.contains("at least"));
 }
+
+/// CAST6 through the batch-A ciphertext-stealing modes: output length is
+/// preserved for a partial final block and every variant round-trips.
+#[test]
+fn cast6_cbc_cts_roundtrip() {
+    let r = reg();
+    let data: Vec<u8> = (0..37u32).map(|i| (i * 11 + 5) as u8).collect();
+    for mode in ["cbc-cs1", "cbc-cs2", "cbc-cs3"] {
+        let params = pv(&[
+            ("key", "2342bb9efa38542cbed0ac83940ac298bac77a7717942863"),
+            ("key_encoding", "hex"),
+            ("mode", mode),
+            ("iv", "000102030405060708090a0b0c0d0e0f"),
+            ("iv_encoding", "hex"),
+        ]);
+        let ct = run(&r, "cast6-encrypt", &data, &params).unwrap();
+        assert_eq!(s(&ct).len(), data.len() * 2, "{mode} preserves length");
+        let back = run(&r, "cast6-decrypt", &hex_bytes(&s(&ct)), &params).unwrap();
+        assert_eq!(back, Value::Bytes(data.clone()), "{mode} round-trip");
+    }
+}
