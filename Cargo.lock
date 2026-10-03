@@ -942,6 +942,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "c2459377285ad874054d797f3ccebf984978aa39129f6eafde5cdc8315b612f8"
 
 [[package]]
+name = "const-str"
+version = "0.6.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "451d0640545a0553814b4c646eb549343561618838e9b42495f466131fe3ad49"
+
+[[package]]
 name = "cookie"
 version = "0.18.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1349,6 +1355,7 @@ dependencies = [
  "des",
  "digest 0.10.7",
  "eax",
+ "hc-256",
  "hkdf",
  "hmac",
  "idea",
@@ -1359,6 +1366,7 @@ dependencies = [
  "ocb3",
  "pbkdf2",
  "poly1305 0.9.1",
+ "rabbit",
  "rc2",
  "rc5",
  "rc6",
@@ -1377,6 +1385,7 @@ dependencies = [
  "twofish",
  "whirlpool",
  "xxhash-rust",
+ "zuc",
 ]
 
 [[package]]
@@ -2547,6 +2556,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "ed5909b6e89a2db4456e54cd5f673791d7eca6732202bbf2a9cc504fe2f9b84a"
 
 [[package]]
+name = "hc-256"
+version = "0.6.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "718152a54915ae7005a7e9a2d772b2357deaa818436c7153d9af7fc0dfd0bf04"
+dependencies = [
+ "cipher 0.5.2",
+]
+
+[[package]]
 name = "heck"
 version = "0.4.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -3593,6 +3611,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "numeric_cast"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a3c00a0c9600379bd32f8972de90676a7672cba3bf4886986bc05902afc1e093"
+
+[[package]]
 name = "objc2"
 version = "0.6.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4343,6 +4367,15 @@ name = "r-efi"
 version = "6.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f8dcc9c7d52a811697d2151c701e0d08956f92b0e24136cf4cf27b57a6a0d9bf"
+
+[[package]]
+name = "rabbit"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "e7204c97584ac097d9749f4a52f2f96910d988f12303fe3e3b021628f88923f1"
+dependencies = [
+ "cipher 0.5.2",
+]
 
 [[package]]
 name = "radium"
@@ -5254,6 +5287,16 @@ name = "stable_deref_trait"
 version = "1.2.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6ce2be8dc25455e1f91df71bfa12ad37d7af1092ae736f3a6cd0e37bc7810596"
+
+[[package]]
+name = "std-next"
+version = "0.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "04082e93ed1a06debd9148c928234b46d2cf260bc65f44e1d1d3fa594c5beebc"
+dependencies = [
+ "simdutf8",
+ "thiserror 2.0.21",
+]
 
 [[package]]
 name = "strength_reduce"
@@ -7299,6 +7342,19 @@ checksum = "0ef0a8027ec3ee71300ab3bcbcd0393f434aa72b91ca6d635a39941deae8eea0"
 dependencies = [
  "cc",
  "pkg-config",
+]
+
+[[package]]
+name = "zuc"
+version = "0.4.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d3d7c0dcb5c874094334a30d7a54cbcb27d94bfdf3975657082e92e275ac6841"
+dependencies = [
+ "cipher 0.4.4",
+ "const-str",
+ "digest 0.10.7",
+ "numeric_cast",
+ "std-next",
 ]
 
 [[package]]
