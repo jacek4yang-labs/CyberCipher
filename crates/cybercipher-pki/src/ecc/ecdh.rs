@@ -17,9 +17,9 @@ use super::{decode_hex, decode_scalar_hex, invalid_key, invalid_point, wrong_cur
 use crate::error::PkiResult;
 use crate::keys::to_hex;
 
-/// ECDH shared-secret derivation on P-256 or P-384: `x`-coordinate of
-/// `private * peer_public`, as a lowercase hex string of raw bytes
-/// (32 bytes on P-256, 48 on P-384). Any other curve is a typed error.
+/// ECDH shared-secret derivation on P-256, P-384, or secp256k1: `x`-coordinate
+/// of `private * peer_public`, as a lowercase hex string of raw bytes
+/// (32 bytes on P-256/secp256k1, 48 on P-384). Any other curve is a typed error.
 pub fn ecdh_shared_secret(
     curve: EccCurve,
     private_hex: &str,
@@ -34,8 +34,12 @@ pub fn ecdh_shared_secret(
             let scalar = decode_scalar_hex("private_key", private_hex, 48)?;
             nist_ecdh::<p384::NistP384>(curve, &scalar, peer_public_hex)
         }
-        other => Err(wrong_curve("p256 or p384", other.label())
-            .with_details("ECDH is only defined here for the NIST curves P-256 and P-384")),
+        EccCurve::Secp256k1 => {
+            let scalar = decode_scalar_hex("private_key", private_hex, 32)?;
+            nist_ecdh::<k256::Secp256k1>(curve, &scalar, peer_public_hex)
+        }
+        other => Err(wrong_curve("p256, p384, or secp256k1", other.label())
+            .with_details("ECDH is only defined here for P-256, P-384, and secp256k1")),
     }
 }
 

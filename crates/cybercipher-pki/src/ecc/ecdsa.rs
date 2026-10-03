@@ -1,8 +1,9 @@
-//! ECDSA sign/verify for the NIST curves (FIPS 186-5):
-//! - P-256 with SHA-256, P-384 with SHA-384 (the standard pairings — the
-//!   `ecdsa` crate's digest API requires the digest output to match the field
-//!   size, and cross-pairings are rare, questionable practice; a mismatched
-//!   digest/curve combination is a typed `InvalidParam` error, not a guess);
+//! ECDSA sign/verify for the short-Weierstrass curves:
+//! - P-256 with SHA-256, P-384 with SHA-384, secp256k1 with SHA-256 (the
+//!   standard pairings — the `ecdsa` crate's digest API requires the digest
+//!   output to match the field size, and cross-pairings are rare, questionable
+//!   practice; a mismatched digest/curve combination is a typed `InvalidParam`
+//!   error, not a guess);
 //! - deterministic RFC 6979 nonces (the default) or randomized nonces;
 //! - signatures in DER or fixed-size `r||s` (64 bytes on P-256, 96 on
 //!   P-384) selected by an explicit `format` parameter.
@@ -25,8 +26,8 @@ use crate::keys::to_hex;
 // Parameters (serde boundary)
 // ---------------------------------------------------------------------------
 
-/// Hash used for the ECDSA prehash. P-256 requires SHA-256 and P-384 requires
-/// SHA-384; anything else is rejected with a typed error.
+/// Hash used for the ECDSA prehash. P-256 and secp256k1 require SHA-256 and
+/// P-384 requires SHA-384; anything else is rejected with a typed error.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum EcdsaDigest {
@@ -131,6 +132,10 @@ pub fn ecdsa_sign(
             let scalar = decode_scalar_hex("private_key", private_hex, 48)?;
             ecdsa_sign_curve::<p384::NistP384>(&scalar, data, nonce, format)
         }
+        EccCurve::Secp256k1 => {
+            let scalar = decode_scalar_hex("private_key", private_hex, 32)?;
+            ecdsa_sign_curve::<k256::Secp256k1>(&scalar, data, nonce, format)
+        }
         other => Err(ecdsa_requires_nist(other)),
     }
 }
@@ -200,6 +205,9 @@ pub fn ecdsa_verify(
         }
         EccCurve::P384 => {
             ecdsa_verify_curve::<p384::NistP384>(curve, &public, &signature_bytes, format, data)
+        }
+        EccCurve::Secp256k1 => {
+            ecdsa_verify_curve::<k256::Secp256k1>(curve, &public, &signature_bytes, format, data)
         }
         other => return Err(ecdsa_requires_nist(other)),
     };
@@ -319,6 +327,12 @@ pub fn ecdsa_signature_der_to_fixed(curve: EccCurve, der_hex: &str) -> PkiResult
                 .to_bytes()
                 .as_slice(),
         )),
+        EccCurve::Secp256k1 => Ok(to_hex(
+            ecdsa::Signature::<k256::Secp256k1>::from_der(&bytes)
+                .map_err(|e| invalid_der("ECDSA DER signature", e).with_parameter("signature"))?
+                .to_bytes()
+                .as_slice(),
+        )),
         other => Err(ecdsa_requires_nist(other)),
     }
 }
@@ -346,6 +360,13 @@ pub fn ecdsa_signature_fixed_to_der(curve: EccCurve, fixed_hex: &str) -> PkiResu
                 .to_bytes()
                 .as_ref(),
         )),
+        EccCurve::Secp256k1 => Ok(to_hex(
+            ecdsa::Signature::<k256::Secp256k1>::from_slice(&bytes)
+                .map_err(to_der_error)?
+                .to_der()
+                .to_bytes()
+                .as_ref(),
+        )),
         other => Err(ecdsa_requires_nist(other)),
     }
 }
@@ -354,11 +375,12 @@ pub fn ecdsa_signature_fixed_to_der(curve: EccCurve, fixed_hex: &str) -> PkiResu
 // Shared guards
 // ---------------------------------------------------------------------------
 
-/// Enforce the digest/curve pairing: P-256 + SHA-256, P-384 + SHA-384.
-/// Shared with `attacks.rs` (the attack ops enforce the identical rule).
+/// Enforce the digest/curve pairing: P-256 + SHA-256, P-384 + SHA-384,
+/// secp256k1 + SHA-256. Shared with `attacks.rs` (the attack ops enforce the
+/// identical rule).
 pub(crate) fn check_digest_pairing(curve: EccCurve, digest: EcdsaDigest) -> PkiResult<()> {
     let expected = match curve {
-        EccCurve::P256 => EcdsaDigest::Sha256,
+        EccCurve::P256 | EccCurve::Secp256k1 => EcdsaDigest::Sha256,
         EccCurve::P384 => EcdsaDigest::Sha384,
         other => return Err(ecdsa_requires_nist(other)),
     };
@@ -377,6 +399,6 @@ pub(crate) fn check_digest_pairing(curve: EccCurve, digest: EcdsaDigest) -> PkiR
 }
 
 fn ecdsa_requires_nist(curve: EccCurve) -> PkiError {
-    wrong_curve("p256 or p384", curve.label())
-        .with_details("ECDSA is only defined here for the NIST curves P-256 and P-384")
+    wrong_curve("p256, p384, or secp256k1", curve.label())
+        .with_details("ECDSA is only defined here for P-256, P-384, and secp256k1")
 }

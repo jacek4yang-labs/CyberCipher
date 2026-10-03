@@ -1,12 +1,12 @@
-//! Elliptic-curve foundation: NIST P-256/P-384 (ECDSA + ECDH), Ed25519, and
-//! X25519 for CyberCipher.
+//! Elliptic-curve foundation: NIST P-256/P-384 (ECDSA + ECDH), secp256k1
+//! (ECDSA + ECDH + Ethereum addresses), Ed25519, and X25519 for CyberCipher.
 //!
 //! All curve arithmetic comes from the mature RustCrypto crates (`p256`,
-//! `p384`, `elliptic-curve`, `ed25519-dalek`, `x25519-dalek`) — nothing is
-//! implemented by hand. The SPKI/PKCS#8 layer is the same `pkcs8` 0.10 /
-//! `spki` 0.7 / `der` 0.7 stack the RSA half of this crate uses, so key
-//! formats interoperate (an OpenSSL-generated `openssl pkey -text` EC key
-//! parses here and vice versa).
+//! `p384`, `k256`, `elliptic-curve`, `ed25519-dalek`, `x25519-dalek`) —
+//! nothing is implemented by hand. The SPKI/PKCS#8 layer is the same
+//! `pkcs8` 0.10 / `spki` 0.7 / `der` 0.7 stack the RSA half of this crate
+//! uses, so key formats interoperate (an OpenSSL-generated `openssl pkey
+//! -text` EC key parses here and vice versa).
 //!
 //! The [`attacks`] module adds ECDSA attack helpers (duplicate-`r`
 //! detection, nonce-reuse / known-`k` / bounded small-`k` private-key
@@ -37,6 +37,7 @@ pub mod curve;
 pub mod ecdh;
 pub mod ecdsa;
 pub mod ed25519;
+pub mod eth;
 pub mod registry;
 pub mod x25519;
 
@@ -58,6 +59,10 @@ pub use ecdsa::{
     EcdsaDigest, EcdsaNonceMode, EcdsaSignatureFormat, EcdsaVerifyResult,
 };
 pub use ed25519::{ed25519_sign, ed25519_verify, Ed25519VerifyResult};
+pub use eth::{
+    eth_address_check, eth_address_from_private, eth_address_from_public, EthAddressCheck,
+    ETH_ADDRESS_SIZE,
+};
 pub use registry::register;
 pub use x25519::x25519_shared_secret;
 

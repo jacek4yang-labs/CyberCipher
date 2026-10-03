@@ -40,8 +40,8 @@ const ECDSA_ATTACK_TAGS: &[&str] = &["ecdsa", "ecc", "attack", "nonce", "signatu
 
 const ECDSA_ATTACK_PROVENANCE: Provenance = Provenance {
     standard: "ECDSA key recovery from nonce reuse / known-k / small-k (signatures per FIPS 186-5)",
-    implementation: "CyberCipher native Rust (num-bigint-dig scalar algebra over the p256/p384 crate group orders; key derivation via elliptic-curve)",
-    test_vectors: "CyberCipher unit tests anchored on the existing ECDSA sign/verify roundtrip and the FIPS 186-4 group orders",
+    implementation: "CyberCipher native Rust (num-bigint-dig scalar algebra over the p256/p384/k256 crate group orders; key derivation via elliptic-curve)",
+    test_vectors: "CyberCipher unit tests anchored on the existing ECDSA sign/verify roundtrip and the FIPS 186-4 / SEC 2 group orders",
 };
 
 static CURVE_OPTIONS: &[ParamOption] = &[
@@ -53,12 +53,16 @@ static CURVE_OPTIONS: &[ParamOption] = &[
         value: "p384",
         label: "P-384 (secp384r1)",
     },
+    ParamOption {
+        value: "secp256k1",
+        label: "secp256k1 (Bitcoin/Ethereum)",
+    },
 ];
 
 static HASH_OPTIONS: &[ParamOption] = &[
     ParamOption {
         value: "auto",
-        label: "Auto (curve default: P-256+SHA-256, P-384+SHA-384)",
+        label: "Auto (curve default: P-256/secp256k1+SHA-256, P-384+SHA-384)",
     },
     ParamOption {
         value: "sha256",
@@ -77,7 +81,7 @@ fn p_curve() -> ParamSpec {
         kind: ParamKind::Encoding,
         default: ParamDefault::Str("p256"),
         optional: false,
-        hint: "ECDSA attacks are defined for the NIST curves only.",
+        hint: "ECDSA attacks are defined for P-256, P-384, and secp256k1.",
         options: CURVE_OPTIONS,
     }
 }
@@ -428,9 +432,11 @@ fn signature_from_entry(entry: &Value, index: usize) -> OpResult<EcdsaAttackSign
 fn curve_from_params(params: &ParamMap) -> OpResult<EccCurve> {
     let curve = parse_ecc_curve(params.str_or("curve", "p256"))?;
     match curve {
-        EccCurve::P256 | EccCurve::P384 => Ok(curve),
-        other => Err(super::wrong_curve("p256 or p384", other.label())
-            .with_details("ECDSA attacks are only defined for the NIST curves P-256 and P-384")),
+        EccCurve::P256 | EccCurve::P384 | EccCurve::Secp256k1 => Ok(curve),
+        other => Err(
+            super::wrong_curve("p256, p384, or secp256k1", other.label())
+                .with_details("ECDSA attacks are only defined for P-256, P-384, and secp256k1"),
+        ),
     }
 }
 
@@ -438,10 +444,12 @@ fn digest_from_params(params: &ParamMap, curve: EccCurve) -> OpResult<EcdsaDiges
     let label = params.str_or("hash", "auto").trim().to_ascii_lowercase();
     match label.as_str() {
         "auto" | "" => match curve {
-            EccCurve::P256 => Ok(EcdsaDigest::Sha256),
+            EccCurve::P256 | EccCurve::Secp256k1 => Ok(EcdsaDigest::Sha256),
             EccCurve::P384 => Ok(EcdsaDigest::Sha384),
-            _ => Err(super::wrong_curve("p256 or p384", curve.label())
-                .with_details("no auto digest exists for this curve")),
+            _ => Err(
+                super::wrong_curve("p256, p384, or secp256k1", curve.label())
+                    .with_details("no auto digest exists for this curve"),
+            ),
         },
         "sha256" => Ok(EcdsaDigest::Sha256),
         "sha384" => Ok(EcdsaDigest::Sha384),
