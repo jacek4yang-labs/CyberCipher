@@ -196,10 +196,7 @@ pub async fn auto_analyze(
     let key = if request.key_text.trim().is_empty() {
         None
     } else {
-        Some(
-            decode_input(&request.key_encoding, &request.key_text)
-                .map_err(CmdError::from)?,
-        )
+        Some(decode_input(&request.key_encoding, &request.key_text).map_err(CmdError::from)?)
     };
     let iv = if request.iv_text.trim().is_empty() {
         None

@@ -96,7 +96,11 @@ fn keyed_aes128_cbc_multilayer_chain() {
         .expect("keyed chain must be recovered with hints");
     assert_eq!(
         keyed.path,
-        vec!["from-base64".to_string(), "from-hex".to_string(), "aes-decrypt".to_string()],
+        vec![
+            "from-base64".to_string(),
+            "from-hex".to_string(),
+            "aes-decrypt".to_string()
+        ],
         "{:?}",
         keyed.path
     );
@@ -129,7 +133,10 @@ fn keyed_aes128_cbc_raw_ciphertext_bounded() {
 
     let hints = key_hints(&key, Some(&iv));
     let candidates = auto_decode(&reg, &ct, &ctx(), &hints);
-    let keyed: Vec<_> = candidates.iter().filter(|c| is_keyed_path(&c.path)).collect();
+    let keyed: Vec<_> = candidates
+        .iter()
+        .filter(|c| is_keyed_path(&c.path))
+        .collect();
     // The plan allows at most 4 candidates for a 16-byte key (cap 8); only
     // AES-128-CBC survives PKCS7 validation on this fixture.
     assert!(keyed.len() <= 8, "keyed candidates must stay bounded");
@@ -200,7 +207,10 @@ fn keyed_sm4_candidate() {
 
     let hints = key_hints(&key, None);
     let candidates = auto_decode(&reg, input.as_bytes(), &ctx(), &hints);
-    let keyed: Vec<_> = candidates.iter().filter(|c| is_keyed_path(&c.path)).collect();
+    let keyed: Vec<_> = candidates
+        .iter()
+        .filter(|c| is_keyed_path(&c.path))
+        .collect();
     assert_eq!(keyed.len(), 1, "{keyed:#?}");
     assert!(keyed[0].path.last().unwrap() == "sm4-decrypt");
     assert!(keyed[0]
@@ -242,7 +252,9 @@ fn keyed_3des_candidate() {
     assert!(keyed.confident);
     // AES-192 was structurally attempted (32-byte ct is block-aligned) but
     // must not have produced a candidate on 3DES ciphertext.
-    assert!(!candidates.iter().any(|c| c.path.last().unwrap() == "aes-decrypt"));
+    assert!(!candidates
+        .iter()
+        .any(|c| c.path.last().unwrap() == "aes-decrypt"));
 }
 
 #[test]
@@ -482,17 +494,17 @@ fn cbc_skipped_when_iv_size_does_not_match_block() {
     // An 8-byte IV cannot drive a 16-byte-block CBC candidate.
     let hints = key_hints(&key, Some(&[0xaau8; 8]));
     let candidates = auto_decode(&reg, input.as_bytes(), &ctx(), &hints);
-    let keyed: Vec<_> = candidates.iter().filter(|c| is_keyed_path(&c.path)).collect();
+    let keyed: Vec<_> = candidates
+        .iter()
+        .filter(|c| is_keyed_path(&c.path))
+        .collect();
     assert_eq!(keyed.len(), 1, "{keyed:#?}");
     assert!(keyed[0]
         .evidence
         .iter()
         .any(|e| e.contains("AES-128-ECB with user key")));
     assert!(
-        !keyed[0]
-            .evidence
-            .iter()
-            .any(|e| e.contains("CBC")),
+        !keyed[0].evidence.iter().any(|e| e.contains("CBC")),
         "CBC must be structurally skipped with a mismatched IV"
     );
 }
@@ -521,7 +533,12 @@ fn hint_boost_raises_score_and_adds_evidence() {
         .iter()
         .find(|c| c.path == vec!["from-base64"])
         .expect("hinted run keeps the candidate");
-    assert!(hinted.score > base.score, "{} vs {}", hinted.score, base.score);
+    assert!(
+        hinted.score > base.score,
+        "{} vs {}",
+        hinted.score,
+        base.score
+    );
     assert!(hinted
         .evidence
         .iter()
@@ -549,7 +566,10 @@ fn hint_boost_does_not_penalize_non_match() {
         .iter()
         .find(|c| c.path == vec!["from-base64"])
         .expect("hinted candidate");
-    assert_eq!(hinted.score, base.score, "non-matching hint must not touch the score");
+    assert_eq!(
+        hinted.score, base.score,
+        "non-matching hint must not touch the score"
+    );
     assert!(!hinted.evidence.iter().any(|e| e.contains("hint \"")));
 }
 
@@ -564,7 +584,12 @@ fn hint_lifts_weak_xor_candidate_to_confident() {
     let base = auto_decode(&reg, &xored, &ctx(), &AutoHints::default());
     let base = base
         .iter()
-        .find(|c| c.path.last().map(|p| p == "xor-single-byte").unwrap_or(false))
+        .find(|c| {
+            c.path
+                .last()
+                .map(|p| p == "xor-single-byte")
+                .unwrap_or(false)
+        })
         .expect("xor candidate must be collected");
     assert!(
         !base.confident,
@@ -580,12 +605,22 @@ fn hint_lifts_weak_xor_candidate_to_confident() {
     let hinted = hinted
         .iter()
         .find(|c| {
-            c.path.last().map(|p| p == "xor-single-byte").unwrap_or(false)
+            c.path
+                .last()
+                .map(|p| p == "xor-single-byte")
+                .unwrap_or(false)
                 && c.preview.contains("needle")
         })
         .expect("hinted xor candidate");
-    assert!(hinted.confident, "hint must lift the match: {}", hinted.score);
-    assert!(hinted.evidence.iter().any(|e| e.contains("hint \"needle\" matched")));
+    assert!(
+        hinted.confident,
+        "hint must lift the match: {}",
+        hinted.score
+    );
+    assert!(hinted
+        .evidence
+        .iter()
+        .any(|e| e.contains("hint \"needle\" matched")));
 }
 
 // ------------------------------------------------------- recipe replay ----
@@ -640,7 +675,12 @@ fn keyed_candidate_replays_as_recipe() {
     recipe.validate(&reg).expect("keyed recipe must validate");
     let engine = RecipeEngine::new(std::sync::Arc::new(reg));
     let report = engine
-        .execute(&recipe, Value::Bytes(input.as_bytes().to_vec()), RunMode::Manual, &ctx())
+        .execute(
+            &recipe,
+            Value::Bytes(input.as_bytes().to_vec()),
+            RunMode::Manual,
+            &ctx(),
+        )
         .expect("recipe executes");
     assert!(report.error.is_none(), "{:?}", report.error);
     assert_eq!(

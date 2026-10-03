@@ -78,7 +78,12 @@ fn multi_layer_hex_base64_xor_utf8() {
         base64::engine::general_purpose::STANDARD.encode(&xored)
     };
     let hex = hex_encode(b64.as_bytes());
-    let candidates = auto_decode(&reg, hex.as_bytes(), &ExecutionContext::new(), &AutoHints::default());
+    let candidates = auto_decode(
+        &reg,
+        hex.as_bytes(),
+        &ExecutionContext::new(),
+        &AutoHints::default(),
+    );
     assert!(!candidates.is_empty(), "must recover the chain");
     // The engine recovers hex -> base64 and stops there honestly: XOR with an
     // unknown key belongs to the XOR lab, so no confident claim is made about
@@ -136,7 +141,12 @@ fn multi_layer_base64_gzip_text() {
     };
     use base64::Engine as _;
     let input = base64::engine::general_purpose::STANDARD.encode(&gzipped);
-    let candidates = auto_decode(&reg, input.as_bytes(), &ExecutionContext::new(), &AutoHints::default());
+    let candidates = auto_decode(
+        &reg,
+        input.as_bytes(),
+        &ExecutionContext::new(),
+        &AutoHints::default(),
+    );
     let best = candidates
         .iter()
         .find(|c| c.path.contains(&"from-gzip".to_string()))
@@ -167,7 +177,12 @@ fn json_payload_scores_high() {
     use base64::Engine as _;
     let json = br#"{"user":"ctf","token":"a1b2c3","n":42}"#;
     let input = base64::engine::general_purpose::STANDARD.encode(json);
-    let candidates = auto_decode(&reg, input.as_bytes(), &ExecutionContext::new(), &AutoHints::default());
+    let candidates = auto_decode(
+        &reg,
+        input.as_bytes(),
+        &ExecutionContext::new(),
+        &AutoHints::default(),
+    );
     let best = &candidates[0];
     assert!(best.path == vec!["from-base64"], "{:?}", best.path);
     assert!(best.evidence.iter().any(|e| e.contains("JSON")));
@@ -248,7 +263,12 @@ fn encode_and_repeat(data: &[u8], rounds: usize) -> String {
 fn deep_base64_nesting_recovers_at_depth() {
     let reg = registry();
     let input = encode_and_repeat(b"flag{deep}", 3);
-    let candidates = auto_decode(&reg, input.as_bytes(), &ExecutionContext::new(), &AutoHints::default());
+    let candidates = auto_decode(
+        &reg,
+        input.as_bytes(),
+        &ExecutionContext::new(),
+        &AutoHints::default(),
+    );
     let best = &candidates[0];
     assert_eq!(best.path.len(), 3, "expected three layers: {:?}", best.path);
     assert!(best.path.iter().all(|p| p == "from-base64"));
@@ -260,7 +280,12 @@ fn single_byte_xor_recovered_from_raw_input() {
     let reg = registry();
     let inner = b"flag{xor_is_fun}";
     let xored: Vec<u8> = inner.iter().map(|b| b ^ 0x5a).collect();
-    let candidates = auto_decode(&reg, &xored, &ExecutionContext::new(), &AutoHints::default());
+    let candidates = auto_decode(
+        &reg,
+        &xored,
+        &ExecutionContext::new(),
+        &AutoHints::default(),
+    );
     let best = candidates
         .iter()
         .find(|c| {
@@ -285,7 +310,12 @@ fn base64_then_xor_chain_recovered() {
     let xored: Vec<u8> = inner.iter().map(|b| b ^ 0x20).collect();
     use base64::Engine as _;
     let input = base64::engine::general_purpose::STANDARD.encode(&xored);
-    let candidates = auto_decode(&reg, input.as_bytes(), &ExecutionContext::new(), &AutoHints::default());
+    let candidates = auto_decode(
+        &reg,
+        input.as_bytes(),
+        &ExecutionContext::new(),
+        &AutoHints::default(),
+    );
     let chained = candidates
         .iter()
         .find(|c| c.path == vec!["from-base64", "xor-single-byte"])
@@ -327,7 +357,12 @@ fn random_data_xor_exploration_stays_bounded() {
 fn single_layer_base58() {
     let reg = registry();
     let input = encode_with_op(&reg, "to-base58", b"flag{base58_roundtrip}");
-    let candidates = auto_decode(&reg, input.as_bytes(), &ExecutionContext::new(), &AutoHints::default());
+    let candidates = auto_decode(
+        &reg,
+        input.as_bytes(),
+        &ExecutionContext::new(),
+        &AutoHints::default(),
+    );
     let best = candidates
         .iter()
         .find(|c| c.path == vec!["from-base58"])
@@ -349,7 +384,12 @@ fn single_layer_base58() {
 fn single_layer_ascii85() {
     let reg = registry();
     let input = encode_with_op(&reg, "to-ascii85", b"flag{ascii85_roundtrip}");
-    let candidates = auto_decode(&reg, input.as_bytes(), &ExecutionContext::new(), &AutoHints::default());
+    let candidates = auto_decode(
+        &reg,
+        input.as_bytes(),
+        &ExecutionContext::new(),
+        &AutoHints::default(),
+    );
     let best = candidates
         .iter()
         .find(|c| c.path == vec!["from-ascii85"])
@@ -370,7 +410,12 @@ fn multi_layer_base58_base64() {
     use base64::Engine as _;
     let b64 = base64::engine::general_purpose::STANDARD.encode(b"flag{b58_over_b64}");
     let input = encode_with_op(&reg, "to-base58", b64.as_bytes());
-    let candidates = auto_decode(&reg, input.as_bytes(), &ExecutionContext::new(), &AutoHints::default());
+    let candidates = auto_decode(
+        &reg,
+        input.as_bytes(),
+        &ExecutionContext::new(),
+        &AutoHints::default(),
+    );
     let chained = candidates
         .iter()
         .find(|c| c.path == vec!["from-base58", "from-base64"])
@@ -398,7 +443,12 @@ fn base58_rejected_when_zero_o_i_l_present() {
 fn single_layer_base36() {
     let reg = registry();
     let input = encode_with_op(&reg, "to-base36", b"flag{base36_roundtrip}");
-    let candidates = auto_decode(&reg, input.as_bytes(), &ExecutionContext::new(), &AutoHints::default());
+    let candidates = auto_decode(
+        &reg,
+        input.as_bytes(),
+        &ExecutionContext::new(),
+        &AutoHints::default(),
+    );
     let best = candidates
         .iter()
         .find(|c| c.path == vec!["from-base36"])
@@ -538,7 +588,12 @@ fn unicode_escapes_inside_multilayer_chain() {
     use base64::Engine as _;
     let inner = br"flag{\u00e9\u00e8\u00ea\u00e0}";
     let input = base64::engine::general_purpose::STANDARD.encode(inner);
-    let candidates = auto_decode(&reg, input.as_bytes(), &ExecutionContext::new(), &AutoHints::default());
+    let candidates = auto_decode(
+        &reg,
+        input.as_bytes(),
+        &ExecutionContext::new(),
+        &AutoHints::default(),
+    );
     let chained = candidates
         .iter()
         .find(|c| c.path == vec!["from-base64", "from-unicode-escapes"])
@@ -589,7 +644,12 @@ fn html_entities_inside_multilayer_chain() {
     use base64::Engine as _;
     let inner = b"flag{&amp;ctf&amp;}";
     let input = base64::engine::general_purpose::STANDARD.encode(inner);
-    let candidates = auto_decode(&reg, input.as_bytes(), &ExecutionContext::new(), &AutoHints::default());
+    let candidates = auto_decode(
+        &reg,
+        input.as_bytes(),
+        &ExecutionContext::new(),
+        &AutoHints::default(),
+    );
     let chained = candidates
         .iter()
         .find(|c| c.path == vec!["from-base64", "from-html-entities"])
@@ -690,7 +750,12 @@ fn uuencode_inside_multilayer_chain() {
     use base64::Engine as _;
     let uu = encode_with_op(&reg, "to-uuencode", b"flag{uu_over_b64}");
     let input = base64::engine::general_purpose::STANDARD.encode(uu.as_bytes());
-    let candidates = auto_decode(&reg, input.as_bytes(), &ExecutionContext::new(), &AutoHints::default());
+    let candidates = auto_decode(
+        &reg,
+        input.as_bytes(),
+        &ExecutionContext::new(),
+        &AutoHints::default(),
+    );
     let chained = candidates
         .iter()
         .find(|c| c.path == vec!["from-base64", "from-uuencode"])
@@ -809,7 +874,12 @@ fn bzip2_inside_multilayer_chain() {
     use base64::Engine as _;
     let bz2 = encode_bytes_with_op(&reg, "to-bzip2", b"flag{b64_over_bzip2}");
     let input = base64::engine::general_purpose::STANDARD.encode(&bz2);
-    let candidates = auto_decode(&reg, input.as_bytes(), &ExecutionContext::new(), &AutoHints::default());
+    let candidates = auto_decode(
+        &reg,
+        input.as_bytes(),
+        &ExecutionContext::new(),
+        &AutoHints::default(),
+    );
     let chained = candidates
         .iter()
         .find(|c| c.path == vec!["from-base64", "from-bzip2"])
@@ -1021,7 +1091,12 @@ fn nested_html_layers_recover_at_depth() {
         current = encode_with_op(&reg, "to-html-entities", &current).into_bytes();
     }
     let started = std::time::Instant::now();
-    let candidates = auto_decode(&reg, &current, &ExecutionContext::new(), &AutoHints::default());
+    let candidates = auto_decode(
+        &reg,
+        &current,
+        &ExecutionContext::new(),
+        &AutoHints::default(),
+    );
     assert!(started.elapsed().as_secs() < 10, "must stay bounded");
     let best = candidates
         .iter()
@@ -1040,7 +1115,12 @@ fn pathological_unicode_escape_wall_stays_bounded() {
         input.extend_from_slice(b"\\u0041");
     }
     let started = std::time::Instant::now();
-    let candidates = auto_decode(&reg, &input, &ExecutionContext::new(), &AutoHints::default());
+    let candidates = auto_decode(
+        &reg,
+        &input,
+        &ExecutionContext::new(),
+        &AutoHints::default(),
+    );
     assert!(started.elapsed().as_secs() < 10, "must stay bounded");
     assert!(
         candidates

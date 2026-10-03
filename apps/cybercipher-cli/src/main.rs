@@ -359,8 +359,8 @@ no plaintext recovered (see findings)"
                 }
                 match raw.strip_prefix("0x").or_else(|| raw.strip_prefix("0X")) {
                     Some(hex) => {
-                        let bytes = cybercipher_codec::decode_input("hex", hex)
-                            .unwrap_or_else(|e| {
+                        let bytes =
+                            cybercipher_codec::decode_input("hex", hex).unwrap_or_else(|e| {
                                 eprintln!("error: hex material after 0x is invalid: {e}");
                                 std::process::exit(2);
                             });
