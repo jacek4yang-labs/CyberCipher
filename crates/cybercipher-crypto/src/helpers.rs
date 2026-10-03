@@ -66,6 +66,18 @@ fn block_mode_params() -> Vec<ParamSpec> {
                     label: "CBC",
                 },
                 ParamOption {
+                    value: "cbc-cs1",
+                    label: "CBC-CS1 (ciphertext stealing)",
+                },
+                ParamOption {
+                    value: "cbc-cs2",
+                    label: "CBC-CS2 (ciphertext stealing)",
+                },
+                ParamOption {
+                    value: "cbc-cs3",
+                    label: "CBC-CS3 (ciphertext stealing, Kerberos)",
+                },
+                ParamOption {
                     value: "ctr",
                     label: "CTR",
                 },
@@ -78,13 +90,13 @@ fn block_mode_params() -> Vec<ParamSpec> {
                     label: "OFB",
                 },
             ],
-            "Every block cipher supports all five modes.",
+            "ECB/CBC/CTS require at least one full block; the CTS variants preserve the input length without padding (NIST SP 800-38A addendum).",
         ),
         p_text(
             "iv",
             "IV / counter",
             "",
-            "IV for CBC/CTR/CFB/OFB. Empty for ECB. Carries the mandatory 16-byte tweak for Threefish.",
+            "IV for CBC/CTS/CTR/CFB/OFB. Empty for ECB. Carries the mandatory 16-byte tweak for Threefish.",
         ),
         p_enc("iv_encoding", "IV encoding", "hex", ""),
         p_opts(
@@ -109,7 +121,7 @@ fn block_mode_params() -> Vec<ParamSpec> {
                     label: "ISO 7816-4",
                 },
             ],
-            "ECB/CBC only; stream modes ignore padding.",
+            "ECB/CBC/CTS only; stream modes ignore padding.",
         ),
     ]
 }

@@ -24,7 +24,7 @@ use rc6::RC6;
 type Rc5 = RC5<u32, cipher::consts::U12, cipher::consts::U16>;
 type Rc6 = RC6<u32, cipher::consts::U20, cipher::consts::U16>;
 
-use crate::helpers::decode_material;
+use crate::helpers::{decode_material, p_enc, p_text};
 
 // ------------------------------------------------------ engine layer ----
 
@@ -543,6 +543,9 @@ enum Mode {
     Ctr,
     Cfb,
     Ofb,
+    CbcCs1,
+    CbcCs2,
+    CbcCs3,
 }
 
 impl Mode {
@@ -553,6 +556,9 @@ impl Mode {
             "ctr" => Ok(Mode::Ctr),
             "cfb" => Ok(Mode::Cfb),
             "ofb" => Ok(Mode::Ofb),
+            "cbc-cs1" => Ok(Mode::CbcCs1),
+            "cbc-cs2" => Ok(Mode::CbcCs2),
+            "cbc-cs3" => Ok(Mode::CbcCs3),
             other => Err(OperationError::invalid_param(
                 "mode",
                 format!("unknown block cipher mode `{other}`"),
@@ -564,6 +570,16 @@ impl Mode {
         !matches!(self, Mode::Ecb)
     }
 
+    /// Modes whose output length equals the input length for any alignment:
+    /// the stream modes and the ciphertext-stealing CBC variants (NIST
+    /// SP 800-38A addendum), which have no padding concept.
+    fn length_preserving(self) -> bool {
+        matches!(
+            self,
+            Mode::Ctr | Mode::Cfb | Mode::Ofb | Mode::CbcCs1 | Mode::CbcCs2 | Mode::CbcCs3
+        )
+    }
+
     fn as_str(self) -> &'static str {
         match self {
             Mode::Ecb => "ecb",
@@ -571,6 +587,9 @@ impl Mode {
             Mode::Ctr => "ctr",
             Mode::Cfb => "cfb",
             Mode::Ofb => "ofb",
+            Mode::CbcCs1 => "cbc-cs1",
+            Mode::CbcCs2 => "cbc-cs2",
+            Mode::CbcCs3 => "cbc-cs3",
         }
     }
 }
@@ -801,6 +820,174 @@ fn cfb_decrypt(engine: &dyn BlockEngine, iv: &[u8], data: &[u8]) -> Vec<u8> {
     out
 }
 
+// ------------------------------------ CBC ciphertext stealing (CTS) ----
+// The three NIST SP 800-38A addendum variants. CBC-CS1/CS2/CS3 share the
+// CS1 core and differ only in how the two final output blocks are ordered:
+// CS1 keeps the (truncated) penultimate block before the last full block,
+// CS2 swaps them when the final plaintext block is partial, and CS3 swaps
+// unconditionally (the Kerberos 5 variant, RFC 3962).
+
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum CtsVariant {
+    Cs1,
+    Cs2,
+    Cs3,
+}
+
+fn cts_length_error(actual: usize, bs: usize) -> OperationError {
+    OperationError::length(
+        format!("at least {bs} bytes (one full block)"),
+        format!("{actual} bytes"),
+        "ciphertext-stealing CBC requires at least one full block",
+    )
+    .with_parameter("input")
+}
+
+/// CBC-CS1-Encrypt: plain CBC over the complete blocks, then the final
+/// partial plaintext block is zero-padded, chained on the last ciphertext
+/// block and encrypted; the tail of that block is stolen into the position
+/// of the truncated penultimate block.
+fn cbc_cs1_encrypt(engine: &dyn BlockEngine, iv: &[u8], data: &[u8]) -> OpResult<Vec<u8>> {
+    let bs = engine.block_size();
+    let n = data.len();
+    if n < bs {
+        return Err(cts_length_error(n, bs));
+    }
+    let d = n % bs;
+    if d == 0 {
+        let mut buf = data.to_vec();
+        cbc_encrypt(engine, iv, &mut buf);
+        return Ok(buf);
+    }
+    let complete = n - d;
+    let mut buf = data[..complete].to_vec();
+    cbc_encrypt(engine, iv, &mut buf);
+    let last_ct = buf[complete - bs..].to_vec();
+    // Final block: zero-pad the partial plaintext, XOR the chained block.
+    let mut fin = data[complete..].to_vec();
+    fin.resize(bs, 0);
+    for (b, p) in fin.iter_mut().zip(&last_ct) {
+        *b ^= p;
+    }
+    engine.encrypt_block(&mut fin);
+    let mut out = buf[..complete - bs].to_vec();
+    out.extend_from_slice(&last_ct[..d]);
+    out.extend_from_slice(&fin);
+    Ok(out)
+}
+
+/// CBC-CS1-Decrypt: recover the stolen tail from D(C_n), rebuild the
+/// penultimate ciphertext block, decrypt the chain, XOR out the partial
+/// plaintext.
+fn cbc_cs1_decrypt(engine: &dyn BlockEngine, iv: &[u8], data: &[u8]) -> OpResult<Vec<u8>> {
+    let bs = engine.block_size();
+    let n = data.len();
+    if n < bs {
+        return Err(cts_length_error(n, bs));
+    }
+    let d = n % bs;
+    if d == 0 {
+        let mut buf = data.to_vec();
+        cbc_decrypt(engine, iv, &mut buf);
+        return Ok(buf);
+    }
+    let head_len = n - bs - d;
+    let fin = &data[head_len + d..];
+    let partial = &data[head_len..head_len + d];
+    let mut z = fin.to_vec();
+    engine.decrypt_block(&mut z);
+    let mut chain = data[..head_len].to_vec();
+    chain.extend_from_slice(partial);
+    chain.extend_from_slice(&z[d..]);
+    cbc_decrypt(engine, iv, &mut chain);
+    let mut out = chain;
+    out.extend(partial.iter().zip(&z[..d]).map(|(a, b)| a ^ b));
+    Ok(out)
+}
+
+/// Reorders the CS1 tail layout `[head][partial d][fin bs]` into the swapped
+/// CS2/CS3 layout `[head][fin bs][partial d]`; with whole blocks it swaps the
+/// last two.
+fn cts_tail_to_swapped(cs1: &[u8], bs: usize) -> Vec<u8> {
+    let n = cs1.len();
+    let d = n % bs;
+    let head = if d == 0 { n - 2 * bs } else { n - bs - d };
+    let mut out = cs1[..head].to_vec();
+    if d == 0 {
+        out.extend_from_slice(&cs1[n - bs..]);
+        out.extend_from_slice(&cs1[n - 2 * bs..n - bs]);
+    } else {
+        out.extend_from_slice(&cs1[n - bs..]);
+        out.extend_from_slice(&cs1[n - bs - d..n - bs]);
+    }
+    out
+}
+
+/// Inverse of [`cts_tail_to_swapped`]: `[head][fin bs][partial d]` back to
+/// the CS1 layout `[head][partial d][fin bs]`.
+fn cts_tail_to_cs1(swapped: &[u8], bs: usize) -> Vec<u8> {
+    let n = swapped.len();
+    let d = n % bs;
+    let head = if d == 0 { n - 2 * bs } else { n - bs - d };
+    let mut out = swapped[..head].to_vec();
+    if d == 0 {
+        out.extend_from_slice(&swapped[n - bs..]);
+        out.extend_from_slice(&swapped[n - 2 * bs..n - bs]);
+    } else {
+        out.extend_from_slice(&swapped[n - d..]);
+        out.extend_from_slice(&swapped[n - bs - d..n - d]);
+    }
+    out
+}
+
+fn cts_encrypt(
+    engine: &dyn BlockEngine,
+    iv: &[u8],
+    data: &[u8],
+    variant: CtsVariant,
+) -> OpResult<Vec<u8>> {
+    let bs = engine.block_size();
+    let d = data.len() % bs;
+    let swap = match variant {
+        CtsVariant::Cs1 => false,
+        // CS2 is CS1 with the tail swapped only for a partial final block;
+        // CS3 swaps whenever there is more than one block (a lone full block
+        // has no partner to swap, matching RFC 3962's one-block rule).
+        CtsVariant::Cs2 => d != 0,
+        CtsVariant::Cs3 => data.len() > bs,
+    };
+    if swap {
+        Ok(cts_tail_to_swapped(&cbc_cs1_encrypt(engine, iv, data)?, bs))
+    } else {
+        cbc_cs1_encrypt(engine, iv, data)
+    }
+}
+
+fn cts_decrypt(
+    engine: &dyn BlockEngine,
+    iv: &[u8],
+    data: &[u8],
+    variant: CtsVariant,
+) -> OpResult<Vec<u8>> {
+    let bs = engine.block_size();
+    let n = data.len();
+    if n < bs {
+        return Err(cts_length_error(n, bs));
+    }
+    let d = n % bs;
+    let swap = match variant {
+        CtsVariant::Cs1 => false,
+        CtsVariant::Cs2 => d != 0,
+        CtsVariant::Cs3 => n > bs,
+    };
+    let cs1_order = if swap {
+        cts_tail_to_cs1(data, bs)
+    } else {
+        data.to_vec()
+    };
+    cbc_cs1_decrypt(engine, iv, &cs1_order)
+}
+
 fn mode_apply(
     entry: &'static BlockCipherEntry,
     mode: Mode,
@@ -814,8 +1001,8 @@ fn mode_apply(
     // block-size mode IV in IV modes.
     let tweak: &[u8] = if entry.tweak_required { &iv[..16] } else { &[] };
     let engine = entry.engine(key, tweak)?;
-    // Only ECB/CBC require block alignment; CTR/OFB/CFB are stream modes and
-    // handle arbitrary lengths natively.
+    // Only ECB/CBC require block alignment; the stream modes and the CTS
+    // variants handle arbitrary lengths natively.
     if matches!(mode, Mode::Ecb | Mode::Cbc) && !data.len().is_multiple_of(engine.block_size()) {
         return Err(OperationError::internal("pre-padded data misaligned"));
     }
@@ -836,6 +1023,18 @@ fn mode_apply(
             } else {
                 cfb_decrypt(engine.as_ref(), iv, &data)
             });
+        }
+        Mode::CbcCs1 | Mode::CbcCs2 | Mode::CbcCs3 => {
+            let variant = match mode {
+                Mode::CbcCs1 => CtsVariant::Cs1,
+                Mode::CbcCs2 => CtsVariant::Cs2,
+                _ => CtsVariant::Cs3,
+            };
+            return if encrypt {
+                cts_encrypt(engine.as_ref(), iv, &data, variant)
+            } else {
+                cts_decrypt(engine.as_ref(), iv, &data, variant)
+            };
         }
     }
     Ok(data)
@@ -889,9 +1088,10 @@ fn cipher_run(
         };
         let padding = Padding::parse(map.str_or("padding", "pkcs7"))?;
 
-        // Stream modes (CTR/CFB/OFB) have no padding concept — their output
-        // length equals input length regardless of alignment.
-        let stream_mode = matches!(mode, Mode::Ctr | Mode::Cfb | Mode::Ofb);
+        // Stream modes (CTR/CFB/OFB) and the CTS variants have no padding
+        // concept — their output length equals input length regardless of
+        // alignment.
+        let stream_mode = mode.length_preserving();
         let out = if encrypt {
             let padded: Vec<u8> = if stream_mode {
                 bytes.as_ref().to_vec()
@@ -948,6 +1148,223 @@ fn rc4_apply(key: &[u8], data: &[u8], drop: usize) -> Vec<u8> {
         }
     }
     out.iter().zip(data.iter()).map(|(k, p)| k ^ p).collect()
+}
+
+// ------------------------------------------------------- XTS-AES ----
+
+/// Multiplies the 16-byte tweak by alpha in GF(2^128) using the
+/// little-endian byte order of IEEE 1619 (byte 0 is the least significant,
+/// matching the little-endian data-unit encoding): shift toward byte 15 and
+/// XOR 0x87 into byte 0 when the top bit carries out.
+fn xts_multiply(t: &mut [u8; 16]) {
+    let mut carry = 0u8;
+    for byte in t.iter_mut() {
+        let next = *byte >> 7;
+        *byte = (*byte << 1) | carry;
+        carry = next;
+    }
+    if carry == 1 {
+        t[0] ^= 0x87;
+    }
+}
+
+/// XTS-AES (IEEE 1619-2007; NIST SP 800-38E) with ciphertext stealing.
+/// `key` is the doubled key K1 || K2 (two AES-128/192/256 keys); `tweak`
+/// is the 16-byte tweak block (IEEE 1619 data-unit numbers are little-
+/// endian). Data units shorter than one block are rejected per SP 800-38E.
+fn xts_apply(encrypt: bool, key: &[u8], tweak: &[u8; 16], data: &mut [u8]) -> OpResult<()> {
+    let bs = 16;
+    let n = data.len();
+    if n < bs {
+        return Err(OperationError::length(
+            format!("at least {bs} bytes (one full block)"),
+            format!("{n} bytes"),
+            "XTS data units must be at least one full block (NIST SP 800-38E)",
+        )
+        .with_parameter("input"));
+    }
+    let (k1, k2) = key.split_at(key.len() / 2);
+    let data_engine: Box<dyn BlockEngine> = match k1.len() {
+        16 => keyed::<aes::Aes128>(k1)?,
+        24 => keyed::<aes::Aes192>(k1)?,
+        _ => keyed::<aes::Aes256>(k1)?,
+    };
+    let tweak_engine: Box<dyn BlockEngine> = match k2.len() {
+        16 => keyed::<aes::Aes128>(k2)?,
+        24 => keyed::<aes::Aes192>(k2)?,
+        _ => keyed::<aes::Aes256>(k2)?,
+    };
+    // PP = E_K2(tweak); T_j = alpha^j * PP.
+    let mut t = *tweak;
+    tweak_engine.encrypt_block(&mut t);
+    let mut prev_t = t;
+
+    let d = n % bs;
+    let full_blocks = n / bs;
+    // In decrypt-with-steal the loop decrypts the last full block IN PLACE,
+    // so capture the raw ciphertext block for the steal step first.
+    let raw_last_ct: Option<Vec<u8>> = if !encrypt && d != 0 {
+        Some(data[(full_blocks - 1) * bs..full_blocks * bs].to_vec())
+    } else {
+        None
+    };
+    for (j, chunk) in data[..full_blocks * bs].chunks_mut(bs).enumerate() {
+        // IEEE 1619 decrypt with a partial final block decrypts the LAST
+        // full block under T_m (the next tweak) so that the steal step can
+        // rebuild it; every other block uses its own T_j.
+        let last_full_decrypt = !encrypt && d != 0 && j == full_blocks - 1;
+        prev_t = t;
+        if last_full_decrypt {
+            xts_multiply(&mut t);
+        }
+        for (b, k) in chunk.iter_mut().zip(&t) {
+            *b ^= k;
+        }
+        if encrypt {
+            data_engine.encrypt_block(chunk);
+        } else {
+            data_engine.decrypt_block(chunk);
+        }
+        for (b, k) in chunk.iter_mut().zip(&t) {
+            *b ^= k;
+        }
+        if !last_full_decrypt {
+            xts_multiply(&mut t);
+        }
+    }
+    if d == 0 {
+        return Ok(());
+    }
+
+    // IEEE 1619-2007 ciphertext-stealing step over the final (full block,
+    // partial block) pair, using the NEXT tweak T_m:
+    //   encrypt: C_m = C_{m-1}[..d];
+    //            C_{m-1} = E((P_m || C_{m-1}[d..]) XOR T_m) XOR T_m
+    //   decrypt: P~   = D(C_{m-1} XOR T_m) XOR T_m;  P_m = P~[..d];
+    //            P_{m-1} = D((C_m || P~[d..]) XOR T_{m-1}) XOR T_{m-1}
+    let last_full = (full_blocks - 1) * bs;
+    if encrypt {
+        let c_prev: Vec<u8> = data[last_full..last_full + bs].to_vec();
+        let mut cc = data[last_full + bs..n].to_vec(); // P_m (d bytes)
+        cc.extend_from_slice(&c_prev[d..]);
+        for (b, k) in cc.iter_mut().zip(&t) {
+            *b ^= k;
+        }
+        data_engine.encrypt_block(&mut cc);
+        for (b, k) in cc.iter_mut().zip(&t) {
+            *b ^= k;
+        }
+        data[last_full..last_full + bs].copy_from_slice(&cc);
+        data[last_full + bs..n].copy_from_slice(&c_prev[..d]);
+    } else {
+        let c_prev: Vec<u8> = raw_last_ct.expect("captured before the in-place loop");
+        let c_m: Vec<u8> = data[last_full + bs..n].to_vec();
+        // P~ = D(C_{m-1} XOR T_m) XOR T_m — its head is the partial plaintext.
+        let mut pt = c_prev.clone();
+        for (b, k) in pt.iter_mut().zip(&t) {
+            *b ^= k;
+        }
+        data_engine.decrypt_block(&mut pt);
+        for (b, k) in pt.iter_mut().zip(&t) {
+            *b ^= k;
+        }
+        data[last_full + bs..n].copy_from_slice(&pt[..d]);
+        // P_{m-1} = D((C_m || P~[d..]) XOR T_{m-1}) XOR T_{m-1}
+        let mut cc = c_m;
+        cc.extend_from_slice(&pt[d..]);
+        for (b, k) in cc.iter_mut().zip(&prev_t) {
+            *b ^= k;
+        }
+        data_engine.decrypt_block(&mut cc);
+        for (b, k) in cc.iter_mut().zip(&prev_t) {
+            *b ^= k;
+        }
+        data[last_full..last_full + bs].copy_from_slice(&cc);
+    }
+    Ok(())
+}
+
+fn xts_run(
+    name: &'static str,
+    encrypt: bool,
+) -> impl Fn(&Value, &ParamMap, &ExecutionContext) -> OpResult<Value> + Send + Sync + 'static {
+    move |v: &Value, map: &ParamMap, _: &ExecutionContext| -> OpResult<Value> {
+        let bytes = crate::helpers::input_bytes(v, name)?;
+        let key = decode_material(map, "key", "key_encoding", name)?;
+        if ![32, 48, 64].contains(&key.len()) {
+            return Err(OperationError::key(format!(
+                "AES-XTS key must be 32 / 48 / 64 bytes after decoding (K1 || K2 for AES-128/192/256), got {} bytes",
+                key.len()
+            ))
+            .with_parameter("key")
+            .with_expected("32 / 48 / 64 bytes")
+            .with_actual(format!("{} bytes", key.len())));
+        }
+        let raw = map.require_str("iv")?;
+        let tweak = decode_input(map.str_or("iv_encoding", "hex"), raw)
+            .map_err(|e| e.with_parameter("iv"))?;
+        if tweak.len() != 16 {
+            return Err(OperationError::key(format!(
+                "AES-XTS tweak must be 16 bytes after decoding, got {} bytes",
+                tweak.len()
+            ))
+            .with_parameter("iv")
+            .with_expected("16 bytes")
+            .with_actual(format!("{} bytes", tweak.len())));
+        }
+        let mut buf = bytes.as_ref().to_vec();
+        xts_apply(
+            encrypt,
+            &key,
+            tweak.as_slice().try_into().expect("checked 16 bytes"),
+            &mut buf,
+        )?;
+        Ok(Value::Bytes(buf))
+    }
+}
+
+fn xts_spec(
+    id: &'static str,
+    name: &'static str,
+    description: &'static str,
+    tags: &'static [&'static str],
+) -> &'static OperationSpec {
+    let params = vec![
+        p_text(
+            "key",
+            "Key",
+            "",
+            "Doubled key: K1 || K2, 32/48/64 bytes for AES-128/192/256 XTS.",
+        ),
+        p_enc("key_encoding", "Key encoding", "hex", ""),
+        p_text(
+            "iv",
+            "Tweak (data-unit number)",
+            "",
+            "16-byte tweak; IEEE 1619 data-unit numbers are encoded little-endian.",
+        ),
+        p_enc("iv_encoding", "IV encoding", "hex", ""),
+    ];
+    Box::leak(Box::new(OperationSpec {
+        id,
+        name,
+        description,
+        category: Category::Crypto,
+        input_kinds: Box::leak(vec![ValueKind::Bytes, ValueKind::Text].into_boxed_slice()),
+        output_kind: ValueKind::Bytes,
+        params: Box::leak(params.into_boxed_slice()),
+        cost: CostClass::Instant,
+        security: Security::Modern,
+        deterministic: true,
+        reversible: true,
+        aliases: Box::leak(vec![id.strip_suffix("-encrypt").unwrap_or(id)].into_boxed_slice()),
+        tags,
+        provenance: Provenance {
+            standard: "XTS-AES (IEEE 1619-2007; NIST SP 800-38E)",
+            implementation: "CyberCipher native XTS over the RustCrypto `aes` crate",
+            test_vectors: "IEEE 1619 sample vectors (IEEE P1619/D16 annex)",
+        },
+    }))
 }
 
 pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
@@ -1074,4 +1491,24 @@ pub(crate) fn register(reg: &mut cybercipher_core::OperationRegistry) {
         }
         Ok(Value::Bytes(rc4_apply(&key, bytes.as_ref(), drop as usize)))
     });
+
+    // XTS-AES (IEEE 1619-2007 / SP 800-38E): doubled key, 16-byte tweak.
+    reg.add_simple(
+        xts_spec(
+            "aes-xts-encrypt",
+            "AES-XTS Encrypt",
+            "Encrypts one data unit with XTS-AES (IEEE 1619-2007; NIST SP 800-38E), the tweakable wide-block mode used for disk encryption. The key is the doubled key K1 || K2 (32/48/64 bytes for AES-128/192/256); the iv parameter carries the 16-byte tweak (data-unit number, little-endian per IEEE 1619). Data units must be at least one full block; a partial final block is handled with ciphertext stealing.",
+            tags,
+        ),
+        xts_run("AES-XTS Encrypt", true),
+    );
+    reg.add_simple(
+        xts_spec(
+            "aes-xts-decrypt",
+            "AES-XTS Decrypt",
+            "Decrypts one data unit with XTS-AES (IEEE 1619-2007; NIST SP 800-38E) and reverses the ciphertext-stealing of a partial final block. The key is the doubled key K1 || K2; the iv parameter carries the 16-byte tweak (data-unit number, little-endian per IEEE 1619).",
+            tags,
+        ),
+        xts_run("AES-XTS Decrypt", false),
+    );
 }
