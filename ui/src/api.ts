@@ -285,8 +285,18 @@ export const api = {
   inputStats: (input: { text: string; encoding: string }) =>
     invoke<InputStats>("input_stats", { input }),
 
-  autoAnalyze: (request: { input_text: string; input_encoding: string }) =>
-    invoke<AutoCandidate[]>("auto_analyze", { request }),
+  autoAnalyze: (request: {
+    input_text: string;
+    input_encoding: string;
+    /** Optional key material — enables structural keyed decryption in the beam. */
+    key_text?: string;
+    key_encoding?: string;
+    /** Optional IV for CBC keyed candidates. */
+    iv_text?: string;
+    iv_encoding?: string;
+    /** Optional known-plaintext hint that boosts matching candidates. */
+    hint?: string;
+  }) => invoke<AutoCandidate[]>("auto_analyze", { request }),
 
   saveRecipe: (request: { name: string; recipe: RecipeV1 }) =>
     invoke<RecipeMeta>("save_recipe", { request }),

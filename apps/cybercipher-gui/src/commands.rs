@@ -67,6 +67,14 @@ fn default_input_encoding() -> String {
     "utf8".to_string()
 }
 
+fn default_key_encoding() -> String {
+    "utf8".to_string()
+}
+
+fn default_iv_encoding() -> String {
+    "hex".to_string()
+}
+
 #[derive(Debug, Serialize)]
 pub struct BakeResponse {
     pub report: cybercipher_engine::ExecutionReport,
@@ -157,6 +165,22 @@ pub struct AutoRequest {
     pub input_text: String,
     #[serde(default = "default_input_encoding")]
     pub input_encoding: String,
+    /// Optional key material for keyed auto-decode (see key_encoding). When
+    /// present, structural keyed decryption (AES/SM4/3DES by key length) is
+    /// folded into the beam.
+    #[serde(default)]
+    pub key_text: String,
+    #[serde(default = "default_key_encoding")]
+    pub key_encoding: String,
+    /// Optional IV for CBC keyed candidates (see iv_encoding).
+    #[serde(default)]
+    pub iv_text: String,
+    #[serde(default = "default_iv_encoding")]
+    pub iv_encoding: String,
+    /// Optional known-plaintext hint: candidates whose decoded output
+    /// contains it (case-insensitive) are boosted.
+    #[serde(default)]
+    pub hint: String,
 }
 
 #[tauri::command]
@@ -166,9 +190,30 @@ pub async fn auto_analyze(
 ) -> Result<Vec<cybercipher_engine::AutoCandidate>, CmdError> {
     let bytes =
         decode_input(&request.input_encoding, &request.input_text).map_err(CmdError::from)?;
+    // Key/IV decode exactly like the Workbench input; empty fields mean "no
+    // hint". A key that does not decode is surfaced as an error instead of
+    // being silently dropped.
+    let key = if request.key_text.trim().is_empty() {
+        None
+    } else {
+        Some(
+            decode_input(&request.key_encoding, &request.key_text)
+                .map_err(CmdError::from)?,
+        )
+    };
+    let iv = if request.iv_text.trim().is_empty() {
+        None
+    } else {
+        Some(decode_input(&request.iv_encoding, &request.iv_text).map_err(CmdError::from)?)
+    };
+    let hints = cybercipher_engine::AutoHints {
+        key,
+        iv,
+        hint: Some(request.hint).filter(|h| !h.trim().is_empty()),
+    };
     let registry = state.registry.clone();
     let handle = tauri::async_runtime::spawn_blocking(move || {
-        cybercipher_engine::auto_decode(&registry, &bytes, &ExecutionContext::new())
+        cybercipher_engine::auto_decode(&registry, &bytes, &ExecutionContext::new(), &hints)
     });
     handle
         .await
