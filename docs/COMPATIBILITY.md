@@ -70,14 +70,14 @@ Where the upstream README does not name a feature precisely, the matrix says
 | auto-ctf capability | Ours | Status |
 |---|---|---|
 | RSA attacks (known p/q, d, phi; dp-leak; Wiener; Fermat; low-e; common modulus; Hastad; shared prime; Pollard rho/p-1) | 12-attack engine + analyzer | covered |
-| RSA dp-dq joint leak, Rabin, yafu-style large factorization | — | missing |
+| RSA dp-dq joint leak, Rabin | dpdq-recover + rabin analyzer stages | covered; yafu-style large factorization still missing |
 | Lattice (LLL, Coppersmith small roots) | — | covered (PR #15 merged: exact integer LLL + Coppersmith small roots) |
 | PRNG: LCG recovery (known m, blind 6-output, seed) | lcg module | covered |
 | PRNG: MT19937 recovery + CPython compat | mt19937 module | covered |
 | PRNG: Java/glibc/MSVC runtime PRNGs | prng module | covered (PR #10 merged); superset vs baseline |
 | Classical / XOR solvers | — | partial (XOR lab covered, PR #18 merged; classical ciphers missing — M6 lane queued) |
 | Encoding auto-chain | auto_decode | partial (explainable, narrower vocabulary) |
-| NTLM (MD4/NT/NetNTLMv2), ECC/ETH addresses | — | missing |
+| NTLM (MD4/NT/NetNTLMv2) | — | missing; ECC/ETH addresses covered (secp256k1 + EIP-55) |
 | Explainability, typed outcomes, resource bounds | engine-wide | superset |
 
 ## Gap report
