@@ -14,6 +14,7 @@
 #![allow(clippy::result_large_err)]
 
 pub mod asn1;
+pub mod dsa;
 pub mod ecc;
 pub mod error;
 pub mod jwt;
@@ -23,6 +24,10 @@ pub mod sm2;
 pub mod x509;
 
 pub use asn1::{parse_der_nodes, parse_der_tree, Asn1Class, Asn1Node, Asn1Value};
+pub use dsa::{
+    dsa_generate_keypair, dsa_keypair_from_components, dsa_sign, dsa_verify, DsaHash, DsaKeyPair,
+    DsaKeySize, DsaPreimage, DsaSignature, DsaVerifyResult,
+};
 pub use ecc::*;
 pub use error::{PkiError, PkiResult};
 pub use jwt::{

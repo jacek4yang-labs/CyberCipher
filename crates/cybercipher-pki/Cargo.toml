@@ -37,6 +37,17 @@ num-traits.workspace = true
 # re-exports (both resolve to digest 0.10, so hasher types are interchangeable).
 sha1 = { version = "0.10", features = ["oid"] }
 sha2 = { version = "0.10", features = ["oid"] }
+# Declared explicitly so the DSA module can name the digest traits
+# (Digest/BlockSizeUser/FixedOutputReset) for its hash dispatch; version-
+# aligned with the copy sha1/sha2/rsa resolve to (digest 0.10).
+digest = "0.10"
+
+# --- DSA (FIPS 186-4/5) ---
+# RustCrypto's dsa crate: FIPS parameter generation, key construction and
+# RFC 6979 deterministic signing. Version-aligned with this crate's stack
+# (pkcs8 0.10 / signature 2.x / num-bigint-dig 0.8), so key containers and
+# big-integer types interoperate directly.
+dsa = "0.6"
 rand = "0.8"
 base64ct = "1"
 
