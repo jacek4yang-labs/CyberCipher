@@ -252,6 +252,34 @@ fn cast5_ecb_rfc2144_vector_and_modes() {
     rejects_bad_key_length("cast5", "0001");
 }
 
+// ------------------------------------------------------- CAST6 ----
+
+#[test]
+fn cast6_ecb_rfc2612_vector_and_modes() {
+    // RFC 2612 Appendix A: zero block under 128- and 256-bit keys.
+    ecb_known_answer(
+        "cast6",
+        "2342bb9efa38542c0af75647f29f615d",
+        "00000000000000000000000000000000",
+        "c842a08972b43d20836c91d1b7530f6b",
+        None,
+    );
+    ecb_known_answer(
+        "cast6",
+        "2342bb9efa38542cbed0ac83940ac2988d7c47ce264908461cc1b5137ae6b604",
+        "00000000000000000000000000000000",
+        "4f6a2038286897b9c9870136553317fa",
+        None,
+    );
+    // 192-bit key exercises the middle of the key-length table.
+    all_modes_roundtrip(
+        "cast6",
+        "2342bb9efa38542cbed0ac83940ac298bac77a7717942863",
+        16,
+    );
+    rejects_bad_key_length("cast6", "000102030405060708090a0b0c0d0e");
+}
+
 // -------------------------------------------------------- IDEA ----
 
 #[test]
@@ -853,4 +881,25 @@ fn xts_aes256_round_trip_and_validation() {
     // Data units shorter than one block are rejected (SP 800-38E).
     let err = run(&r, "aes-xts-encrypt", b"tiny", &params).unwrap_err();
     assert!(err.message.contains("at least"));
+}
+
+/// CAST6 through the batch-A ciphertext-stealing modes: output length is
+/// preserved for a partial final block and every variant round-trips.
+#[test]
+fn cast6_cbc_cts_roundtrip() {
+    let r = reg();
+    let data: Vec<u8> = (0..37u32).map(|i| (i * 11 + 5) as u8).collect();
+    for mode in ["cbc-cs1", "cbc-cs2", "cbc-cs3"] {
+        let params = pv(&[
+            ("key", "2342bb9efa38542cbed0ac83940ac298bac77a7717942863"),
+            ("key_encoding", "hex"),
+            ("mode", mode),
+            ("iv", "000102030405060708090a0b0c0d0e0f"),
+            ("iv_encoding", "hex"),
+        ]);
+        let ct = run(&r, "cast6-encrypt", &data, &params).unwrap();
+        assert_eq!(s(&ct).len(), data.len() * 2, "{mode} preserves length");
+        let back = run(&r, "cast6-decrypt", &hex_bytes(&s(&ct)), &params).unwrap();
+        assert_eq!(back, Value::Bytes(data.clone()), "{mode} round-trip");
+    }
 }

@@ -379,6 +379,16 @@ ours = "whirlpool"
 status = "covered"
 notes = "Whirlpool-1.0 (the NESSIE/ISO revision) via the RustCrypto whirlpool crate."
 
+[entries.Bcrypt]
+ours = "bcrypt-hash / bcrypt-verify"
+status = "partial"
+notes = """Upstream's single Bcrypt op hashes (random salt) or verifies by detection;
+ours splits hashing and verification into two ops, requires an explicit
+16-byte salt for deterministic output (random-salt mode supported, spec marked
+non-deterministic), supports the 2a/2b/2x/2y version selectors, and reports
+malformed hashes as typed decode errors. Openwall vectors tested."""
+
+
 [entries.To_BCD]
 ours = "to-bcd"
 status = "covered"
@@ -422,47 +432,48 @@ status = "covered"
 
 [entries.AES_GCM_Encrypt]
 ours = "aead-aes-gcm-encrypt"
-status = "partial (PR in flight)"
-notes = "Upstream exposes GCM inside the AES op instead; capability equivalent once merged."
+status = "partial"
+notes = "Upstream exposes GCM inside the AES op instead; capability equivalent."
 
 [entries.AES_GCM_Decrypt]
 ours = "aead-aes-gcm-decrypt"
-status = "partial (PR in flight)"
+status = "partial"
 
 [entries.AES_CCM]
 ours = "aead-aes-ccm-encrypt / aead-aes-ccm-decrypt"
-status = "partial (PR in flight)"
-notes = "No upstream counterpart (CyberChef AES has no CCM) — superset once merged."
+status = "partial"
+notes = "No upstream counterpart (CyberChef AES has no CCM) — superset."
 
 [entries.ChaCha20_Poly1305]
 ours = "aead-chacha20poly1305-encrypt / aead-chacha20poly1305-decrypt"
-status = "partial (PR in flight)"
+status = "partial"
 notes = "RFC 8439 vectors; no upstream counterpart."
 
 [entries.XChaCha20_Poly1305]
 ours = "aead-xchacha20poly1305-encrypt / aead-xchacha20poly1305-decrypt"
-status = "partial (PR in flight)"
+status = "partial"
 notes = "draft-irtf-cfrg-xchacha vectors; no upstream counterpart."
 
 [entries.AES_GCM_SIV]
 ours = "aead-aes-gcm-siv-encrypt / aead-aes-gcm-siv-decrypt"
-status = "partial (PR in flight)"
+status = "partial"
 notes = "RFC 8452 vectors; no upstream counterpart."
 
 # ------------------------------------------------------------------ KDF ----
 
 [entries.Derive_PBKDF2_Key]
 ours = "pbkdf2"
-status = "partial (PR in flight)"
-notes = "Implemented + tested on the AEAD/KDF branch."
+status = "partial"
+notes = "Rounds bounded to 10M; HKDF info/length parameters supported."
 
 [entries.Derive_HKDF_Key]
 ours = "hkdf"
-status = "partial (PR in flight)"
+status = "partial"
 
 [entries.Scrypt]
 ours = "scrypt"
-status = "partial (PR in flight)"
+status = "partial"
+notes = "N <= 2^22 and 128*r*N <= 1 GiB cost caps."
 
 # ------------------------------------------------------------------ RSA ----
 
