@@ -1,14 +1,17 @@
 //! ECC key generation, key material, and key-format handling (SEC1, SPKI,
-//! PKCS#8, PEM) for the curves CyberCipher supports: P-256, P-384, Ed25519,
-//! X25519.
+//! PKCS#8, PEM) for the curves CyberCipher supports: P-256, P-384, secp256k1,
+//! Ed25519, X25519.
 //!
 //! Layout:
-//! - P-256/P-384 use the `p256`/`p384` crate types (`SecretKey`, `PublicKey`)
-//!   with the `elliptic-curve` pkcs8/spki machinery for the container formats.
+//! - P-256/P-384/secp256k1 use the `p256`/`p384`/`k256` crate types
+//!   (`SecretKey`, `PublicKey`) with the `elliptic-curve` pkcs8/spki machinery
+//!   for the container formats. The helpers below are generic over the curve,
+//!   so secp256k1 flows through exactly the same code paths.
 //! - Ed25519 uses `ed25519-dalek`'s own PKCS#8/SPKI impls (RFC 8410).
-//! - X25519 has no pkcs8 trait impls in `x25519-dalek`, so the RFC 8410
-//!   `PrivateKeyInfo` / `SubjectPublicKeyInfo` wrappers are built here with
-//!   the `pkcs8`/`spki` crates (still no hand-rolled curve arithmetic).
+//! - X25519, Ed448, and X448 have no pkcs8 trait impls in their crates, so the
+//!   RFC 8410 `PrivateKeyInfo` / `SubjectPublicKeyInfo` wrappers are built
+//!   here with the `pkcs8`/`spki` crates (still no hand-rolled curve
+//!   arithmetic).
 //!
 //! Transport shapes (all hex strings):
 //! - private keys: fixed-width big-endian scalar (P-256: 32 bytes, P-384:
@@ -44,6 +47,8 @@ pub(crate) const EC_PUBLIC_KEY_OID: ObjectIdentifier =
 pub(crate) const P256_OID: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.2.840.10045.3.1.7");
 /// secp384r1 (P-384): 1.3.132.0.34
 pub(crate) const P384_OID: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.132.0.34");
+/// secp256k1: 1.3.132.0.10
+pub(crate) const SECP256K1_OID: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.132.0.10");
 /// id-Ed25519: 1.3.101.112
 pub(crate) const ED25519_OID: ObjectIdentifier = ObjectIdentifier::new_unwrap("1.3.101.112");
 /// id-X25519: 1.3.101.110
@@ -61,6 +66,8 @@ pub enum EccCurve {
     P256,
     /// NIST P-384 (secp384r1) — ECDSA + ECDH.
     P384,
+    /// secp256k1 (Bitcoin/Ethereum) — ECDSA + ECDH + ETH address derivation.
+    Secp256k1,
     /// EdDSA signature curve (RFC 8032).
     Ed25519,
     /// Montgomery DH curve (RFC 7748).
@@ -68,12 +75,13 @@ pub enum EccCurve {
 }
 
 impl EccCurve {
-    /// Canonical lowercase label (`"p256"`, `"p384"`, `"ed25519"`,
-    /// `"x25519"`).
+    /// Canonical lowercase label (`"p256"`, `"p384"`, `"secp256k1"`,
+    /// `"ed25519"`, `"x25519"`).
     pub fn label(&self) -> &'static str {
         match self {
             EccCurve::P256 => "p256",
             EccCurve::P384 => "p384",
+            EccCurve::Secp256k1 => "secp256k1",
             EccCurve::Ed25519 => "ed25519",
             EccCurve::X25519 => "x25519",
         }
@@ -81,41 +89,42 @@ impl EccCurve {
 
     /// Parse a curve label, accepting common aliases (case-insensitive):
     /// `p256`/`p-256`/`secp256r1`/`prime256v1`, `p384`/`p-384`/`secp384r1`,
-    /// `ed25519`, `x25519`/`curve25519`.
+    /// `secp256k1`/`k256`, `ed25519`, `x25519`/`curve25519`.
     pub fn from_label(label: &str) -> Option<EccCurve> {
         match label.trim().to_ascii_lowercase().as_str() {
             "p256" | "p-256" | "secp256r1" | "prime256v1" | "nistp256" => Some(EccCurve::P256),
             "p384" | "p-384" | "secp384r1" | "nistp384" => Some(EccCurve::P384),
+            "secp256k1" | "k256" => Some(EccCurve::Secp256k1),
             "ed25519" | "edwards25519" => Some(EccCurve::Ed25519),
             "x25519" | "curve25519" => Some(EccCurve::X25519),
             _ => None,
         }
     }
 
-    /// Fixed-length private-key size in bytes (scalar for P-256/P-384 and
-    /// X25519, seed for Ed25519).
+    /// Fixed-length private-key size in bytes (scalar for P-256/P-384,
+    /// secp256k1, and X25519; seed for Ed25519).
     pub fn private_key_size(&self) -> usize {
         match self {
-            EccCurve::P256 | EccCurve::Ed25519 | EccCurve::X25519 => 32,
+            EccCurve::P256 | EccCurve::Secp256k1 | EccCurve::Ed25519 | EccCurve::X25519 => 32,
             EccCurve::P384 => 48,
         }
     }
 
-    /// Compressed public-key size in bytes (SEC1 for the NIST curves, raw
-    /// 32-byte key for Ed25519/X25519).
+    /// Compressed public-key size in bytes (SEC1 for the short-Weierstrass
+    /// curves, raw key for Ed25519/X25519).
     pub fn public_key_compressed_size(&self) -> usize {
         match self {
-            EccCurve::P256 => 33,
+            EccCurve::P256 | EccCurve::Secp256k1 => 33,
             EccCurve::P384 => 49,
             EccCurve::Ed25519 | EccCurve::X25519 => 32,
         }
     }
 
-    /// Uncompressed public-key size in bytes (SEC1 for the NIST curves, raw
-    /// 32-byte key for Ed25519/X25519).
+    /// Uncompressed public-key size in bytes (SEC1 for the short-Weierstrass
+    /// curves, raw key for Ed25519/X25519).
     pub fn public_key_uncompressed_size(&self) -> usize {
         match self {
-            EccCurve::P256 => 65,
+            EccCurve::P256 | EccCurve::Secp256k1 => 65,
             EccCurve::P384 => 97,
             EccCurve::Ed25519 | EccCurve::X25519 => 32,
         }
@@ -133,7 +142,9 @@ impl std::fmt::Display for EccCurve {
 pub fn parse_ecc_curve(label: &str) -> PkiResult<EccCurve> {
     EccCurve::from_label(label).ok_or_else(|| {
         PkiError::invalid_param("curve", format!("unknown curve '{label}'"))
-            .with_expected("one of: p256, p384, ed25519, x25519 (common aliases accepted)")
+            .with_expected(
+                "one of: p256, p384, secp256k1, ed25519, x25519 (common aliases accepted)",
+            )
             .with_actual(crate::keys::preview(label, 32))
     })
 }
@@ -177,6 +188,7 @@ pub fn generate_ecc_keypair(curve: EccCurve) -> PkiResult<EccKeyPair> {
     match curve {
         EccCurve::P256 => nist_generate::<p256::NistP256>(curve),
         EccCurve::P384 => nist_generate::<p384::NistP384>(curve),
+        EccCurve::Secp256k1 => nist_generate::<k256::Secp256k1>(curve),
         EccCurve::Ed25519 => super::ed25519::generate(),
         EccCurve::X25519 => super::x25519::generate(),
     }
@@ -233,6 +245,11 @@ pub fn parse_ecc_private_key(curve: EccCurve, private_hex: &str) -> PkiResult<Ec
             let secret = parse_nist_secret::<p384::NistP384>(&bytes)?;
             nist_keypair_from_secret(curve, &secret)
         }
+        EccCurve::Secp256k1 => {
+            let bytes = decode_scalar_hex("private_key", private_hex, 32)?;
+            let secret = parse_nist_secret::<k256::Secp256k1>(&bytes)?;
+            nist_keypair_from_secret(curve, &secret)
+        }
         EccCurve::Ed25519 => super::ed25519::parse_private(private_hex),
         EccCurve::X25519 => super::x25519::parse_private(private_hex),
     }
@@ -255,8 +272,13 @@ where
 /// validate the point is on the curve.
 pub fn parse_ecc_public_key(curve: EccCurve, public_hex: &str) -> PkiResult<EccPublicKeyMaterial> {
     match curve {
+        // secp256k1 shares the SEC1 sizes of P-256, so a mislabeled key gets
+        // the wrong-curve hint instead of a bare length mismatch.
         EccCurve::P256 => nist_public_material::<p256::NistP256>(curve, public_hex, EccCurve::P384),
         EccCurve::P384 => nist_public_material::<p384::NistP384>(curve, public_hex, EccCurve::P256),
+        EccCurve::Secp256k1 => {
+            nist_public_material::<k256::Secp256k1>(curve, public_hex, EccCurve::P256)
+        }
         EccCurve::Ed25519 => super::ed25519::public_material(public_hex),
         EccCurve::X25519 => super::x25519::public_material(public_hex),
     }
@@ -380,6 +402,12 @@ pub fn ecc_public_key_to_spki_der(curve: EccCurve, public_hex: &str) -> PkiResul
             let public = nist_public_from_material::<p384::NistP384>(&material)?;
             encode_spki_der(public.to_public_key_der())
         }
+        EccCurve::Secp256k1 => {
+            let material =
+                nist_public_material::<k256::Secp256k1>(curve, public_hex, EccCurve::P256)?;
+            let public = nist_public_from_material::<k256::Secp256k1>(&material)?;
+            encode_spki_der(public.to_public_key_der())
+        }
         EccCurve::Ed25519 => {
             let verifying = super::ed25519::parse_verifying_key(public_hex)?;
             encode_spki_der(verifying.to_public_key_der())
@@ -415,6 +443,12 @@ pub fn ecc_public_key_to_spki_pem(curve: EccCurve, public_hex: &str) -> PkiResul
             let material =
                 nist_public_material::<p384::NistP384>(curve, public_hex, EccCurve::P256)?;
             let public = nist_public_from_material::<p384::NistP384>(&material)?;
+            encode_spki_pem(public.to_public_key_pem(der::pem::LineEnding::LF))
+        }
+        EccCurve::Secp256k1 => {
+            let material =
+                nist_public_material::<k256::Secp256k1>(curve, public_hex, EccCurve::P256)?;
+            let public = nist_public_from_material::<k256::Secp256k1>(&material)?;
             encode_spki_pem(public.to_public_key_pem(der::pem::LineEnding::LF))
         }
         EccCurve::Ed25519 => {
@@ -486,10 +520,11 @@ pub fn ecc_public_key_from_spki_der(der: &[u8]) -> PkiResult<EccPublicKeyMateria
             match curve_oid {
                 P256_OID => nist_public_from_sec1(EccCurve::P256, raw),
                 P384_OID => nist_public_from_sec1(EccCurve::P384, raw),
+                SECP256K1_OID => nist_public_from_sec1(EccCurve::Secp256k1, raw),
                 other => Err(PkiError::unsupported(format!(
                     "unsupported EC named curve {other}"
                 ))
-                .with_expected("P-256 (prime256v1) or P-384 (secp384r1)")
+                .with_expected("P-256 (prime256v1), P-384 (secp384r1), or secp256k1")
                 .with_actual(other.to_string())),
             }
         }
@@ -532,8 +567,13 @@ fn nist_public_from_sec1(curve: EccCurve, bytes: &[u8]) -> PkiResult<EccPublicKe
                 .map_err(|e| invalid_point(curve.label(), format!("SEC1 point rejected: {e}")))?;
             Ok(nist_public_from_key(curve, &public))
         }
+        EccCurve::Secp256k1 => {
+            let public = elliptic_curve::PublicKey::<k256::Secp256k1>::from_sec1_bytes(bytes)
+                .map_err(|e| invalid_point(curve.label(), format!("SEC1 point rejected: {e}")))?;
+            Ok(nist_public_from_key(curve, &public))
+        }
         _ => Err(internal(
-            "nist_public_from_sec1 called for a non-NIST curve",
+            "nist_public_from_sec1 called for a non-short-Weierstrass curve",
         )),
     }
 }
@@ -553,6 +593,11 @@ pub fn ecc_private_key_to_pkcs8_der(curve: EccCurve, private_hex: &str) -> PkiRe
         EccCurve::P384 => {
             let bytes = decode_scalar_hex("private_key", private_hex, 48)?;
             let secret = parse_nist_secret::<p384::NistP384>(&bytes)?;
+            encode_pkcs8_der(secret.to_pkcs8_der())
+        }
+        EccCurve::Secp256k1 => {
+            let bytes = decode_scalar_hex("private_key", private_hex, 32)?;
+            let secret = parse_nist_secret::<k256::Secp256k1>(&bytes)?;
             encode_pkcs8_der(secret.to_pkcs8_der())
         }
         EccCurve::Ed25519 => {
@@ -581,6 +626,11 @@ pub fn ecc_private_key_to_pkcs8_pem(curve: EccCurve, private_hex: &str) -> PkiRe
         EccCurve::P384 => {
             let bytes = decode_scalar_hex("private_key", private_hex, 48)?;
             let secret = parse_nist_secret::<p384::NistP384>(&bytes)?;
+            encode_pkcs8_pem(secret.to_pkcs8_pem(der::pem::LineEnding::LF))
+        }
+        EccCurve::Secp256k1 => {
+            let bytes = decode_scalar_hex("private_key", private_hex, 32)?;
+            let secret = parse_nist_secret::<k256::Secp256k1>(&bytes)?;
             encode_pkcs8_pem(secret.to_pkcs8_pem(der::pem::LineEnding::LF))
         }
         EccCurve::Ed25519 => {
@@ -661,10 +711,15 @@ pub fn ecc_private_key_from_pkcs8_der(der: &[u8]) -> PkiResult<EccKeyPair> {
                         .map_err(|e| invalid_pkcs8_key("p384", e))?;
                     nist_keypair_from_secret(EccCurve::P384, &secret)
                 }
+                SECP256K1_OID => {
+                    let secret = k256::SecretKey::from_pkcs8_der(der)
+                        .map_err(|e| invalid_pkcs8_key("secp256k1", e))?;
+                    nist_keypair_from_secret(EccCurve::Secp256k1, &secret)
+                }
                 other => Err(PkiError::unsupported(format!(
                     "unsupported EC named curve {other}"
                 ))
-                .with_expected("P-256 (prime256v1) or P-384 (secp384r1)")
+                .with_expected("P-256 (prime256v1), P-384 (secp384r1), or secp256k1")
                 .with_actual(other.to_string())),
             }
         }
