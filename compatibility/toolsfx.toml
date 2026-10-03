@@ -14,17 +14,18 @@
 upstream = "https://github.com/Leon406/ToolsFx"
 baseline_date = 2026-09-28
 source = "upstream README feature list"
-notes = "ToolsFx maps BouncyCastle surface; CyberCipher maps a CTF-oriented Rust core. Entries reflect implemented reality on main (5d5ab8e) + branches noted as 'PR in flight'."
+notes = "ToolsFx maps BouncyCastle surface; CyberCipher maps a CTF-oriented Rust core. Entries reflect implemented reality on main (batch A-E long-tail branch agent/crypto/longtail)."
 
 # ---------------------------------------------------------- symmetric ----
 
 [entries.aes]
-ours = "aes-encrypt / aes-decrypt"
+ours = "aes-encrypt / aes-decrypt / aes-xts-encrypt / aes-xts-decrypt"
 status = "partial"
-notes = """Ours: ECB/CBC/CTR/CFB/OFB + PKCS7/Zero/ISO7816/None.
-ToolsFx (BouncyCastle) additionally offers CTS, CCM/EAX/GCM/OCB AEAD modes,
-ISO10126, X9.23, TBC paddings. GCM/CCM ship in ours as separate aead-* ops
-(PR in flight); EAX/OCB/CTS/XTS are absent."""
+notes = """Ours: ECB/CBC/CTR/CFB/OFB + CBC-CS1/CS2/CS3 (NIST SP 800-38A addendum) +
+XTS (IEEE 1619) + PKCS7/Zero/ISO7816/None. ToolsFx (BouncyCastle) additionally
+offers CCM/EAX/GCM/OCB AEAD modes and more paddings; GCM/CCM/EAX/OCB/SIV ship
+in ours as separate aead-* ops (merged), ISO10126/X9.23/TBC paddings remain
+absent."""
 
 [entries.des_3des]
 ours = "des-encrypt / des-decrypt"
@@ -34,7 +35,7 @@ notes = "Ours: ECB/CBC. ToolsFx exposes the full BC mode set (CFB/OFB/CTR + AEAD
 [entries.sm4]
 ours = "sm4-encrypt / sm4-decrypt"
 status = "partial"
-notes = "Ours: ECB/CBC/CTR/CFB/OFB. ToolsFx adds GCM/CCM/EAX/OCB via BC; SM4 AEAD modes are not implemented here (the AEAD PR covers AES/ChaCha20 only)."
+notes = "Ours: ECB/CBC/CTR/CFB/OFB + CBC-CS1/CS2/CS3. ToolsFx adds GCM/CCM/EAX/OCB via BC; SM4 AEAD modes are not implemented here (the AEAD ops cover AES/ChaCha20 and friends only)."
 
 [entries.tea_family]
 ours = "tea/xtea/xxtea encrypt/decrypt"
@@ -47,17 +48,21 @@ status = "covered"
 notes = "Ours covers RC4 + RC4-drop[n] (0-8192) in one op."
 
 [entries.chacha_poly1305]
-ours = "aead-chacha20poly1305-encrypt/decrypt"
-status = "partial (PR in flight)"
-notes = "RFC 8439 vectors on the AEAD branch. Salsa20/XSalsa20, HC128/256, VMPC, Grain, Zuc128: not implemented."
+ours = "aead-chacha20poly1305-encrypt/decrypt + salsa20 / xsalsa20 / hc256-encrypt / rabbit-encrypt / zuc-encrypt"
+status = "partial"
+notes = """AEAD on the merged AEAD branch. Keystream ops: Salsa20/XSalsa20
+(eSTREAM vectors), HC-256 (paper vectors), Rabbit (RFC 4503 reference
+byte-order vectors) and ZUC-128 (3GPP TS 35.221 Document 3 test sets) are
+implemented. Remaining vs ToolsFx (BC engines): HC-128, VMPC, Grain."""
 
 [entries.broad_block_ciphers]
-ours = "—"
-status = "missing"
-notes = """Serpent / Twofish / Camellia / ARIA / CAST5-CAST6 / IDEA / RC2 / RC5 /
-RC6 / Blowfish / SEED / Threefish / GOST28147 / Shacal-2 / Noekeon — ToolsFx
-gets all of these from BouncyCastle. We implement AES/DES/3DES/SM4/TEA family
-only. High-value gap; see docs/COMPATIBILITY.md gap report."""
+ours = "serpent / twofish / camellia / aria / cast5 / cast6 / idea / rc2 / rc5 / rc6 / blowfish / threefish / magma / kuznyechik"
+status = "partial"
+notes = """All breadth ciphers are table rows over the shared ECB/CBC/CTR/CFB/OFB
+(+CBC-CS1/2/3 and AES-XTS wiring) mode plumbing with round-trip tests. Missing
+vs ToolsFx (BC): SEED, Shacal-2, Noekeon — the noekeon and shacal2 crates were
+never published to crates.io, so those two primitives are unavailable under
+the RustCrypto-only source policy."""
 
 # --------------------------------------------------------- asymmetric ----
 
@@ -78,24 +83,39 @@ status = "missing"
 # ------------------------------------------------------------ hashes ----
 
 [entries.md_sha_serial]
-ours = "md5 / md4 / sha1 / sha224/256/384/512 / sha3 / sm3 / shake"
-status = "covered"
-notes = "Ours adds Keccak-224/256/384/512 (pre-standard padding) as sha3 variants — see cyberchef.toml Keccak entry."
+ours = "md5 / md4 / md2 / sha1 / sha224/256/384/512 / sha3 / sm3 / shake / tiger / streebog-256/512 / gost94 / shabal-512 / groestl-256/512"
+status = "partial"
+notes = """Ours adds Keccak-224/256/384/512 (pre-standard padding) as sha3 variants — see cyberchef.toml Keccak entry. Batch D adds MD2 (RFC 1319), Tiger-192
+(Anderson-Biham reference vectors), Streebog-256/512 (RFC 6986 vectors),
+GOST R 34.11-94 (test parameter set, Broken), Shabal-512 and Groestl-256/512
+(reference ShortMsgKATs). Missing vs BC's digest set: Tiger2, Shabal
+192/224/256/384, Groestl 224/384, RIPEMD widths, Skein."""
 
 [entries.ripemd_whirlpool_tiger]
-ours = "ripemd160 / whirlpool / blake2b / blake2s"
+ours = "ripemd160 / whirlpool / blake2b / blake2s / tiger"
 status = "partial"
-notes = "RIPEMD-160 and Whirlpool covered (reference/NESSIE vectors tested); BLAKE2b-512/BLAKE2s-256 covered unkeyed. Tiger is not implemented — no digest-0.10-generation RustCrypto tiger crate was added in this pass."
+notes = "RIPEMD-160 and Whirlpool covered (reference/NESSIE vectors tested); BLAKE2b-512/BLAKE2s-256 covered unkeyed; Tiger-192 covered with the official Anderson-Biham reference vectors (Tiger2 variant is not exposed)."
 
 [entries.hmac]
-ours = "hmac"
+ours = "hmac / cmac / gmac / poly1305 / kmac128 / kmac256"
 status = "partial"
-notes = "Ours: 8 hash variants incl. SM3 and SHA3-256. ToolsFx mirrors its full hash family + adds CMAC/GMAC/Poly1305 MACs, which we lack."
+notes = """Ours: 8 hash variants incl. SM3 and SHA3-256, CMAC/GMAC/Poly1305 (mac.rs),
+and KMAC128/256 (in-tree Keccak sponge — no kmac crate is published; all six
+NIST SP 800-185 sample vectors pass). BC additionally offers Poly1305 key
+generation and further MACs; those stay uncovered."""
 
 [entries.checksums_non_crypto]
 ours = "crc-32, crc-32c, adler-32, fletcher-8/16/32, fnv, djb2, sdbm, java-hash-code, xxhash"
 status = "partial"
 notes = "Implemented as registry ops with official vectors (lcn2/fnv, xxHash sanity tests, standard CRC check values) and CyberChef-compatible Fletcher definitions. ToolsFx-side checksum coverage was not re-verified this pass — verify the feature list before claiming a mapping."
+
+[entries.password_hashing]
+ours = "bcrypt-hash / bcrypt-verify + kdf-pbkdf2 / hkdf / scrypt / kdf-argon2id"
+status = "partial"
+notes = """bcrypt via the `bcrypt` crate (Openwall test vectors; explicit-salt mode is
+deterministic, random-salt mode is not) plus the KDF set. ToolsFx (BC) exposes
+the same primitives; BC additionally offers Argon2 variants (ours is Argon2id
+only) and PBES2-style encryption, which we lack."""
 
 # ---------------------------------------------------------- encodings ----
 
