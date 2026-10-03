@@ -709,6 +709,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "cast6"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6196963fa0e98083ddfd59354a17a640dc2dd2b1cbf1af945a728c8d1460e209"
+dependencies = [
+ "cipher 0.5.2",
+]
+
+[[package]]
 name = "cc"
 version = "1.5.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1358,6 +1367,7 @@ dependencies = [
  "blowfish",
  "camellia",
  "cast5",
+ "cast6",
  "ccm",
  "chacha20poly1305",
  "cipher 0.5.2",

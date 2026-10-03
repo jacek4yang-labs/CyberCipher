@@ -429,6 +429,22 @@ const BLOCK_CIPHERS: &[BlockCipherEntry] = &[
         factory: |key, _| keyed::<cast5::Cast5>(key),
     },
     BlockCipherEntry {
+        id: "cast6",
+        display: "CAST6",
+        key_lengths: &[16, 20, 24, 28, 32],
+        key_range: (16, 32),
+        width: BlockWidth::Fixed(16),
+        security: Security::Modern,
+        tweak_required: false,
+        provenance: (
+            "RFC 2612 (CAST-256, AES candidate)",
+            "RustCrypto `cast6` crate",
+            "RFC 2612 Appendix A test vectors",
+        ),
+        shape: "16/20/24/28/32-byte keys, 16-byte block.",
+        factory: |key, _| keyed::<cast6::Cast6>(key),
+    },
+    BlockCipherEntry {
         id: "idea",
         display: "IDEA",
         key_lengths: &[16],

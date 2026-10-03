@@ -252,6 +252,34 @@ fn cast5_ecb_rfc2144_vector_and_modes() {
     rejects_bad_key_length("cast5", "0001");
 }
 
+// ------------------------------------------------------- CAST6 ----
+
+#[test]
+fn cast6_ecb_rfc2612_vector_and_modes() {
+    // RFC 2612 Appendix A: zero block under 128- and 256-bit keys.
+    ecb_known_answer(
+        "cast6",
+        "2342bb9efa38542c0af75647f29f615d",
+        "00000000000000000000000000000000",
+        "c842a08972b43d20836c91d1b7530f6b",
+        None,
+    );
+    ecb_known_answer(
+        "cast6",
+        "2342bb9efa38542cbed0ac83940ac2988d7c47ce264908461cc1b5137ae6b604",
+        "00000000000000000000000000000000",
+        "4f6a2038286897b9c9870136553317fa",
+        None,
+    );
+    // 192-bit key exercises the middle of the key-length table.
+    all_modes_roundtrip(
+        "cast6",
+        "2342bb9efa38542cbed0ac83940ac298bac77a7717942863",
+        16,
+    );
+    rejects_bad_key_length("cast6", "000102030405060708090a0b0c0d0e");
+}
+
 // -------------------------------------------------------- IDEA ----
 
 #[test]
