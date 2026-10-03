@@ -23,8 +23,8 @@ pub use lattice::{
     SmallRootsResult,
 };
 pub use rsa::{
-    analyze, AnalyzerReport, AttackCost, AttackOutcome, AttackStatus, PlaintextResult, RsaParams,
-    RsaSet,
+    analyze, attack_dpdq_recover, attack_rabin, rabin_decrypt, AnalyzerReport, AttackCost,
+    AttackOutcome, AttackStatus, PlaintextResult, RabinDecryptResult, RsaParams, RsaSet,
 };
 pub use xor::{
     crack_repeating_key, crack_single_byte, crib_drag, estimate_key_length, mtp_break,

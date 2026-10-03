@@ -255,6 +255,7 @@ fn main() {
     let mut reg = cybercipher_engine::default_registry();
     cybercipher_pki::jwt::register(&mut reg);
     cybercipher_pki::ecc::register(&mut reg);
+    cybercipher_pki::dsa::register(&mut reg);
     cybercipher_sstv::register_all(&mut reg);
     let registry = Arc::new(reg);
     let engine = RecipeEngine::new(registry.clone());
@@ -1127,6 +1128,7 @@ mod tests {
         let mut reg = cybercipher_engine::default_registry();
         cybercipher_pki::jwt::register(&mut reg);
         cybercipher_pki::ecc::register(&mut reg);
+        cybercipher_pki::dsa::register(&mut reg);
         cybercipher_sstv::register_all(&mut reg);
         Arc::new(reg)
     }

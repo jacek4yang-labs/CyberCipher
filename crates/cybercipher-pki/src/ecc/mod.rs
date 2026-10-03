@@ -1,9 +1,17 @@
 //! Elliptic-curve foundation: NIST P-256/P-384 (ECDSA + ECDH), secp256k1
-//! (ECDSA + ECDH + Ethereum addresses), Ed25519, and X25519 for CyberCipher.
+//! (ECDSA + ECDH + Ethereum addresses), Ed25519, X25519, and X448 for
+//! CyberCipher.
 //!
 //! All curve arithmetic comes from the mature RustCrypto crates (`p256`,
-//! `p384`, `k256`, `elliptic-curve`, `ed25519-dalek`, `x25519-dalek`) —
-//! nothing is implemented by hand. The SPKI/PKCS#8 layer is the same
+//! `p384`, `k256`, `elliptic-curve`, `ed25519-dalek`, `x25519-dalek`,
+//! `x448`/`ed448-goldilocks`) — nothing is implemented by hand.
+//!
+//! Ed448 (RFC 8032 EdDSA over Curve448) is intentionally out of scope: no
+//! maintained Rust crate implements the Ed448 *protocol* — `ed448-goldilocks`
+//! ships curve/field arithmetic only (Edwards points, scalars, decaf), and
+//! hand-rolling the RFC 8032 sign/verify logic on top would violate this
+//! crate's no-hand-implemented-crypto rule. X448 key exchange IS covered
+//! (see [`x448`]). The SPKI/PKCS#8 layer is the same
 //! `pkcs8` 0.10 / `spki` 0.7 / `der` 0.7 stack the RSA half of this crate
 //! uses, so key formats interoperate (an OpenSSL-generated `openssl pkey
 //! -text` EC key parses here and vice versa).
@@ -40,6 +48,7 @@ pub mod ed25519;
 pub mod eth;
 pub mod registry;
 pub mod x25519;
+pub mod x448;
 
 pub use attacks::{
     ecdsa_duplicate_r_detect, ecdsa_known_k_recover, ecdsa_nonce_reuse_recover,
@@ -65,6 +74,10 @@ pub use eth::{
 };
 pub use registry::register;
 pub use x25519::x25519_shared_secret;
+pub use x448::{
+    x448_generate_private, x448_public_from_private, x448_shared_secret, X448_KEY_SIZE,
+    X448_SHARED_SECRET_SIZE,
+};
 
 use crate::error::PkiError;
 

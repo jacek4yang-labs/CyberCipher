@@ -56,11 +56,13 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for details.
     ChaCha20-Poly1305/XChaCha20-Poly1305/GCM-SIV), KDFs (PBKDF2/HKDF/scrypt/
     Argon2id/EVP_BytesToKey), MACs (HMAC/CMAC/GMAC/Poly1305), hashes (MD5,
     SHA-1/2/3, SHAKE, Keccak, SM3), stream ciphers (Salsa20/XSalsa20/RC4).
-  - PKI: RSA keygen + OAEP/PKCS#1 v1.5/PSS, ECDSA P-256/P-384, ECDH, Ed25519,
-    X25519, SM2 + SM3, X.509/CSR/CRL/ASN.1 inspection, JWT/JWS
+  - PKI: RSA keygen + OAEP/PKCS#1 v1.5/PSS, ECDSA P-256/P-384/secp256k1
+    (+ ETH addresses), ECDH, Ed25519, X25519, X448, DSA, SM2 + SM3,
+    X.509/CSR/CRL/ASN.1 inspection, JWT/JWS
     (HS/RS/ES/EdDSA, alg=none rejection, claims validation).
-  - Attacks: RSA analyzer (known-pq/d/phi, dp-leak, Wiener, Fermat, low-e,
-    common modulus, Håstad, shared prime, Coppersmith, Pollard rho/p−1),
+  - Attacks: RSA analyzer (known-pq/d/phi, rabin, dp-leak, dp+dq joint leak,
+    Wiener, Fermat, low-e, common modulus, Håstad, shared prime, Coppersmith,
+    Pollard rho/p−1),
     PRNG recovery (LCG/MT19937/Java/glibc/MSVC), XOR solving, classical
     cipher cracking (IOC/Kasiski), ECDSA nonce attacks, Crypto Assist
     profiles, crypto signature scanner.
