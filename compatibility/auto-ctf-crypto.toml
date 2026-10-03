@@ -47,9 +47,9 @@ status = "covered"
 notes = "Deadline-bounded; escalates to factorization when dp is small."
 
 [entries.rsa_dpdq_leak]
-ours = "—"
-status = "missing"
-notes = "Upstream handles dp AND dq jointly; ours covers dp-leak only. Small gap."
+ours = "attack_dpdq_recover (dpdq-recover; task id rsa-dpdq-recover)"
+status = "covered"
+notes = "Fermat-base gcd identity on e·dp−1 and e·dq−1 (any e) plus a k-divisor sweep for small e; leak-vs-factor algebraic verification with a joint cross-check, so a corrupt second leak is ignored instead of blocking. Wired into the analyzer after dp-leak."
 
 [entries.rsa_wiener]
 ours = "attack_wiener (wiener)"
@@ -87,9 +87,9 @@ ours = "attack_pollard_pm1 (pollard-pm1)"
 status = "covered"
 
 [entries.rsa_rabin]
-ours = "—"
-status = "missing"
-notes = "Rabin-specific decryption (e=2 with ambiguity resolution) is upstream-only; our analyzer surfaces the low-e path but not a dedicated Rabin result."
+ours = "attack_rabin / rabin_decrypt (rabin)"
+status = "covered"
+notes = "Dedicated Rabin e=2 path: Tonelli–Shanks square roots (primes ≡ 1 mod 4 included) recombined by the CRT; all four roots reported and verified (r² ≡ c mod n), hint matching + flag-like / unique-UTF-8 auto-selection, degenerate root counts handled."
 
 [entries.rsa_analyzer_auto]
 ours = "analyze() + typed AttackOutcome / preconditions / resource bounds"
@@ -170,9 +170,9 @@ status = "partial"
 notes = "Base hashes covered by the registry; MD4/NT/NetNTLMv2 hashcat-line building is upstream-only."
 
 [entries.ecc_eth]
-ours = "—"
-status = "missing"
-notes = "Keccak-256 digest exists internally (not yet exposed); no secp256k1, no ETH address derivation."
+ours = "secp256k1 ECDSA/ECDH + ETH address derivation (EIP-55) in cybercipher-pki::ecc"
+status = "covered"
+notes = "Landed with the secp256k1 PR (ECC ops on k256 + keccak256 address derivation with EIP-55 checksum validation)."
 
 [entries.encoding_chain]
 ours = "auto_decode engine + core codec ops"
@@ -188,3 +188,11 @@ notes = "Upstream returns raw results; ours adds the analyzer/diagnostics contra
 [superset.recipe_registry_and_gui]
 ours = "recipe engine, Auto Analyze page, RSA Attack Lab GUI"
 notes = "Interactive labs for the same attack surface."
+
+[superset.dsa]
+ours = "dsa-keygen / dsa-sign / dsa-verify ops (FIPS 186-4 parameter generation, RFC 6979 deterministic signing, PKCS#8/SPKI PEM)"
+notes = "Upstream has no DSA support — pure superset. RustCrypto dsa crate; sha1..sha512 digest pairing; invalid signatures are results, not errors."
+
+[superset.x448_key_exchange]
+ours = "x448 key exchange (RFC 7748) in cybercipher-pki::ecc — private keygen (clamped), public derivation, shared secret with low-order peer rejection"
+notes = "Upstream ECC coverage is Keccak-256 + secp256k1/ETH only. Ed448 (RFC 8032 EdDSA over Curve448) is intentional-out-of-scope: no maintained Rust crate implements the protocol (ed448-goldilocks ships curve arithmetic only) and hand-rolling sign/verify would violate the no-hand-implemented-crypto policy."

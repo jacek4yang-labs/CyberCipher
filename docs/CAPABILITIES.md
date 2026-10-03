@@ -100,10 +100,11 @@ parameter rows.
   Twofish/Camellia/RC4 profiles, structural pruning, Apply as Recipe), Auto
   Decode v2/v3, crypto signature scanner (TEA/XTEA delta, AES S-box/Rcon,
   SM4 FK/CK/S-box, SHA/MD5 constants, ChaCha sigma, RC4 KSA).
-- **M8 — PKI.** RSA keygen/OAEP/PKCS#1 v1.5/PSS, ECDSA P-256/P-384, ECDH,
-  Ed25519, X25519, SM2 + SM3, X.509/CSR/CRL/ASN.1 inspection, JWT/JWS
-  (HS/RS/ES/EdDSA with alg=none rejection and claims validation), ECDSA
-  attack helpers.
+- **M8 — PKI.** RSA keygen/OAEP/PKCS#1 v1.5/PSS, ECDSA P-256/P-384/secp256k1
+  (plus ECDH and ETH address derivation), ECDH, Ed25519, X25519, X448, DSA
+  (FIPS 186-4 keygen, RFC 6979 signing), SM2 + SM3, X.509/CSR/CRL/ASN.1
+  inspection, JWT/JWS (HS/RS/ES/EdDSA with alg=none rejection and claims
+  validation), ECDSA attack helpers.
 - **M9 — file/media.** gzip/zlib/deflate/bzip2/xz/zstd/lz4/brotli, tar/zip,
   CBOR/MessagePack/VarInt/TLV, file magic, UTF-16, entropy; steg engine
   (bounded decode, 42 StegSolve-compatible transforms, bit extraction, Auto
@@ -117,7 +118,10 @@ parameter rows.
 
 ## Remaining (honest)
 
-- PKI residual parity: secp256k1/ETH address derivation, DSA, Ed448/X448.
+- PKI residual parity: closed — secp256k1/ETH, DSA, and X448 are covered.
+  Ed448 (RFC 8032 EdDSA over Curve448) is intentional-out-of-scope: no
+  maintained Rust crate implements the protocol (ed448-goldilocks is curve
+  arithmetic only) and hand-rolling sign/verify is against crate policy.
 - File/data closure: YAML, XML, BSON, protobuf wire inspection.
 - Crypto long-tail: KMAC, bcrypt, HC-256/Rabbit/ZUC, CTS/XTS/EAX/OCB/SIV modes.
 - GUI pixel inspector (needs a per-pixel readback op).
