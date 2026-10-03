@@ -1412,7 +1412,7 @@ pub fn auto_decode(
                         break;
                     }
                     // ECB/CBC consume whole blocks only; empty data is noise.
-                    if bytes.is_empty() || bytes.len() % attempt.block != 0 {
+                    if bytes.is_empty() || !bytes.len().is_multiple_of(attempt.block) {
                         continue;
                     }
                     let Some(op) = registry.get(attempt.op) else {
