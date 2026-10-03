@@ -438,8 +438,5 @@ fn eth_address_malformed_inputs_are_typed_errors() {
 fn curve_label_aliases() {
     assert_eq!(parse_ecc_curve("secp256k1").unwrap(), EccCurve::Secp256k1);
     assert_eq!(parse_ecc_curve("K256").unwrap(), EccCurve::Secp256k1);
-    assert_eq!(
-        parse_ecc_public_key(EccCurve::Secp256k1, "zz").is_err(),
-        true
-    );
+    assert!(parse_ecc_public_key(EccCurve::Secp256k1, "zz").is_err());
 }
