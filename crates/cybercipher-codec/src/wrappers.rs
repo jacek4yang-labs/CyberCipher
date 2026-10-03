@@ -31,7 +31,7 @@ const WRAPPER_MAX_INPUT: usize = 8 * 1024 * 1024;
 /// cap the label size so one decode stays in the low milliseconds.
 const PUNYCODE_MAX_LABEL: usize = 8 * 1024;
 
-fn check_budget(len: usize, what: &str) -> OpResult<()> {
+pub(crate) fn check_budget(len: usize, what: &str) -> OpResult<()> {
     if len > WRAPPER_MAX_INPUT {
         return Err(OperationError::new(
             ErrorKind::BudgetExceeded,

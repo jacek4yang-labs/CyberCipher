@@ -14,6 +14,7 @@ mod basefamilies;
 mod byteops;
 mod classical_misc;
 mod compression;
+mod dataformats;
 mod encoding;
 mod fileinfo;
 mod helpers;
@@ -42,6 +43,7 @@ pub fn register_all(reg: &mut OperationRegistry) {
     byteops::register(reg);
     inspect::register(reg);
     structured::register(reg);
+    dataformats::register(reg);
     wrappers::register(reg);
     transforms::register(reg);
 }
