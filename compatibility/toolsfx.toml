@@ -224,3 +224,34 @@ notes = "LCG (known/blind m, seed walk-back) + MT19937 (untemper, state cloning,
 [superset.provenance_and_vuln_labels]
 ours = "registry metadata (provenance, Security::Broken labels, test-vector references)"
 notes = "Per-operation standard citations and security labeling; ToolsFx has no equivalent machine-readable metadata."
+
+# ------------------------------------------------- gap-closure wave ----
+# PRs #76-#81: JSON/YAML/BSON/XML/protobuf data formats, keyed auto-decode,
+# EAX/OCB3/SIV/XTS/CTS AEAD+modes, HC-256/Rabbit/ZUC, KMAC/bcrypt,
+# MD2/Tiger/Streebog/GOST94/Shabal/Groestl, CAST6, secp256k1+ETH,
+# dp+dq/Rabin/DSA/X448, relaxed-hex/base64 auto decode steps.
+
+[entries.checksums_non_crypto]
+ours = "crc-32, crc-32c, adler-32, fletcher-8/16/32, fnv-1/fnv-1a, djb2, sdbm, java-hash-code"
+status = "covered"
+notes = "Table-driven CRC, standard parameter sets, official vectors."
+
+[entries.hashes_extended]
+ours = "md2, tiger, streebog-256/512, gost94, shabal, groestl-256/512, blake2b-512, blake2s-256"
+status = "covered"
+notes = "RustCrypto digest-0.10 crates with official vectors."
+
+[entries.block_ciphers_extended]
+ours = "+ cast6 (16/20/24/28/32B keys) on the shared mode/padding plumbing"
+status = "covered"
+notes = "CAST6 added to the BLOCK_CIPHERS table; Noekeon/Shacal2 dropped (no maintained RustCrypto crates)."
+
+[entries.streams_extended]
+ours = "hc256-encrypt, rabbit-encrypt, zuc-encrypt + existing salsa20/xsalsa20/rc4"
+status = "covered"
+notes = "RustCrypto hc-256/rabbit/zuc; RFC 4503 and 3GPP TS 35.221 vectors."
+
+[entries.kmac_bcrypt]
+ours = "kmac128, kmac256 (in-tree Keccak sponge), bcrypt-hash, bcrypt-verify"
+status = "covered"
+notes = "NIST SP 800-185 KMAC vectors; Openwall bcrypt test vectors."
