@@ -558,7 +558,7 @@ export const useStore = create<Store>((set, get) => ({
     // so multi-layer encodings unwrap on the same Bake button instead of
     // requiring the Auto Analyze page. Auto-bake (typing) never triggers
     // this — it would run the bounded-but-nontrivial search per keystroke.
-    if (manual && recipe.length === 0 && inputText.trim() !== "") {
+    if (recipe.length === 0 && inputText.trim() !== "") {
       try {
         const cands = await api.autoAnalyze({
           input_text: inputText,
